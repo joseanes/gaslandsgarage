@@ -50,7 +50,29 @@ describe('buildSharePayload', () => {
     expect(roundTrip?.maxCans).toBe(60);
   });
 
-  it('does not treat a string sponsor id as an object', () => {
+	it('keeps a version 3 team and its driver on the share payload', () => {
+		const payload = buildSharePayload({
+			sponsor: 'idris',
+			rulesVersion: 3,
+			vehicles: [
+				{
+					id: 'v1',
+					type: 'sports_car',
+					name: 'Zap',
+					weapons: [],
+					perks: [],
+					driverArchetype: 'spark',
+					driverName: 'Zap',
+					secondPerkClass: 'speed'
+				}
+			]
+		});
+		expect(payload.rulesVersion).toBe(3);
+		expect(payload.vehicles[0].driverName).toBe('Zap');
+		expect(payload.vehicles[0].secondPerkClass).toBe('speed');
+	});
+
+	it('does not treat a string sponsor id as an object', () => {
     // Regression: "rutherford".id is undefined, which used to become no_sponsor.
     const payload = buildSharePayload({
       sponsor: 'rutherford',

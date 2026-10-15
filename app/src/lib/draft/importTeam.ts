@@ -1,3 +1,4 @@
+import { normalizeRulesVersion } from '$lib/rules/version';
 import type { Draft } from '$lib/validate/model';
 
 export interface UpgradeGrant {
@@ -43,6 +44,7 @@ type IncomingDraft = {
 	teamName?: string;
 	maxCans?: number;
 	darkMode?: boolean;
+	rulesVersion?: unknown;
 	vehicles?: ImportedVehicle[];
 	teamData?: IncomingDraft;
 };
@@ -60,6 +62,7 @@ export function normalizeIncomingDraft(raw: unknown): Draft | null {
 		vehicles: source.vehicles,
 		teamName: source.teamName,
 		maxCans: source.maxCans,
-		darkMode: source.darkMode
+		darkMode: source.darkMode,
+		rulesVersion: normalizeRulesVersion(source.rulesVersion)
 	};
 }

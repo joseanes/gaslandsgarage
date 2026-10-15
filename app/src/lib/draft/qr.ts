@@ -1,6 +1,7 @@
 // app/src/lib/draft/qr.ts
 import QRCode from 'qrcode';
 import { encodeDraft } from '$lib/draft/io';
+import { normalizeRulesVersion, type RulesVersion } from '$lib/rules/version';
 import type { Draft } from '$lib/validate/model';
 
 /** Sponsor on a draft is a string id. Some callers pass the sponsor object. */
@@ -22,12 +23,15 @@ export function buildSharePayload(draft: {
   sponsor?: SponsorRef;
   teamName?: string;
   maxCans?: number;
+  rulesVersion?: unknown;
   vehicles?: Draft['vehicles'];
 } | null | undefined): Draft {
+  const rulesVersion: RulesVersion = normalizeRulesVersion(draft?.rulesVersion);
   return {
     sponsor: resolveSponsorId(draft?.sponsor),
     teamName: draft?.teamName || 'Gaslands Team',
     ...(typeof draft?.maxCans === 'number' ? { maxCans: draft.maxCans } : {}),
+    ...(rulesVersion === 3 ? { rulesVersion } : {}),
     vehicles: (draft?.vehicles || []).map(v => ({
       id: v.id,
       type: v.type,
@@ -35,7 +39,14 @@ export function buildSharePayload(draft: {
       weapons: v.weapons || [],
       upgrades: v.upgrades || [],
       perks: v.perks || [],
-      weaponFacings: v.weaponFacings || {}
+      weaponFacings: v.weaponFacings || {},
+      ...(v.driverArchetype ? { driverArchetype: v.driverArchetype } : {}),
+      ...(v.driverName ? { driverName: v.driverName } : {}),
+      ...(v.secondPerkClass ? { secondPerkClass: v.secondPerkClass } : {}),
+      ...(v.turretWeaponId ? { turretWeaponId: v.turretWeaponId } : {}),
+      ...(v.upgradeFacings && Object.keys(v.upgradeFacings).length
+        ? { upgradeFacings: v.upgradeFacings }
+        : {})
     }))
   };
 }
@@ -47,7 +58,6 @@ export async function draftToDataURL(draft: Draft): Promise<string> {
       throw new Error("Draft is undefined or null");
     }
 
-    // Create a simplified version of the draft to reduce URL size
     const simplifiedDraft = buildSharePayload(draft);
 
     const encoded = encodeDraft(simplifiedDraft);

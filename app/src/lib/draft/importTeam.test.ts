@@ -48,6 +48,22 @@ describe('normalizeIncomingDraft', () => {
 		expect(draft?.maxCans).toBe(42);
 	});
 
+	it('keeps a version 3 team on version 3 and treats a missing version as 2', () => {
+		const versioned = normalizeIncomingDraft({
+			sponsor: 'idris',
+			rulesVersion: 3,
+			vehicles: [{ id: 'v1', type: 'sports_car', name: 'Zap', weapons: [], perks: [], driverName: 'Zap' }]
+		});
+		expect(versioned?.rulesVersion).toBe(3);
+		expect(versioned?.vehicles[0].driverName).toBe('Zap');
+
+		const legacy = normalizeIncomingDraft({
+			sponsor: 'miyazaki',
+			vehicles: [{ id: 'v1', type: 'car', name: 'Old', weapons: [], perks: [] }]
+		});
+		expect(legacy?.rulesVersion).toBe(2);
+	});
+
 	it('returns null when the payload has no vehicles', () => {
 		expect(normalizeIncomingDraft({ sponsor: 'idris' })).toBeNull();
 		expect(normalizeIncomingDraft(null)).toBeNull();

@@ -6,6 +6,8 @@
     import { perkCost } from '$lib/validate/calc';
     import Tooltip from './Tooltip.svelte';
     import type { Perk, Upgrade, Vehicle, VehicleRule, Weapon } from '$lib/rules/types';
+    import { resolveById } from '$lib/validate/v3/lookup';
+    import { v3BuildSlots } from '$lib/validate/v3/slots';
 
     interface TeamVehicle {
         id: string;
@@ -15,6 +17,11 @@
         weaponFacings?: Record<string, string>;
         upgrades: string[];
         perks: string[];
+        driverArchetype?: string;
+        driverName?: string;
+        secondPerkClass?: string;
+        turretWeaponId?: string;
+        upgradeFacings?: Record<string, string>;
     }
 
     interface VehicleValidationReport {
@@ -52,6 +59,9 @@
     export let filteredTrailerUpgrades: Upgrade[] = [];
     export let filteredPerks: Perk[] = [];
     export let usedBuildSlots: number = 0;
+    export let rulesVersion: 2 | 3 = 2;
+    export let drivers: { id: string; name: string; perkClass: string; ability: string }[] = [];
+    export let perkClasses: { id: string; name: string }[] = [];
     
     // Now we can safely access the props
     $: if (vehicleRules) {
@@ -121,11 +131,38 @@
     // Create reactive statements to recalculate values when properties change
     $: vehicleType = vehicleTypes.find(vt => vt.id === vehicle.type);
     $: vehicleCost = calculateVehicleCost(vehicle, vehicleType);
-    $: maxBuildSlots = vehicleType?.buildSlots || 2;
+    $: resolvedWeapons = (vehicle.weapons || [])
+        .map((id) => resolveById(weapons, id))
+        .filter((entry): entry is Weapon => !!entry);
+    $: resolvedUpgrades = (vehicle.upgrades || [])
+        .map((id) => upgrades.find((entry) => entry.id === id))
+        .filter((entry): entry is Upgrade => !!entry);
+    $: v3Slots = rulesVersion === 3 && vehicleType
+        ? v3BuildSlots(vehicleType, resolvedWeapons, resolvedUpgrades)
+        : null;
+    $: maxBuildSlots = v3Slots ? v3Slots.capacity : (vehicleType?.buildSlots || 2);
     // Recalculate slots whenever weapons or upgrades change
-    $: usedBuildSlots = calculateUsedBuildSlots(vehicle);
+    $: usedBuildSlots = v3Slots ? v3Slots.used : calculateUsedBuildSlots(vehicle);
     // Force reactivity for weapon/upgrade changes
-    $: { vehicle.weapons; vehicle.upgrades; usedBuildSlots = calculateUsedBuildSlots(vehicle); }
+    $: { vehicle.weapons; vehicle.upgrades; rulesVersion; usedBuildSlots = v3Slots ? v3Slots.used : calculateUsedBuildSlots(vehicle); }
+
+    function patch(partial: Partial<TeamVehicle>) {
+        dispatch('patch', { vehicleId: vehicle.id, patch: partial });
+    }
+
+    function setDriverArchetype(id: string) {
+        patch({ driverArchetype: id });
+    }
+
+    function setDriverName(name: string) {
+        const patchBody: Record<string, string> = { driverName: name };
+        if (!name.trim()) patchBody.secondPerkClass = '';
+        patch(patchBody);
+    }
+
+    function className(id: string) {
+        return perkClasses.find((entry) => entry.id === id)?.name || id;
+    }
 
     function calculateVehicleCost(vehicle: TeamVehicle, vehicleType: Vehicle | undefined) {
         // Use the passed vehicleType to avoid redundant lookups
@@ -180,6 +217,11 @@
         for (const perkId of vehicle.perks) {
             const perkObj = perks.find(p => p.id === perkId);
             totalCost += perkCost(perkObj);
+        }
+
+        if (rulesVersion === 3 && vehicle.upgrades?.includes('turret_mount') && vehicle.turretWeaponId) {
+            const turretWeapon = resolveById(weapons, vehicle.turretWeaponId);
+            if (turretWeapon?.cost) totalCost += turretWeapon.cost;
         }
 
         return totalCost;
@@ -645,6 +687,64 @@
     
     <!-- Vehicle details - Hidden when collapsed -->
     <div class="px-1 py-2" class:hidden={collapsed}>
+        {#if vehicleType && vehicleType.armour !== undefined && vehicleType.armour !== null}
+            <div class="flex flex-wrap gap-2 mb-3 text-xs">
+                <span class="bg-stone-200 dark:bg-gray-600 px-2 py-1 rounded">Gear {vehicleType.maxGear}</span>
+                <span class="bg-stone-200 dark:bg-gray-600 px-2 py-1 rounded">Handling {vehicleType.handling}</span>
+                <span class="bg-stone-200 dark:bg-gray-600 px-2 py-1 rounded">Crew {vehicleType.crew}</span>
+                <span class="bg-stone-200 dark:bg-gray-600 px-2 py-1 rounded">Weight {vehicleType.weight}</span>
+                <span class="bg-stone-200 dark:bg-gray-600 px-2 py-1 rounded">Armour {vehicleType.armour}</span>
+                <span class="bg-stone-200 dark:bg-gray-600 px-2 py-1 rounded">Hull {vehicleType.maxHull}</span>
+                <span class="bg-stone-200 dark:bg-gray-600 px-2 py-1 rounded">Slots {vehicleType.buildSlots}</span>
+                {#if vehicleType.rarity}
+                    <span class="bg-amber-100 dark:bg-amber-900/40 px-2 py-1 rounded">{vehicleType.rarity}</span>
+                {/if}
+            </div>
+        {/if}
+
+        {#if rulesVersion === 3 && !playMode}
+            <div class="mb-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                <label class="text-sm">
+                    <span class="block font-semibold mb-1">Driver</span>
+                    <select
+                        class="w-full py-1 px-2 border border-stone-300 rounded bg-white text-stone-800 text-sm"
+                        value={vehicle.driverArchetype || ''}
+                        on:change={(e) => setDriverArchetype(e.currentTarget.value)}
+                    >
+                        <option value="">No driver</option>
+                        {#each drivers as driver}
+                            <option value={driver.id}>{driver.name} — {className(driver.perkClass)}</option>
+                        {/each}
+                    </select>
+                    {#if vehicle.driverArchetype}
+                        <span class="block text-xs text-stone-500 mt-1">{drivers.find((entry) => entry.id === vehicle.driverArchetype)?.ability}</span>
+                    {/if}
+                </label>
+                <label class="text-sm">
+                    <span class="block font-semibold mb-1">Driver name</span>
+                    <input
+                        class="w-full py-1 px-2 border border-stone-300 rounded bg-white text-stone-800 text-sm"
+                        value={vehicle.driverName || ''}
+                        placeholder="Name unlocks a second perk class"
+                        on:input={(e) => setDriverName(e.currentTarget.value)}
+                    />
+                </label>
+                <label class="text-sm md:col-span-2">
+                    <span class="block font-semibold mb-1">Second perk class</span>
+                    <select
+                        class="w-full py-1 px-2 border border-stone-300 rounded bg-white text-stone-800 text-sm"
+                        disabled={!(vehicle.driverName || '').trim()}
+                        value={vehicle.secondPerkClass || ''}
+                        on:change={(e) => patch({ secondPerkClass: e.currentTarget.value })}
+                    >
+                        <option value="">None</option>
+                        {#each perkClasses as perkClass}
+                            <option value={perkClass.id}>{perkClass.name}</option>
+                        {/each}
+                    </select>
+                </label>
+            </div>
+        {/if}
         
         <!-- Interactive dashboard elements - Always visible in Play Mode -->
         <div class="interactive-dashboard bg-stone-50 dark:bg-gray-700 border border-stone-300 dark:border-gray-600 rounded-lg p-3 mb-3" class:hidden={!playMode}>
@@ -971,7 +1071,7 @@
                             }, 50);
                         }
                     }}
-                    disabled={!filteredWeapons.some(w => w.slots === 0) && usedBuildSlots >= (vehicleTypes.find(vt => vt.id === vehicle.type)?.buildSlots || 2)}
+                    disabled={!filteredWeapons.some(w => w.slots === 0) && usedBuildSlots >= maxBuildSlots}
                 >
                     <option value="" disabled selected>+ Add weapon</option>
                     
@@ -980,7 +1080,9 @@
                         {@const machineGun = filteredWeapons.find(w => w.id === 'machine_gun')}
                         {#if machineGun}
                             {@const weaponSlots = machineGun.slots}
-                            {@const canAddWeapon = weaponSlots === 0 || usedBuildSlots + weaponSlots <= (vehicleTypes.find(vt => vt.id === vehicle.type)?.buildSlots || 2)}
+                            {@const canAddWeapon = rulesVersion === 3
+                                ? v3BuildSlots(vehicleType || { buildSlots: maxBuildSlots }, [...resolvedWeapons, machineGun], resolvedUpgrades).used <= (v3Slots?.capacity ?? maxBuildSlots)
+                                : (weaponSlots === 0 || usedBuildSlots + weaponSlots <= maxBuildSlots)}
                             <option
                                 value={machineGun.id}
                                 disabled={!canAddWeapon}
@@ -996,7 +1098,9 @@
                     
                     {#each filteredWeapons.filter(w => w.id !== 'machine_gun').slice().sort((a, b) => a.name.localeCompare(b.name)) as w}
                         {@const weaponSlots = w.slots}
-                        {@const canAddWeapon = weaponSlots === 0 || usedBuildSlots + weaponSlots <= (vehicleTypes.find(vt => vt.id === vehicle.type)?.buildSlots || 2)}
+                        {@const canAddWeapon = rulesVersion === 3
+                            ? v3BuildSlots(vehicleType || { buildSlots: maxBuildSlots }, [...resolvedWeapons, w], resolvedUpgrades).used <= (v3Slots?.capacity ?? maxBuildSlots)
+                            : (weaponSlots === 0 || usedBuildSlots + weaponSlots <= maxBuildSlots)}
                         <option
                             value={w.id}
                             disabled={!canAddWeapon}
@@ -1057,6 +1161,44 @@
                                         {/each}
                                     </div>
                                 {/if}
+                                {#if upgrade?.effect}
+                                    <div class="text-stone-500 dark:text-gray-400 text-xs mt-1">{upgrade.effect}</div>
+                                {/if}
+                                {#if rulesVersion === 3 && upgrade?.needsFacing}
+                                    <label class="block text-xs mt-1">
+                                        Facing
+                                        <select
+                                            class="ml-1 py-0.5 px-1 border border-stone-300 rounded bg-white text-stone-800"
+                                            value={vehicle.upgradeFacings?.[upgrade.id] || ''}
+                                            on:change={(e) => patch({
+                                                upgradeFacings: { ...(vehicle.upgradeFacings || {}), [upgrade.id]: e.currentTarget.value }
+                                            })}
+                                        >
+                                            <option value="">Choose</option>
+                                            <option value="front">Front</option>
+                                            <option value="side">Side</option>
+                                            <option value="rear">Rear</option>
+                                        </select>
+                                    </label>
+                                {/if}
+                                {#if rulesVersion === 3 && upgrade?.id === 'turret_mount'}
+                                    <label class="block text-xs mt-1">
+                                        Turret weapon
+                                        <select
+                                            class="ml-1 py-0.5 px-1 border border-stone-300 rounded bg-white text-stone-800"
+                                            value={vehicle.turretWeaponId || ''}
+                                            on:change={(e) => patch({ turretWeaponId: e.currentTarget.value })}
+                                        >
+                                            <option value="">Choose a shooting weapon</option>
+                                            {#each vehicle.weapons as weaponId}
+                                                {@const weapon = resolveById(weapons, weaponId)}
+                                                {#if weapon && weapon.category !== 'dropped'}
+                                                    <option value={weaponId}>{weapon.name}</option>
+                                                {/if}
+                                            {/each}
+                                        </select>
+                                    </label>
+                                {/if}
                                 {#if upgrade?.hullModifier || upgrade?.crewModifier || upgrade?.gearModifier || upgrade?.handlingModifier}
                                     <div class="text-xs text-stone-500 dark:text-gray-400 mt-1">
                                         {upgrade.hullModifier ? `Hull: ${upgrade.hullModifier > 0 ? '+' : ''}${upgrade.hullModifier} ` : ''}
@@ -1097,12 +1239,14 @@
                             }, 50);
                         }
                     }}
-                    disabled={!filteredUpgrades.some(u => u.slots === 0) && usedBuildSlots >= (vehicleTypes.find(vt => vt.id === vehicle.type)?.buildSlots || 2)}
+                    disabled={!filteredUpgrades.some(u => u.slots === 0 || u.isTrailer) && usedBuildSlots >= maxBuildSlots}
                 >
                     <option value="" disabled selected>+ Add upgrade</option>
                     {#each filteredUpgrades.slice().sort((a, b) => a.name.localeCompare(b.name)) as u}
                         {@const upgradeSlots = u.slots}
-                        {@const canAddUpgrade = upgradeSlots === 0 || usedBuildSlots + upgradeSlots <= (vehicleTypes.find(vt => vt.id === vehicle.type)?.buildSlots || 2)}
+                        {@const canAddUpgrade = rulesVersion === 3
+                            ? v3BuildSlots(vehicleType || { buildSlots: maxBuildSlots }, resolvedWeapons, [...resolvedUpgrades, u]).used <= (v3Slots?.capacity ?? maxBuildSlots)
+                            : (upgradeSlots === 0 || usedBuildSlots + upgradeSlots <= maxBuildSlots)}
                         <option
                             value={u.id}
                             disabled={!canAddUpgrade}

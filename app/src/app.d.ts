@@ -16,6 +16,7 @@ interface GarageWindow {
 	vehicles?: GarageVehicle[];
 	maxCans?: number;
 	darkMode?: boolean;
+	rulesVersion?: 2 | 3;
 	showExperimentalFeatures?: boolean;
 	copyDraftFn?: () => void | Promise<void>;
 	shareLinkFn?: () => void;

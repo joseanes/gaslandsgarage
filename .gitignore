@@ -1,6 +1,12 @@
 node_modules/
 package-lock.json
 
+# Closed-beta rules extracts. Do not commit verbatim rules text or the source tarball.
+g3e-rules-text*
+G3E*
+**/SUMMARY.md
+*.pdf
+
 # Claude settings
 **/.claude/settings.local.json
 
