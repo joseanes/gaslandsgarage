@@ -3,7 +3,7 @@ import type { Draft } from '../model';
 import type { Sponsor, Vehicle, Weapon, Upgrade, Perk } from '$lib/rules/types';
 
 // Mock Sponsors
-export const mockSponsors: Sponsor[] = [
+export const mockSponsors = [
   {
     id: 'no_sponsor',
     name: 'No Sponsor',
@@ -19,10 +19,10 @@ export const mockSponsors: Sponsor[] = [
     name: 'Miyazaki',
     perks: ['perk2', 'perk5']
   }
-];
+] as Sponsor[];
 
 // Mock Vehicles
-export const mockVehicles: Vehicle[] = [
+export const mockVehicles = [
   {
     id: 'car',
     name: 'Car',
@@ -57,10 +57,10 @@ export const mockVehicles: Vehicle[] = [
     upgradeSlots: 3,
     sponsors: ['rutherford'] // Only available for Rutherford sponsor
   }
-];
+] as Vehicle[];
 
 // Mock Weapons
-export const mockWeapons: Weapon[] = [
+export const mockWeapons = [
   {
     id: 'machine_gun',
     name: 'Machine Gun',
@@ -92,10 +92,10 @@ export const mockWeapons: Weapon[] = [
     unique: false,
     electrical: true
   }
-];
+] as Weapon[];
 
 // Mock Upgrades
-export const mockUpgrades: Upgrade[] = [
+export const mockUpgrades = [
   {
     id: 'armor',
     name: 'Armor',
@@ -128,17 +128,17 @@ export const mockUpgrades: Upgrade[] = [
     hull: 1,
     slots: 1
   }
-];
+] as Upgrade[];
 
 // Mock Perks
-export const mockPerks: Perk[] = [
+export const mockPerks = [
   { id: 'perk1', name: 'Perk 1', level: 1, text: 'Description for Perk 1' },
   { id: 'perk2', name: 'Perk 2', level: 2, text: 'Description for Perk 2' },
   { id: 'perk3', name: 'Perk 3', level: 3, text: 'Description for Perk 3' },
   { id: 'perk4', name: 'Perk 4', level: 1, text: 'Description for Perk 4' },
   { id: 'perk5', name: 'Perk 5', level: 2, text: 'Description for Perk 5' },
   { id: 'perk_costed', name: 'Costed Perk', cost: 4, text: 'Perk priced by the cost field' }
-];
+] as Perk[];
 
 // Mock valid draft
 export const mockValidDraft: Draft = {

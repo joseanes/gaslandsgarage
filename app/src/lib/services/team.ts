@@ -1,5 +1,13 @@
 import { auth, db, user } from '../firebase';
-import type { Draft } from '$lib/validate/model';
+export type TeamSavePayload = {
+  teamName?: string;
+  sponsor?: string;
+  sponsorId?: string;
+  vehicles?: unknown;
+  maxCans?: number;
+  darkMode?: boolean;
+  [key: string]: unknown;
+};
 import { browser } from '$app/environment';
 
 // Import Firestore types without importing the actual implementation
@@ -32,7 +40,7 @@ interface DeleteTeamResult {
  * Save a team to the user's account
  * If existingTeamId is provided, it will overwrite that team instead of creating a new one
  */
-export async function saveTeam(teamData: Draft, teamName: string, existingTeamId?: string): Promise<SaveTeamResult> {
+export async function saveTeam(teamData: TeamSavePayload, teamName: string, existingTeamId?: string): Promise<SaveTeamResult> {
   if (!browser) return { success: false, error: "Cannot run on server" };
   if (!auth?.currentUser) return { success: false, error: "User not authenticated" };
   
@@ -57,10 +65,11 @@ export async function saveTeam(teamData: Draft, teamName: string, existingTeamId
     };
     
     // Dynamically import Firestore functions
-    const { collection, addDoc, setDoc, doc, query, where, getDocs } = await import('firebase/firestore');
+    const { collection, addDoc, setDoc, doc, query, where, getDocs, getDoc } = await import('firebase/firestore');
     
     // Make sure Firebase is properly initialized before proceeding
-    if (!db) {
+    const database = db;
+    if (!database) {
       console.error("Firestore db not initialized");
       return { success: false, error: "Database not initialized" };
     }
@@ -71,7 +80,7 @@ export async function saveTeam(teamData: Draft, teamName: string, existingTeamId
     if (!existingTeamId) {
       try {
         console.log("Checking for existing teams with name:", teamName);
-        const teamsCollectionRef = collection(db, TEAMS_COLLECTION);
+        const teamsCollectionRef = collection(database, TEAMS_COLLECTION);
         const q = query(
           teamsCollectionRef, 
           where("userId", "==", userId),
@@ -101,11 +110,11 @@ export async function saveTeam(teamData: Draft, teamName: string, existingTeamId
     // If we have an existing team ID, update it instead of creating a new one
     if (existingTeamId) {
       console.log("Updating existing team with ID:", existingTeamId);
-      const teamDocRef = doc(db, TEAMS_COLLECTION, existingTeamId);
+      const teamDocRef = doc(database, TEAMS_COLLECTION, existingTeamId);
       
       // For updates, we keep the original createdAt time
       try {
-        const existingTeamDoc = await getDocs(doc(db, TEAMS_COLLECTION, existingTeamId));
+        const existingTeamDoc = await getDoc(doc(database, TEAMS_COLLECTION, existingTeamId));
         if (existingTeamDoc.exists() && existingTeamDoc.data().createdAt) {
           teamDoc.createdAt = existingTeamDoc.data().createdAt;
         }
@@ -122,7 +131,7 @@ export async function saveTeam(teamData: Draft, teamName: string, existingTeamId
       // Try to ensure we have a valid collection reference
       let teamsCollectionRef;
       try {
-        teamsCollectionRef = collection(db, TEAMS_COLLECTION);
+        teamsCollectionRef = collection(database, TEAMS_COLLECTION);
       } catch (e) {
         console.error("Failed to get collection reference:", e);
         return { success: false, error: "Failed to access teams collection" };
@@ -162,31 +171,33 @@ export async function saveTeam(teamData: Draft, teamName: string, existingTeamId
  */
 export async function getUserTeams(): Promise<GetTeamsResult> {
   if (!browser) return { success: false, error: "Cannot run on server" };
-  if (!auth?.currentUser) return { success: false, error: "User not authenticated" };
+  const currentAuth = auth;
+  const database = db;
+  if (!currentAuth?.currentUser || !database) return { success: false, error: "User not authenticated" };
   
   try {
-    const userId = auth.currentUser.uid;
+    const userId = currentAuth.currentUser.uid;
     
     // Dynamically import Firestore functions
     const { collection, query, where, getDocs } = await import('firebase/firestore');
     
     // Query the teams collection for documents with the user's ID
-    const teamsCollectionRef = collection(db, TEAMS_COLLECTION);
+    const teamsCollectionRef = collection(database, TEAMS_COLLECTION);
     const q = query(teamsCollectionRef, where("userId", "==", userId));
     const teamsSnapshot = await getDocs(q);
     
     if (!teamsSnapshot.empty) {
-      const teams = teamsSnapshot.docs.map(doc => {
-        const data = doc.data();
+      const teams = teamsSnapshot.docs.map((teamDoc) => {
+        const data = teamDoc.data() as { updatedAt?: string };
         console.log("Team data from Firestore:", data);
         return {
-          id: doc.id,
+          id: teamDoc.id,
           ...data
         };
       });
       
       // Sort by updated time, newest first
-      teams.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+      teams.sort((a, b) => new Date(b.updatedAt ?? 0).getTime() - new Date(a.updatedAt ?? 0).getTime());
       
       return { success: true, teams };
     } else {
@@ -203,16 +214,18 @@ export async function getUserTeams(): Promise<GetTeamsResult> {
  */
 export async function deleteTeam(teamId: string): Promise<DeleteTeamResult> {
   if (!browser) return { success: false, error: "Cannot run on server" };
-  if (!auth?.currentUser) return { success: false, error: "User not authenticated" };
+  const currentAuth = auth;
+  const database = db;
+  if (!currentAuth?.currentUser || !database) return { success: false, error: "User not authenticated" };
   
   try {
-    const userId = auth.currentUser.uid;
+    const userId = currentAuth.currentUser.uid;
     
     // Dynamically import Firestore functions
     const { doc, getDoc, deleteDoc } = await import('firebase/firestore');
     
     // First verify this team belongs to the user
-    const teamDocRef = doc(db, TEAMS_COLLECTION, teamId);
+    const teamDocRef = doc(database, TEAMS_COLLECTION, teamId);
     const teamDoc = await getDoc(teamDocRef);
     
     if (!teamDoc.exists()) {

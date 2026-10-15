@@ -1,20 +1,40 @@
-<script>
+<script lang="ts">
     import { fade } from 'svelte/transition';
     import Tooltip from './Tooltip.svelte';
+    import type { Perk, Sponsor, Upgrade, Vehicle, VehicleRule, Weapon } from '$lib/rules/types';
+
+    interface TeamVehicle {
+        id: string;
+        type: string;
+        name: string;
+        weapons?: string[];
+        upgrades?: string[];
+        perks?: string[];
+    }
+
+    const WEIGHT_CLASSES = ["Lightweight", "Middleweight", "Heavyweight", "Massive", "Other"] as const;
+    type WeightClass = (typeof WEIGHT_CLASSES)[number];
+
+    function isWeightClass(value: string): value is WeightClass {
+        return (WEIGHT_CLASSES as readonly string[]).includes(value);
+    }
     
     // Props
-    export let vehicles = [];
-    export let vehicleTypes = [];
-    export let weapons = [];
-    export let upgrades = [];
-    export let perks = [];
-    export let vehicleRules = []; // Add vehicleRules prop
-    export let currentSponsor = null;
+    export let vehicles: TeamVehicle[] = [];
+    export let vehicleTypes: Vehicle[] = [];
+    export let weapons: Weapon[] = [];
+    export let upgrades: Upgrade[] = [];
+    export let perks: Perk[] = [];
+    export let vehicleRules: VehicleRule[] = []; // Add vehicleRules prop
+    export let currentSponsor: Sponsor | null | undefined = null;
     export let totalCans = 0;
     export let maxCans = 50;
 
+    // Accepted from the builder so the catalog stays in sync; not read by the coach metrics.
+    $: void perks;
+
     // Core calculation functions
-    function calculateMaxHull(vehicle) {
+    function calculateMaxHull(vehicle: TeamVehicle | null | undefined) {
         if (!vehicle) return 0;
         
         const vehicleType = vehicleTypes.find(vt => vt.id === vehicle.type);
@@ -38,7 +58,7 @@
     }
 
     // Helper function to find base weapon ID from instance ID
-    function findBaseWeaponId(weaponInstanceId) {
+    function findBaseWeaponId(weaponInstanceId: string) {
         const parts = weaponInstanceId.split('_');
         
         // Handle case with no underscores
@@ -59,7 +79,7 @@
         return parts.slice(0, -1).join('_');
     }
 
-    function calculateTotalAttackDice(vehicle) {
+    function calculateTotalAttackDice(vehicle: TeamVehicle | null | undefined) {
         if (!vehicle || !vehicle.weapons || !vehicle.weapons.length) return 0;
 
         let totalAttackDice = 0;
@@ -75,7 +95,7 @@
         return totalAttackDice;
     }
     
-    function calculateHandling(vehicle) {
+    function calculateHandling(vehicle: TeamVehicle | null | undefined) {
         if (!vehicle) return 0;
         
         const vehicleType = vehicleTypes.find(vt => vt.id === vehicle.type);
@@ -261,7 +281,7 @@
     }
     
     // Weight classes
-    function getVehicleWeight(vehicle) {
+    function getVehicleWeight(vehicle: TeamVehicle | null | undefined) {
         if (!vehicle) return "Middleweight";
         const vehicleType = vehicleTypes.find(vt => vt.id === vehicle.type);
         return vehicleType?.weight || "Middleweight";
@@ -284,7 +304,7 @@
             
             // Handle string weights directly
             if (typeof weight === 'string') {
-                if (weights[weight] !== undefined) {
+                if (isWeightClass(weight)) {
                     weights[weight]++;
                 } else {
                     weights["Other"]++;
@@ -306,7 +326,7 @@
     
     // Special abilities
     function getSpecialRules() {
-        const specialRules = new Map(); // Use Map to store id -> ruleName pairs
+        const specialRules = new Map<string, string>(); // Use Map to store id -> ruleName pairs
         
         if (!vehicles || !vehicles.length) return [];
         
@@ -333,7 +353,7 @@
     
     // Coach suggestions
     function getSuggestions() {
-        const suggestions = [];
+        const suggestions: string[] = [];
         
         if (!vehicles || !vehicles.length) return suggestions;
         
@@ -387,7 +407,7 @@
         
         // Balance suggestions
         if (vehicles.length > 0) {
-            const mostExpensiveVehicle = vehicles.reduce((max, vehicle) => {
+            const mostExpensiveVehicle = vehicles.reduce<{ vehicle: TeamVehicle | null; cost: number }>((max, vehicle) => {
                 const vehicleType = vehicleTypes.find(vt => vt.id === vehicle.type);
                 const cost = vehicleType?.baseCost || 0;
                 return cost > max.cost ? { vehicle, cost } : max;

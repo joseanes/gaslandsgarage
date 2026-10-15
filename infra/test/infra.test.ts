@@ -1,17 +1,46 @@
-// import * as cdk from 'aws-cdk-lib';
-// import { Template } from 'aws-cdk-lib/assertions';
-// import * as Infra from '../lib/infra-stack';
+import { readFileSync } from 'fs';
+import { join } from 'path';
+import * as cdk from 'aws-cdk-lib';
+import { Template } from 'aws-cdk-lib/assertions';
+import { GarageStack } from '../lib/garage-stack';
 
-// example test. To run these tests, uncomment this file along with the
-// example resource in lib/infra-stack.ts
-test('SQS Queue Created', () => {
-//   const app = new cdk.App();
-//     // WHEN
-//   const stack = new Infra.InfraStack(app, 'MyTestStack');
-//     // THEN
-//   const template = Template.fromStack(stack);
+const packageJson = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf8')) as {
+	dependencies?: Record<string, string>;
+	devDependencies?: Record<string, string>;
+};
 
-//   template.hasResourceProperties('AWS::SQS::Queue', {
-//     VisibilityTimeout: 300
-//   });
+describe('CDK v2 infra', () => {
+	test('does not depend on CDK v1 construct packages', () => {
+		const names = Object.keys({
+			...packageJson.dependencies,
+			...packageJson.devDependencies
+		});
+		expect(names.filter((name) => name.startsWith('@aws-cdk/'))).toEqual([]);
+		expect(packageJson.dependencies?.['aws-cdk-lib']).toBeTruthy();
+	});
+
+	test('synthesizes the static site stack', () => {
+		const app = new cdk.App({
+			context: {
+				'hosted-zone:account=123456789012:domainName=gaslandsgarage.com:region=us-east-1': {
+					Id: '/hostedzone/Z0123456789ABC',
+					Name: 'gaslandsgarage.com.'
+				}
+			}
+		});
+
+		const stack = new GarageStack(app, 'InfraStack', {
+			domainName: 'gaslandsgarage.com',
+			certificateArn:
+				'arn:aws:acm:us-east-1:123456789012:certificate/11111111-2222-3333-4444-555555555555',
+			env: { account: '123456789012', region: 'us-east-1' }
+		});
+
+		const template = Template.fromStack(stack);
+		template.resourceCountIs('AWS::S3::Bucket', 1);
+		template.resourceCountIs('AWS::CloudFront::Distribution', 1);
+		template.hasResourceProperties('AWS::S3::Bucket', {
+			WebsiteConfiguration: { IndexDocument: 'index.html' }
+		});
+	});
 });

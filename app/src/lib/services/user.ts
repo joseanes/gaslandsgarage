@@ -1,6 +1,11 @@
-import { collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc } from "firebase/firestore";
 import { db } from "$lib/firebase";
 import type { Draft } from "$lib/validate/model";
+
+async function firestore() {
+  if (!db) throw new Error("Database not initialized");
+  const api = await import("firebase/firestore");
+  return { ...api, db };
+}
 
 const USERS_COLLECTION = "users";
 const TEAMS_COLLECTION = "teams";
@@ -8,7 +13,8 @@ const TEAMS_COLLECTION = "teams";
 // Get user data
 export async function getUserData(userId: string) {
   try {
-    const userDocRef = doc(db, USERS_COLLECTION, userId);
+    const { doc, getDoc, setDoc, db: database } = await firestore();
+    const userDocRef = doc(database, USERS_COLLECTION, userId);
     const userDoc = await getDoc(userDocRef);
     
     if (userDoc.exists()) {
@@ -31,7 +37,8 @@ export async function getUserData(userId: string) {
 export async function saveTeam(userId: string, teamName: string, draft: Draft) {
   try {
     // Get a reference to the team document
-    const teamDocRef = doc(collection(db, USERS_COLLECTION, userId, TEAMS_COLLECTION));
+    const { collection, doc, setDoc, db: database } = await firestore();
+    const teamDocRef = doc(collection(database, USERS_COLLECTION, userId, TEAMS_COLLECTION));
     
     // Save the team
     await setDoc(teamDocRef, {
@@ -51,7 +58,8 @@ export async function saveTeam(userId: string, teamName: string, draft: Draft) {
 // Get a user's teams
 export async function getUserTeams(userId: string) {
   try {
-    const teamsCollectionRef = collection(db, USERS_COLLECTION, userId, TEAMS_COLLECTION);
+    const { collection, getDocs, db: database } = await firestore();
+    const teamsCollectionRef = collection(database, USERS_COLLECTION, userId, TEAMS_COLLECTION);
     const teamsSnapshot = await getDocs(teamsCollectionRef);
     
     if (!teamsSnapshot.empty) {
@@ -72,7 +80,8 @@ export async function getUserTeams(userId: string) {
 // Delete a team
 export async function deleteTeam(userId: string, teamId: string) {
   try {
-    const teamDocRef = doc(db, USERS_COLLECTION, userId, TEAMS_COLLECTION, teamId);
+    const { doc, deleteDoc, db: database } = await firestore();
+    const teamDocRef = doc(database, USERS_COLLECTION, userId, TEAMS_COLLECTION, teamId);
     await deleteDoc(teamDocRef);
     return { success: true };
   } catch (error) {

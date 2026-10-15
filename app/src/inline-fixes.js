@@ -5,20 +5,22 @@ document.addEventListener('DOMContentLoaded', () => {
   // Apply fixed height to all inputs
   const applyHeightFixes = () => {
     // Fix all inputs, selects and buttons
-    document.querySelectorAll('input, select, button').forEach(el => {
-      el.style.height = '32px';
-      el.style.minHeight = '32px';
-      el.style.maxHeight = '32px';
+    document.querySelectorAll('input, select, button').forEach((el) => {
+      const node = /** @type {HTMLElement} */ (el);
+      node.style.height = '32px';
+      node.style.minHeight = '32px';
+      node.style.maxHeight = '32px';
     });
     
     // Fix team name and cans specifically
-    document.querySelectorAll('input[aria-label="Team Name"], input[aria-label="Maximum Cans"]').forEach(el => {
-      el.style.height = '32px';
-      el.style.minHeight = '32px';
-      el.style.maxHeight = '32px';
-      el.style.paddingTop = '0.25rem';
-      el.style.paddingBottom = '0.25rem';
-      el.style.fontSize = '1rem';
+    document.querySelectorAll('input[aria-label="Team Name"], input[aria-label="Maximum Cans"]').forEach((el) => {
+      const node = /** @type {HTMLElement} */ (el);
+      node.style.height = '32px';
+      node.style.minHeight = '32px';
+      node.style.maxHeight = '32px';
+      node.style.paddingTop = '0.25rem';
+      node.style.paddingBottom = '0.25rem';
+      node.style.fontSize = '1rem';
     });
   };
   

@@ -1,4 +1,3 @@
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "$lib/firebase";
 import { initializeFirebase } from "$lib/firebase";
 
@@ -15,6 +14,9 @@ export async function sendContactMessage(userId: string, email: string, subject:
     }
     
     console.log("Firebase initialized, preparing to save message");
+    const database = db;
+    if (!database) return { success: false, error: "Database not initialized" };
+    const { collection, addDoc, serverTimestamp } = await import("firebase/firestore");
     
     // Validate inputs
     if (!userId) {
@@ -39,7 +41,7 @@ export async function sendContactMessage(userId: string, email: string, subject:
     console.log("Saving message to Firestore:", { ...messageData, userId: "REDACTED" });
     
     // Get a reference to the messages collection
-    const messagesCollectionRef = collection(db, MESSAGES_COLLECTION);
+    const messagesCollectionRef = collection(database, MESSAGES_COLLECTION);
     
     // Save the message
     const docRef = await addDoc(messagesCollectionRef, messageData);

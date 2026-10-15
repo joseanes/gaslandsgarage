@@ -5,6 +5,24 @@
     import { loadWeaponSpecialRules } from '$lib/rules/loadRules';
     import { perkCost } from '$lib/validate/calc';
     import Tooltip from './Tooltip.svelte';
+    import type { Perk, Upgrade, Vehicle, VehicleRule, Weapon } from '$lib/rules/types';
+
+    interface TeamVehicle {
+        id: string;
+        type: string;
+        name: string;
+        weapons: string[];
+        weaponFacings?: Record<string, string>;
+        upgrades: string[];
+        perks: string[];
+    }
+
+    interface VehicleValidationReport {
+        vehicleId?: string;
+        cans?: number;
+        errors?: string[];
+        warnings?: string[];
+    }
 
     const dispatch = createEventDispatcher();
 
@@ -14,33 +32,25 @@
     // Props are declared below, don't try to use them here
     
     // Props
-    export let vehicle: {
-        id: string;
-        type: string;
-        name: string;
-        weapons: string[];
-        weaponFacings?: Record<string, string>;
-        upgrades: string[];
-        perks: string[];
-    };
+    export let vehicle: TeamVehicle;
 
     // Initialize weaponFacings if undefined
     if (!vehicle.weaponFacings) {
         vehicle.weaponFacings = {};
     }
-    export let vehicleTypes = [];
-    export let weapons = [];
-    export let upgrades = [];
-    export let perks = [];
-    export let vehicleRules = [];
+    export let vehicleTypes: Vehicle[] = [];
+    export let weapons: Weapon[] = [];
+    export let upgrades: Upgrade[] = [];
+    export let perks: Perk[] = [];
+    export let vehicleRules: VehicleRule[] = [];
     export let collapsed: boolean = false;
     export let playMode: boolean = false;
-    export let validationReport = null;
+    export let validationReport: VehicleValidationReport | null = null;
     export let hazardCount: number = 0;
-    export let filteredWeapons = [];
-    export let filteredUpgrades = [];
-    export let filteredTrailerUpgrades = [];
-    export let filteredPerks = [];
+    export let filteredWeapons: Weapon[] = [];
+    export let filteredUpgrades: Upgrade[] = [];
+    export let filteredTrailerUpgrades: Upgrade[] = [];
+    export let filteredPerks: Perk[] = [];
     export let usedBuildSlots: number = 0;
     
     // Now we can safely access the props
@@ -69,27 +79,27 @@
         dispatch('toggleCollapse', { id: vehicle.id });
     }
     
-    function addWeapon(weaponId, facing = 'front') {
+    function addWeapon(weaponId: string, facing = 'front') {
         dispatch('addWeapon', { vehicleId: vehicle.id, weaponId, facing });
     }
     
-    function removeWeapon(index) {
+    function removeWeapon(index: number) {
         dispatch('removeWeapon', { vehicleId: vehicle.id, weaponIndex: index });
     }
     
-    function addUpgrade(upgradeId) {
+    function addUpgrade(upgradeId: string) {
         dispatch('addUpgrade', { vehicleId: vehicle.id, upgradeId });
     }
     
-    function removeUpgrade(index) {
+    function removeUpgrade(index: number) {
         dispatch('removeUpgrade', { vehicleId: vehicle.id, upgradeIndex: index });
     }
     
-    function addPerk(perkId) {
+    function addPerk(perkId: string) {
         dispatch('addPerk', { vehicleId: vehicle.id, perkId });
     }
     
-    function removePerk(index) {
+    function removePerk(index: number) {
         dispatch('removePerk', { vehicleId: vehicle.id, perkIndex: index });
     }
     
@@ -117,7 +127,7 @@
     // Force reactivity for weapon/upgrade changes
     $: { vehicle.weapons; vehicle.upgrades; usedBuildSlots = calculateUsedBuildSlots(vehicle); }
 
-    function calculateVehicleCost(vehicle, vehicleType) {
+    function calculateVehicleCost(vehicle: TeamVehicle, vehicleType: Vehicle | undefined) {
         // Use the passed vehicleType to avoid redundant lookups
         if (!vehicleType) return 0;
 
@@ -128,8 +138,8 @@
             // Use a more robust method to find the base weapon ID
             // Try increasingly longer potential base IDs until we find a match
             const parts = weaponInstanceId.split('_');
-            let baseWeaponId = null;
-            let weaponObj = null;
+            let baseWeaponId = '';
+            let weaponObj: Weapon | undefined;
             
             // Handle case with no underscores
             if (parts.length === 1) {
@@ -175,7 +185,7 @@
         return totalCost;
     }
 
-    function calculateUsedBuildSlots(vehicle) {
+    function calculateUsedBuildSlots(vehicle: TeamVehicle) {
         let totalSlots = 0;
 
         // Calculate slots used by weapons
@@ -183,8 +193,8 @@
             // Use a more robust method to find the base weapon ID
             // Try increasingly longer potential base IDs until we find a match
             const parts = weaponInstanceId.split('_');
-            let baseWeaponId = null;
-            let weaponObj = null;
+            let baseWeaponId = '';
+            let weaponObj: Weapon | undefined;
             
             // Handle case with no underscores
             if (parts.length === 1) {
@@ -350,8 +360,8 @@
             // Use a more robust method to find the base weapon ID
             // Try increasingly longer potential base IDs until we find a match
             const parts = weaponInstanceId.split('_');
-            let baseWeaponId = null;
-            let weaponObj = null;
+            let baseWeaponId = '';
+            let weaponObj: Weapon | undefined;
             
             // Handle case with no underscores
             if (parts.length === 1) {
@@ -904,7 +914,7 @@
                                             <div class="flex items-center">
                                                 
                                                 <select
-                                                    bind:value={vehicle.weaponFacings[weaponId]}
+                                                    bind:value={vehicle.weaponFacings![weaponId]}
                                                     class="text-xs py-0.5 px-1 border border-stone-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-stone-800 dark:text-gray-200"
                                                     disabled={weaponObj?.facing === 'fixed' || isCrewFired || playMode}
                                                     aria-label="Weapon facing direction"
@@ -929,7 +939,7 @@
                                         {/if}
                                     {/if}
                                     <button
-                                        class="py-0.25 px-2 flex items-center justify-center rounded transition-colors flex-shrink-0 text-xs h-[1.5rem] red-button"
+                                        class="py-0.25 px-2 flex items-center justify-center rounded transition-colors flex-shrink-0 text-xs h-6 compact-remove red-button"
                                         on:click={() => removeWeapon(i)}
                                         aria-label="Remove weapon"
                                     >
@@ -1057,7 +1067,7 @@
                                 {/if}
                             </div>
                             <button
-                                class="py-0.25 px-2 flex items-center justify-center rounded transition-colors ml-2 flex-shrink-0 text-xs h-[1.5rem] red-button"
+                                class="py-0.25 px-2 flex items-center justify-center rounded transition-colors ml-2 flex-shrink-0 text-xs h-6 compact-remove red-button"
                                 on:click={() => removeUpgrade(i)}
                                 aria-label="Remove upgrade"
                             >
@@ -1154,7 +1164,7 @@
                                 {/if}
                             </div>
                             <button
-                                class="py-0.25 px-2 flex items-center justify-center rounded transition-colors ml-2 flex-shrink-0 text-xs h-[1.5rem] red-button"
+                                class="py-0.25 px-2 flex items-center justify-center rounded transition-colors ml-2 flex-shrink-0 text-xs h-6 compact-remove red-button"
                                 on:click={() => {
                                     // Find index in the main upgrades array and remove
                                     const mainIndex = vehicle.upgrades.findIndex(id => id === trailerUpgradeId);
@@ -1231,7 +1241,7 @@
                                 <span class="text-stone-500 dark:text-gray-400 text-xs block mt-1">{@html perk?.text || ""}</span>
                             </div>
                             <button
-                                class="py-0.25 px-2 flex items-center justify-center rounded transition-colors ml-2 flex-shrink-0 text-xs h-[1.5rem] red-button"
+                                class="py-0.25 px-2 flex items-center justify-center rounded transition-colors ml-2 flex-shrink-0 text-xs h-6 compact-remove red-button"
                                 on:click={() => removePerk(i)}
                                 aria-label="Remove perk"
                             >

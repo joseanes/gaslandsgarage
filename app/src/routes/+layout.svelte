@@ -51,7 +51,7 @@
       try {
         // Try to find the team name input directly
         const teamNameInput = document.querySelector('input[placeholder="Team Name"]');
-        if (teamNameInput && teamNameInput.value) {
+        if (teamNameInput instanceof HTMLInputElement && teamNameInput.value) {
           window.teamName = teamNameInput.value;
           console.log("Got team name from input field:", window.teamName);
         }
@@ -86,7 +86,9 @@
     // const adsDisabled = localStorage.getItem('adsDisabled') === 'true';
     // showAds = !adsDisabled;
 
-    const handleClickOutside = (event) => {
+    const handleClickOutside = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
       // Handle Share menu clicks outside
       const shareMenuButton = document.querySelector('.share-menu-trigger');
       const shareMenu = document.querySelector('.share-menu-dropdown');
@@ -94,8 +96,8 @@
       if (showShareMenu &&
         shareMenuButton &&
         shareMenu &&
-        !shareMenuButton.contains(event.target) &&
-        !shareMenu.contains(event.target)) {
+        !shareMenuButton.contains(target) &&
+        !shareMenu.contains(target)) {
         showShareMenu = false;
       }
 
@@ -106,8 +108,8 @@
       if (showHelpMenu &&
         helpMenuButton &&
         helpMenu &&
-        !helpMenuButton.contains(event.target) &&
-        !helpMenu.contains(event.target)) {
+        !helpMenuButton.contains(target) &&
+        !helpMenu.contains(target)) {
         showHelpMenu = false;
       }
 
@@ -118,8 +120,8 @@
       if (showSettingsMenu &&
         settingsMenuButton &&
         settingsMenu &&
-        !settingsMenuButton.contains(event.target) &&
-        !settingsMenu.contains(event.target)) {
+        !settingsMenuButton.contains(target) &&
+        !settingsMenu.contains(target)) {
         showSettingsMenu = false;
       }
     };
@@ -954,7 +956,7 @@
   {@const teamNameFromInput = (() => {
     try {
       const input = document.querySelector('input[placeholder="Team Name"]');
-      return input && input.value ? input.value : null;
+      return input instanceof HTMLInputElement && input.value ? input.value : null;
     } catch(e) {
       console.error("Error finding team name input:", e);
       return null;
@@ -991,7 +993,7 @@
       }
       try {
         const input = document.querySelector('input[aria-label="Team Name"]');
-        if (input && input.value) {
+        if (input instanceof HTMLInputElement && input.value) {
           return input.value;
         }
       } catch (e) {
@@ -1004,7 +1006,7 @@
     bind:showModal={showTeamsModal}
     currentDraft={{...draftValue, teamName: bestTeamName}}
     teamName={bestTeamName} 
-    importDraft={(draft) => {
+    importDraft={(draft: unknown) => {
       console.log("importDraft prop called with:", JSON.stringify(draft, null, 2));
       
       // Try using custom event first (most reliable method)

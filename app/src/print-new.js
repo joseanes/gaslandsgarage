@@ -19,7 +19,7 @@
         
         // Try to get QR code if it exists
         let qrCode = '';
-        const qrCodeImg = document.getElementById('print-qr-code');
+        const qrCodeImg = /** @type {HTMLImageElement | null} */ (document.getElementById('print-qr-code'));
         if (qrCodeImg && qrCodeImg.src) {
           qrCode = qrCodeImg.src;
         }
@@ -277,6 +277,7 @@
     };
     
     // Helper function to generate HTML for a vehicle card
+    /** @param {Element} card */
     function generateVehicleCardHtml(card) {
       try {
         // Extract vehicle name
@@ -302,7 +303,7 @@
         const weapons = card.querySelectorAll('.weapon-item');
         if (weapons && weapons.length > 0) {
           weaponsHtml = '<div class="loadout-section"><div class="section-title">Weapons</div><ul>';
-          weapons.forEach(weapon => {
+          weapons.forEach((/** @type {Element} */ weapon) => {
             weaponsHtml += `<li>${weapon.textContent}</li>`;
           });
           weaponsHtml += '</ul></div>';
@@ -313,7 +314,7 @@
         const upgrades = card.querySelectorAll('.upgrade-item');
         if (upgrades && upgrades.length > 0) {
           upgradesHtml = '<div class="loadout-section"><div class="section-title">Upgrades</div><ul>';
-          upgrades.forEach(upgrade => {
+          upgrades.forEach((/** @type {Element} */ upgrade) => {
             upgradesHtml += `<li>${upgrade.textContent}</li>`;
           });
           upgradesHtml += '</ul></div>';
@@ -324,7 +325,7 @@
         const perks = card.querySelectorAll('.perk-item');
         if (perks && perks.length > 0) {
           perksHtml = '<div class="loadout-section"><div class="section-title">Perks</div><ul>';
-          perks.forEach(perk => {
+          perks.forEach((/** @type {Element} */ perk) => {
             perksHtml += `<li>${perk.textContent}</li>`;
           });
           perksHtml += '</ul></div>';

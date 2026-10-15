@@ -58,10 +58,7 @@ button.menu-item,
 }
 
 /* Special case for small buttons */
-button.h-[1.5rem],
-.h-[1.5rem],
-button[class*="h-[1.5rem]"],
-[class*="h-[1.5rem]"] {
+.compact-remove {
   height: 24px !important;
   min-height: 24px !important;
   max-height: 24px !important;

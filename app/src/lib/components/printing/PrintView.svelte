@@ -1,25 +1,39 @@
 <!-- PrintView.svelte - Contains the print view HTML that gets displayed when printing -->
 <script lang="ts">
-  import type { Sponsor, Vehicle, VehicleType, Weapon, Upgrade, Perk } from '$lib/rules/types';
-  import type { ValidationResult, VehicleReport } from '$lib/validate/model';
+  import type { Sponsor, Vehicle, Weapon, Upgrade, Perk } from '$lib/rules/types';
+  import type { Validation } from '$lib/validate/model';
+
+  interface PrintVehicle {
+    id: string;
+    type: string;
+    name: string;
+    weapons: string[];
+    weaponFacings?: Record<string, string>;
+    upgrades: string[];
+    perks: string[];
+  }
   
   // Props
   export let teamName: string = '';
   export let totalCans: number = 0;
   export let maxCans: number = 50;
-  export let vehicles: Vehicle[] = [];
-  export let vehicleTypes: VehicleType[] = [];
+  export let vehicles: PrintVehicle[] = [];
+  export let vehicleTypes: Vehicle[] = [];
   export let weapons: Weapon[] = [];
   export let upgrades: Upgrade[] = [];
   export let perks: Perk[] = [];
-  export let validation: ValidationResult;
+  export let validation: Validation;
   export let enableSponsorships: boolean = false;
   export let currentSponsor: Sponsor | undefined = undefined;
   export let classPerksList: Perk[] = [];
   export let sponsorPerksList: Perk[] = [];
+
+  function definedItems<T>(items: (T | undefined)[]): T[] {
+    return items.filter((item): item is T => item != null);
+  }
   
   // Function to calculate max hull for a vehicle (with upgrades)
-  function calculateMaxHull(vehicle: Vehicle): number {
+  function calculateMaxHull(vehicle: PrintVehicle): number {
     const baseType = vehicleTypes.find(vt => vt.id === vehicle.type);
     if (!baseType) return 0;
     
@@ -176,12 +190,12 @@
         <div class="details-section">
           <h3>Weapons</h3>
           <div class="details-content">
-            {#each Array.from(new Set(vehicles.flatMap(v => v.weapons))).map(id => {
+            {#each definedItems(Array.from(new Set(vehicles.flatMap(v => v.weapons))).map(id => {
               const baseWeaponId = id.includes('_') ? id.split('_').slice(0, -1).join('_') : id;
               return weapons.find(w => w.id === baseWeaponId);
-            }).filter(Boolean) as weapon}
+            })) as weapon}
               <div class="detail-item">
-                <strong>{weapon.name}:</strong> {weapon.text}
+                <strong>{weapon.name}:</strong> {weapon.specialRules}
               </div>
             {/each}
           </div>
@@ -192,9 +206,9 @@
         <div class="details-section">
           <h3>Upgrades</h3>
           <div class="details-content">
-            {#each Array.from(new Set(vehicles.flatMap(v => v.upgrades))).map(id => upgrades.find(u => u.id === id)).filter(Boolean) as upgrade}
+            {#each definedItems(Array.from(new Set(vehicles.flatMap(v => v.upgrades))).map(id => upgrades.find(u => u.id === id))) as upgrade}
               <div class="detail-item">
-                <strong>{upgrade.name}:</strong> {upgrade.text}
+                <strong>{upgrade.name}:</strong> {upgrade.specialRules}
               </div>
             {/each}
           </div>
@@ -205,7 +219,7 @@
         <div class="details-section">
           <h3>Perks</h3>
           <div class="details-content">
-            {#each Array.from(new Set(vehicles.flatMap(v => v.perks))).map(id => perks.find(p => p.id === id)).filter(Boolean) as perk}
+            {#each definedItems(Array.from(new Set(vehicles.flatMap(v => v.perks))).map(id => perks.find(p => p.id === id))) as perk}
               <div class="detail-item">
                 <strong>{perk.name}:</strong> {perk.text}
               </div>
