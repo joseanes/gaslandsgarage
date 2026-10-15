@@ -3,6 +3,7 @@
     import { createEventDispatcher } from 'svelte';
     import BuildHeader from './BuildHeader.svelte';
     import { loadWeaponSpecialRules } from '$lib/rules/loadRules';
+    import { perkCost } from '$lib/validate/calc';
     import Tooltip from './Tooltip.svelte';
 
     const dispatch = createEventDispatcher();
@@ -168,10 +169,7 @@
         // Add perk costs
         for (const perkId of vehicle.perks) {
             const perkObj = perks.find(p => p.id === perkId);
-            if (perkObj) {
-                // Perk cost is its cost value (default to 1 if cost is not specified)
-                totalCost += perkObj.cost || 1;
-            }
+            totalCost += perkCost(perkObj);
         }
 
         return totalCost;

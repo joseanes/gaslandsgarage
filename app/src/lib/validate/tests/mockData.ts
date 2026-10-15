@@ -136,7 +136,8 @@ export const mockPerks: Perk[] = [
   { id: 'perk2', name: 'Perk 2', level: 2, text: 'Description for Perk 2' },
   { id: 'perk3', name: 'Perk 3', level: 3, text: 'Description for Perk 3' },
   { id: 'perk4', name: 'Perk 4', level: 1, text: 'Description for Perk 4' },
-  { id: 'perk5', name: 'Perk 5', level: 2, text: 'Description for Perk 5' }
+  { id: 'perk5', name: 'Perk 5', level: 2, text: 'Description for Perk 5' },
+  { id: 'perk_costed', name: 'Costed Perk', cost: 4, text: 'Perk priced by the cost field' }
 ];
 
 // Mock valid draft

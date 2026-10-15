@@ -3,6 +3,43 @@ import QRCode from 'qrcode';
 import { encodeDraft } from '$lib/draft/io';
 import type { Draft } from '$lib/validate/model';
 
+/** Sponsor on a draft is a string id. Some callers pass the sponsor object. */
+export type SponsorRef = string | { id?: string } | null | undefined;
+
+export function resolveSponsorId(sponsor: SponsorRef): string {
+  if (typeof sponsor === 'string') {
+    const trimmed = sponsor.trim();
+    return trimmed || 'no_sponsor';
+  }
+  if (sponsor && typeof sponsor.id === 'string' && sponsor.id.trim()) {
+    return sponsor.id.trim();
+  }
+  return 'no_sponsor';
+}
+
+/** Compact draft encoded into share links and QR codes. Keeps the sponsor id. */
+export function buildSharePayload(draft: {
+  sponsor?: SponsorRef;
+  teamName?: string;
+  maxCans?: number;
+  vehicles?: Draft['vehicles'];
+} | null | undefined): Draft {
+  return {
+    sponsor: resolveSponsorId(draft?.sponsor),
+    teamName: draft?.teamName || 'Gaslands Team',
+    ...(typeof draft?.maxCans === 'number' ? { maxCans: draft.maxCans } : {}),
+    vehicles: (draft?.vehicles || []).map(v => ({
+      id: v.id,
+      type: v.type,
+      name: v.name || 'Vehicle',
+      weapons: v.weapons || [],
+      upgrades: v.upgrades || [],
+      perks: v.perks || [],
+      weaponFacings: v.weaponFacings || {}
+    }))
+  };
+}
+
 export async function draftToDataURL(draft: Draft): Promise<string> {
   try {
     if (!draft) {
@@ -11,19 +48,7 @@ export async function draftToDataURL(draft: Draft): Promise<string> {
     }
 
     // Create a simplified version of the draft to reduce URL size
-    const simplifiedDraft = {
-      sponsor: draft.sponsor?.id || 'no_sponsor',
-      teamName: draft.teamName || 'Gaslands Team',
-      vehicles: (draft.vehicles || []).map(v => ({
-        id: v.id,
-        type: v.type,
-        name: v.name || 'Vehicle',
-        weapons: v.weapons || [],
-        upgrades: v.upgrades || [],
-        perks: v.perks || [],
-        weaponFacings: v.weaponFacings || {}
-      }))
-    };
+    const simplifiedDraft = buildSharePayload(draft);
 
     const encoded = encodeDraft(simplifiedDraft);
     if (!encoded) {
