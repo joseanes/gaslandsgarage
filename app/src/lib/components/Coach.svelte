@@ -2,6 +2,8 @@
     import { fade } from 'svelte/transition';
     import Tooltip from './Tooltip.svelte';
     import type { Perk, Sponsor, Upgrade, Vehicle, VehicleRule, Weapon } from '$lib/rules/types';
+    import { countedVehicleTotal, maxCountedVehicles } from '$lib/rules/version';
+    import { v3BuildSlots } from '$lib/validate/v3/slots';
 
     interface TeamVehicle {
         id: string;
@@ -10,6 +12,9 @@
         weapons?: string[];
         upgrades?: string[];
         perks?: string[];
+        driverArchetype?: string;
+        driverName?: string;
+        secondPerkClass?: string;
     }
 
     const WEIGHT_CLASSES = ["Lightweight", "Middleweight", "Heavyweight", "Massive", "Other"] as const;
@@ -29,6 +34,8 @@
     export let currentSponsor: Sponsor | null | undefined = null;
     export let totalCans = 0;
     export let maxCans = 50;
+    export let rulesVersion: 2 | 3 = 2;
+    export let drivers: { id: string; name: string; perkClass: string }[] = [];
 
     // Accepted from the builder so the catalog stays in sync; not read by the coach metrics.
     $: void perks;
@@ -87,7 +94,7 @@
         for (const weaponInstanceId of vehicle.weapons) {
             const baseWeaponId = findBaseWeaponId(weaponInstanceId);
             const weaponObj = weapons.find(w => w.id === baseWeaponId);
-            if (weaponObj && weaponObj.attackDice) {
+            if (weaponObj && typeof weaponObj.attackDice === 'number') {
                 totalAttackDice += weaponObj.attackDice;
             }
         }
@@ -131,9 +138,23 @@
         return Math.round((getTotalAttackDice() / totalCans) * 100) / 100;
     }
     
+    function vehicleArmour(vehicle: TeamVehicle) {
+        const vehicleType = vehicleTypes.find(vt => vt.id === vehicle.type);
+        let armour = vehicleType?.armour || 0;
+        for (const upgradeId of vehicle.upgrades || []) {
+            const upgrade = upgrades.find(u => u.id === upgradeId);
+            if (upgrade?.armour) armour += upgrade.armour;
+        }
+        return armour;
+    }
+
     function getSurvivabilityRating() {
         if (!vehicles || !vehicles.length || !totalCans) return 0;
-        return Math.round((getTotalHull() / totalCans) * 100) / 100;
+        const durability = vehicles.reduce((sum, vehicle) => {
+            const hull = calculateMaxHull(vehicle);
+            return sum + hull + (rulesVersion === 3 ? vehicleArmour(vehicle) : 0);
+        }, 0);
+        return Math.round((durability / totalCans) * 100) / 100;
     }
     
     function getMobilityScore() {
@@ -156,6 +177,25 @@
     
     function getSlotEfficiency() {
         if (!vehicles || !vehicles.length) return 0;
+
+        if (rulesVersion === 3) {
+            let used = 0;
+            let capacity = 0;
+            for (const vehicle of vehicles) {
+                const vehicleType = vehicleTypes.find(vt => vt.id === vehicle.type);
+                if (!vehicleType) continue;
+                const weaponLoad = (vehicle.weapons || [])
+                    .map(id => weapons.find(w => w.id === findBaseWeaponId(id)))
+                    .filter((weapon): weapon is Weapon => !!weapon);
+                const upgradeLoad = (vehicle.upgrades || [])
+                    .map(id => upgrades.find(u => u.id === id))
+                    .filter((upgrade): upgrade is Upgrade => !!upgrade);
+                const slots = v3BuildSlots(vehicleType, weaponLoad, upgradeLoad);
+                used += slots.used;
+                capacity += slots.capacity;
+            }
+            return capacity > 0 ? Math.round((used / capacity) * 100) : 0;
+        }
         
         let usedSlots = 0;
         let vehicleBaseSlots = 0; // Base slots from vehicle types
@@ -310,10 +350,14 @@
                     weights["Other"]++;
                 }
             } 
-            // Fallback for legacy numeric weights
+            // Numeric weight. Version 3 uses the printed weight stat. Version 2 maps the old 0–3 scale.
             else if (typeof weight === 'number') {
-                // Map the old number values to the string weight classes
-                if (weight === 0) weights["Lightweight"]++;
+                if (rulesVersion === 3) {
+                    if (weight <= 2) weights["Lightweight"]++;
+                    else if (weight <= 3) weights["Middleweight"]++;
+                    else if (weight <= 4) weights["Heavyweight"]++;
+                    else weights["Massive"]++;
+                } else if (weight === 0) weights["Lightweight"]++;
                 else if (weight === 1) weights["Middleweight"]++;
                 else if (weight === 2) weights["Heavyweight"]++;
                 else if (weight === 3) weights["Massive"]++;
@@ -352,10 +396,55 @@
     }
     
     // Coach suggestions
+    function getV3Suggestions() {
+        const suggestions: string[] = [];
+        const allowance = maxCountedVehicles(Number(maxCans) || 50);
+        const counted = countedVehicleTotal(vehicles.map(vehicle => vehicle.type));
+        suggestions.push(`Version 3: ${counted} of ${allowance} counted vehicles (the first bike is free, 3 max).`);
+
+        const missingDriver = vehicles.filter(vehicle => !vehicle.driverArchetype);
+        if (missingDriver.length) {
+            suggestions.push('Give every vehicle a driver archetype. Drivers are free and each archetype can be used once.');
+        }
+        const seen = new Set<string>();
+        for (const vehicle of vehicles) {
+            const archetype = vehicle.driverArchetype;
+            if (!archetype) continue;
+            if (seen.has(archetype)) {
+                const name = drivers.find(driver => driver.id === archetype)?.name || archetype;
+                suggestions.push(`${name} is already driving another vehicle. Pick a different archetype.`);
+            }
+            seen.add(archetype);
+        }
+
+        if (currentSponsor && currentSponsor.id !== 'no_sponsor' && currentSponsor.requirement) {
+            suggestions.push(`Sponsor requirement: ${currentSponsor.requirement}`);
+        }
+
+        const electricalWeapons = getElectricalBalance().electrical;
+        const spark = vehicles.some(vehicle => vehicle.driverArchetype === 'spark');
+        const van = vehicles.some(vehicle => vehicle.type === 'van');
+        if (electricalWeapons > 0 && !spark && !van) {
+            suggestions.push('Electrical weapons need a Spark driver on the team, or a van for that vehicle.');
+        } else if ((spark || van) && electricalWeapons === 0) {
+            suggestions.push('Electrical gear is unlocked. A Spark driver covers the team; a van covers itself.');
+        }
+
+        if (getSlotEfficiency() < 70) {
+            suggestions.push(`Build slots are ${getSlotEfficiency()}% full. Trailers add slots; a van discounts up to three upgrades.`);
+        }
+        const canEfficiency = Math.round((totalCans / maxCans) * 100);
+        if (canEfficiency < 90) {
+            suggestions.push(`You're using ${canEfficiency}% of ${maxCans} cans.`);
+        }
+        return suggestions;
+    }
+
     function getSuggestions() {
         const suggestions: string[] = [];
         
         if (!vehicles || !vehicles.length) return suggestions;
+        if (rulesVersion === 3) return getV3Suggestions();
         
         // Combat suggestions
         const combatIndex = getCombatEffectivenessIndex();
@@ -427,7 +516,7 @@
 
 <div class="mt-6 bg-stone-100 dark:bg-gray-700 p-4 rounded-lg" in:fade={{ duration: 200 }}>
     <div class="flex flex-wrap justify-between items-center mb-4">
-        <h3 class="text-lg font-bold text-stone-800 dark:text-white">Gaslands Coach</h3>
+        <h3 class="text-lg font-bold text-stone-800 dark:text-white">Gaslands Coach <span data-testid="coach-rules">Version {rulesVersion}</span></h3>
         <div class="flex items-center space-x-2">
             <div class="text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 py-1 px-3 rounded-full">
                 {totalCans} / {maxCans} cans ({Math.round((totalCans / maxCans) * 100)}%)
@@ -453,7 +542,9 @@
             <div class="text-xl font-bold text-amber-600 dark:text-amber-400">
                 <Tooltip 
                     text={getSurvivabilityRating().toFixed(2)}
-                    content="<strong>Survivability</strong><p>Measures hull points per can spent. Higher is better.</p><p>Improve by adding armor upgrades or choosing vehicles with better hull-to-cost ratio.</p><p>Aim for: 0.6+ (decent) or 0.8+ (excellent)</p>"
+                    content={rulesVersion === 3
+                        ? "<strong>Survivability</strong><p>Hull plus armour, per can spent.</p><p>Improve with extra armour or tougher vehicles.</p>"
+                        : "<strong>Survivability</strong><p>Measures hull points per can spent. Higher is better.</p><p>Improve by adding armor upgrades or choosing vehicles with better hull-to-cost ratio.</p><p>Aim for: 0.6+ (decent) or 0.8+ (excellent)</p>"}
                 />
                 <span class="text-xs text-stone-500 dark:text-gray-400">hull/can</span>
             </div>
