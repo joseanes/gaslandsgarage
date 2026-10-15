@@ -11,9 +11,19 @@ export async function draftToDataURL(draft: Draft): Promise<string> {
     }
 
     // Create a simplified version of the draft to reduce URL size
+    const sponsorField = draft.sponsor as unknown;
+    const sponsorId =
+      typeof sponsorField === 'string'
+        ? sponsorField
+        : sponsorField && typeof sponsorField === 'object' && 'id' in sponsorField
+          ? String((sponsorField as { id: string }).id)
+          : 'no_sponsor';
+
     const simplifiedDraft = {
-      sponsor: draft.sponsor?.id || 'no_sponsor',
+      sponsor: sponsorId || 'no_sponsor',
       teamName: draft.teamName || 'Gaslands Team',
+      maxCans: draft.maxCans,
+      rulesVersion: (draft.rulesVersion === 3 ? 3 : 2) as 2 | 3,
       vehicles: (draft.vehicles || []).map(v => ({
         id: v.id,
         type: v.type,
@@ -21,7 +31,12 @@ export async function draftToDataURL(draft: Draft): Promise<string> {
         weapons: v.weapons || [],
         upgrades: v.upgrades || [],
         perks: v.perks || [],
-        weaponFacings: v.weaponFacings || {}
+        weaponFacings: v.weaponFacings || {},
+        driverArchetype: v.driverArchetype || '',
+        driverName: v.driverName || '',
+        secondPerkClass: v.secondPerkClass || '',
+        turretWeaponId: v.turretWeaponId || '',
+        upgradeFacings: v.upgradeFacings || {}
       }))
     };
 

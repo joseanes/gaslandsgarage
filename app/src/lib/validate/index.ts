@@ -1,5 +1,7 @@
 // app/src/lib/validate/index.ts
 import type { Draft, Team, VehicleReport, Validation } from './model';
+import { normalizeRulesVersion } from '$lib/rules/version';
+import { validateDraftV3 } from './v3';
 import { runAllChecks } from './checks';
 import {
   loadSponsors,
@@ -35,6 +37,10 @@ export function resetCache() {
 }
 
 export async function validateDraft(draft: Draft): Promise<Validation> {
+  if (normalizeRulesVersion(draft.rulesVersion) === 3) {
+    return validateDraftV3(draft);
+  }
+
   // Use custom maxCans if provided, otherwise use default
   const TEAM_CAP = draft.maxCans || DEFAULT_TEAM_CAP;
   

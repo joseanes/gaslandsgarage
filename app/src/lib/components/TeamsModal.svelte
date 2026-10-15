@@ -412,6 +412,7 @@
           vehicles: vehicles,
           teamName: newTeamName.trim(),
           maxCans: maxCans,
+          rulesVersion: window.rulesVersion === 3 ? 3 : 2,
           darkMode: document.documentElement.classList.contains('dark-mode')
         };
         
@@ -423,6 +424,7 @@
         if (confirm("Unable to detect existing vehicles. Would you like to save a basic team with a single empty vehicle?")) {
           draftToSave = {
             sponsor: "miyazaki",
+            rulesVersion: window.rulesVersion === 3 ? 3 : 2,
             vehicles: [
               {
                 id: "vehicle_1",

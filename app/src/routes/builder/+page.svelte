@@ -21,6 +21,9 @@
 	import { validateDraft } from '$lib/validate';
 	import type { Draft, Validation } from '$lib/validate/model';
 	import { encodeDraft, decodeDraft } from '$lib/draft/io';
+	import { countedVehicleTotal, defaultRulesVersion, maxCountedVehicles, normalizeRulesVersion, type RulesVersion } from '$lib/rules/version';
+	import { resolveById } from '$lib/validate/v3/lookup';
+	import { v3BuildSlots } from '$lib/validate/v3/slots';
 	import { goto } from '$app/navigation';
 	import { draftToDataURL } from '$lib/draft/qr';
 	import Auth from '$lib/components/Auth.svelte';
@@ -45,8 +48,45 @@ import { saveTeam, getUserTeams } from '$lib/services/team';
 		upgrades: import('$lib/rules/types').Upgrade[];
 		perks: import('$lib/rules/types').Perk[];
 		vehicleRules: import('$lib/rules/types').VehicleRule[];
+		v3: import('../../data/rules/v3').V3Catalog;
 	};
-	const { sponsors, vehicleTypes, weapons, upgrades, perks, vehicleRules } = data;
+	let rulesVersion: RulesVersion = defaultRulesVersion();
+	let drivers: import('../../data/rules/v3').V3Driver[] = [];
+	let perkClasses: { id: string; name: string }[] = [];
+	let sponsors = data.sponsors;
+	let vehicleTypes = data.vehicleTypes;
+	let weapons = data.weapons;
+	let upgrades = data.upgrades;
+	let perks = data.perks;
+	let vehicleRules = data.vehicleRules;
+
+	function applyCatalog(version: RulesVersion) {
+		if (version === 3) {
+			sponsors = data.v3.sponsors as unknown as typeof sponsors;
+			vehicleTypes = data.v3.vehicleTypes as unknown as typeof vehicleTypes;
+			weapons = data.v3.weapons as unknown as typeof weapons;
+			upgrades = data.v3.upgrades as unknown as typeof upgrades;
+			perks = data.v3.perks as unknown as typeof perks;
+			vehicleRules = data.v3.vehicleRules;
+			drivers = data.v3.drivers;
+			perkClasses = data.v3.perkClasses;
+		} else {
+			sponsors = data.sponsors;
+			vehicleTypes = data.vehicleTypes;
+			weapons = data.weapons;
+			upgrades = data.upgrades;
+			perks = data.perks;
+			vehicleRules = data.vehicleRules;
+			drivers = [];
+			perkClasses = [];
+		}
+	}
+	applyCatalog(rulesVersion);
+
+	function adoptRulesVersion(raw: { rulesVersion?: unknown } | null | undefined) {
+		rulesVersion = normalizeRulesVersion(raw?.rulesVersion);
+		applyCatalog(rulesVersion);
+	}
   
 	// Log detailed vehicle type information to check sponsor restrictions
 	console.log('LOADED DATA: All vehicle types:', vehicleTypes.map(v => ({
@@ -161,13 +201,88 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		weapons: string[]; 
 		weaponFacings?: Record<string, string>;
 		upgrades: string[]; 
-		perks: string[] 
+		perks: string[];
+		driverArchetype?: string;
+		driverName?: string;
+		secondPerkClass?: string;
+		turretWeaponId?: string;
+		upgradeFacings?: Record<string, string>;
 	};
 	let vehicles: Veh[] = [];
 	// Track hazard tokens for each vehicle
 	let vehicleHazards: Record<string, number> = {};
 
 
+
+	function canUseElectrical(vehicle: Veh) {
+		if (rulesVersion !== 3) return !!currentSponsor?.electrical;
+		if (vehicle.type === 'van') return true;
+		return vehicles.some((entry) => entry.driverArchetype === 'spark');
+	}
+
+	function resolvedLoadout(vehicle: Veh) {
+		return {
+			vehicleType: vehicleTypes.find((entry) => entry.id === vehicle.type),
+			weapons: vehicle.weapons
+				.map((id) => resolveById(weapons, id))
+				.filter((entry): entry is NonNullable<typeof entry> => !!entry),
+			upgrades: (vehicle.upgrades || [])
+				.map((id) => upgrades.find((entry) => entry.id === id))
+				.filter((entry): entry is NonNullable<typeof entry> => !!entry)
+		};
+	}
+
+	function projectedSlots(vehicle: Veh, extra: { weapon?: { slots: number }; upgrade?: { id: string; slots: number; isTrailer?: boolean; bonusSlots?: number } }) {
+		const loadout = resolvedLoadout(vehicle);
+		if (!loadout.vehicleType) return null;
+		return v3BuildSlots(
+			loadout.vehicleType,
+			extra.weapon ? [...loadout.weapons, extra.weapon] : loadout.weapons,
+			extra.upgrade ? [...loadout.upgrades, extra.upgrade] : loadout.upgrades
+		);
+	}
+
+	function perksFor(vehicle: Veh) {
+		if (rulesVersion !== 3) return availablePerks;
+		const driver = drivers.find((entry) => entry.id === vehicle.driverArchetype);
+		const classes = new Set<string>();
+		if (driver) classes.add(driver.perkClass);
+		if ((vehicle.driverName || '').trim() && vehicle.secondPerkClass) classes.add(vehicle.secondPerkClass);
+		return perks.filter((perk) => perk.class && classes.has(perk.class));
+	}
+
+	function weaponsFor(vehicle: Veh) {
+		const electricalOk = canUseElectrical(vehicle);
+		return weapons.filter((weapon) => {
+			if (!includeAdvanced && weapon.advanced) return false;
+			if (weapon.electrical && !electricalOk) return false;
+			return true;
+		});
+	}
+
+	function upgradesFor(vehicle: Veh) {
+		const electricalOk = canUseElectrical(vehicle);
+		return upgrades.filter((upgrade) => !upgrade.electrical || electricalOk);
+	}
+
+	function patchVehicle(id: string, patch: Partial<Veh>) {
+		vehicles = vehicles.map((entry) => (entry.id === id ? { ...entry, ...patch } : entry));
+		updateCurrentDraft();
+	}
+
+	function changeRulesVersion(next: number) {
+		const version: RulesVersion = next === 3 ? 3 : 2;
+		if (version === rulesVersion) return;
+		if (vehicles.length > 0 && !confirm('Switching rules versions clears the vehicles on this team. Continue?')) {
+			rulesVersion = rulesVersion;
+			return;
+		}
+		rulesVersion = version;
+		applyCatalog(version);
+		vehicles = [];
+		sponsorId = sponsors.find((entry) => entry.id === 'no_sponsor')?.id ?? sponsors[0]?.id ?? '';
+		updateCurrentDraft();
+	}
 
 	function calculateUsedBuildSlots(vehicle) {
 		let totalSlots = 0;
@@ -207,7 +322,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		return totalSlots;
 	}
 
-	function addVehicle(type = 'car') {
+	function addVehicle(type = rulesVersion === 3 ? 'buggy' : 'car') {
 		console.log('addVehicle called');
 		
 		// Get filtered vehicle types that respect sponsor restrictions
@@ -309,12 +424,11 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		const clonedWeaponFacings: Record<string, string> = {};
 
 		// Clone the weapons with new instance IDs
+		let clonedTurret = sourceVehicle.turretWeaponId;
 		const clonedWeapons = sourceVehicle.weapons.map(weaponId => {
-			// Extract the base weapon ID - keeping all parts except the last one (the unique identifier)
-			const baseWeaponId = weaponId.includes('_')
-              ? weaponId.split('_')[0]
-              : weaponId;
+			const baseWeaponId = resolveById(weapons, weaponId)?.id ?? weaponId;
 			const newWeaponId = `${baseWeaponId}_${nanoid(4)}`;
+			if (clonedTurret === weaponId) clonedTurret = newWeaponId;
 
 			// Copy the facing for this weapon
 			if (sourceVehicle.weaponFacings && sourceVehicle.weaponFacings[weaponId]) {
@@ -347,7 +461,12 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			weapons: clonedWeapons,
 			weaponFacings: clonedWeaponFacings,
 			upgrades: [...sourceVehicle.upgrades],
-			perks: clonedPerks
+			perks: clonedPerks,
+			driverArchetype: sourceVehicle.driverArchetype,
+			driverName: sourceVehicle.driverName,
+			secondPerkClass: sourceVehicle.secondPerkClass,
+			turretWeaponId: clonedTurret,
+			upgradeFacings: { ...(sourceVehicle.upgradeFacings || {}) }
 		};
 
 		// Add the cloned vehicle to the vehicles array
@@ -397,10 +516,10 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		const vehicleType = vehicleTypes.find(vt => vt.id === vehicle.type);
 		if (!vehicleType) return; // Don't add if vehicle type not found
 
-		// Validate electrical weapons - only allow if sponsor supports them
-		if (weaponObj.electrical && !(currentSponsor?.electrical)) {
-			console.warn(`Cannot add electrical weapon ${weaponObj.name} - current sponsor doesn't support electrical weapons`);
-			return; // Do not add the weapon if it's electrical but sponsor doesn't support it
+		// Validate electrical weapons - v2 sponsors, or a v3 van / Spark
+		if (weaponObj.electrical && !canUseElectrical(vehicle)) {
+			console.warn(`Cannot add electrical weapon ${weaponObj.name} - electrical gear is locked`);
+			return;
 		}
 
 		// Update vehicle report for immediate UI feedback
@@ -417,7 +536,13 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		const isSpecialFreeWeapon = ['handgun', 'molotov', 'grenades', 'ram', 'oil_slick', 'smokescreen'].includes(weaponObj.id) || weaponSlots === 0;
 		
 		// Validate build slots unless it's a free weapon or the vehicle has 0 build slots (unlimited)
-		if (!isSpecialFreeWeapon && vehicleType.buildSlots > 0 && currentBuildSlots + weaponSlots > vehicleType.buildSlots) {
+		if (rulesVersion === 3) {
+			const next = projectedSlots(vehicle, { weapon: weaponObj });
+			if (next && next.used > next.capacity) {
+				console.warn(`Cannot add weapon ${weaponObj.name} - exceeds build slot limit`);
+				return;
+			}
+		} else if (!isSpecialFreeWeapon && vehicleType.buildSlots > 0 && currentBuildSlots + weaponSlots > vehicleType.buildSlots) {
 			console.warn(`Cannot add weapon ${weaponObj.name} - exceeds build slot limit`);
 			return; // Do not add the weapon if it would exceed build slots
 		}
@@ -431,8 +556,10 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 
 		if (weaponObj.specialRules && weaponObj.specialRules.toUpperCase().includes("CREW FIRED")) {
 			actualFacing = '360'; // Crew fired weapons are always 360°
-		} else if (weaponObj.dropped || (weaponObj.range && weaponObj.range.includes('Dropped'))) {
+		} else if (weaponObj.dropped || (weaponObj as { arc?: string }).arc === 'dropped' || (weaponObj.range && weaponObj.range.includes('Dropped'))) {
 			actualFacing = 'rear'; // Dropped weapons default to rear
+		} else if ((weaponObj as { arc?: string }).arc === '360' || (weaponObj.specialRules && weaponObj.specialRules.includes('360'))) {
+			actualFacing = '360';
 		} else if (weaponObj.facing && weaponObj.facing !== 'any') {
 			actualFacing = weaponObj.facing; // Use fixed facing
 		} else if (facing) {
@@ -494,10 +621,10 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		const vehicleType = vehicleTypes.find(vt => vt.id === vehicle.type);
 		if (!vehicleType) return; // Don't add if vehicle type not found
 
-		// Validate electrical upgrades - only allow if sponsor supports them
-		if (upgradeObj.electrical && !(currentSponsor?.electrical)) {
-			console.warn(`Cannot add electrical upgrade ${upgradeObj.name} - current sponsor doesn't support electrical upgrades`);
-			return; // Do not add the upgrade if it's electrical but sponsor doesn't support it
+		// Validate electrical upgrades - v2 sponsors, or a v3 van / Spark
+		if (upgradeObj.electrical && !canUseElectrical(vehicle)) {
+			console.warn(`Cannot add electrical upgrade ${upgradeObj.name} - electrical gear is locked`);
+			return;
 		}
 		
 		// Validate trailer upgrades - only allow if sponsor supports them
@@ -556,9 +683,16 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		
 		// Skip buildSlot validation for free upgrades
 		const isSpecialFreeUpgrade = ['grenades'].includes(upgradeObj.id) || upgradeSlots === 0;
+		if (rulesVersion === 3) {
+			const next = projectedSlots(vehicle, { upgrade: upgradeObj });
+			if (next && next.used > next.capacity) {
+				console.warn(`Cannot add upgrade ${upgradeObj.name} - exceeds build slot limit`);
+				return;
+			}
+		}
 		
 		// Validate build slots unless it's a free upgrade or the vehicle has 0 build slots (unlimited)
-		if (!isSpecialFreeUpgrade && vehicleType.buildSlots > 0 && currentBuildSlots + upgradeSlots > vehicleType.buildSlots) {
+		if (rulesVersion !== 3 && !isSpecialFreeUpgrade && vehicleType.buildSlots > 0 && currentBuildSlots + upgradeSlots > vehicleType.buildSlots) {
 			console.warn(`Cannot add upgrade ${upgradeObj.name} - exceeds build slot limit`);
 			return; // Do not add the upgrade if it would exceed build slots
 		}
@@ -1175,9 +1309,11 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			// Prepare draft data (similar to TeamsModal.svelte)
 			const draftData = {
 				teamName,
+				sponsor: sponsorId,
 				sponsorId,
 				vehicles,
-				maxCans
+				maxCans,
+				rulesVersion
 			};
 
 			// Save the team
@@ -1464,6 +1600,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 					} else {
 						console.log('[Event] importDraftFn not available, setting team data manually');
 						try {
+							adoptRulesVersion(event.detail);
 							// Set team properties directly
 							if (event.detail.sponsor) {
 								sponsorId = event.detail.sponsor;
@@ -1708,6 +1845,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			window.vehicles = vehicles;
 			window.maxCans = maxCans;
 			window.darkMode = darkMode;
+			window.rulesVersion = rulesVersion;
 			
 			window.currentDraftFn = () => {
 				// Make sure we check for actual content, not just empty arrays
@@ -1721,7 +1859,8 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 					vehicles: vehicles,
 					teamName: teamName || "My Gaslands Team",
 					maxCans: maxCans,
-					darkMode: darkMode
+					darkMode: darkMode,
+					rulesVersion
 				};
 				console.log("currentDraftFn returning:", currentState);
 				return currentState;
@@ -1763,6 +1902,8 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 						if (typeof draftData.sponsor === 'undefined' && typeof draftData.sponsorId !== 'undefined') {
 							draftData.sponsor = draftData.sponsorId;
 						}
+
+						adoptRulesVersion(draftData);
 						
 						if (!Array.isArray(draftData.vehicles)) {
 							console.error("Vehicles is not an array in draft data");
@@ -1886,6 +2027,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 	function importDraftString() {
 		const draft = decodeDraft(importString.trim());
 		if (draft) {
+			adoptRulesVersion(draft);
 			sponsorId = draft.sponsor;
 			
 			// Process imported vehicles to ensure they have all required properties and perks from upgrades are included
@@ -1929,7 +2071,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			vehicles = processedVehicles;
 			
 			// Import team name if available
-			if (draftData.teamName) {
+			if (draft.teamName) {
 				teamName = draft.teamName;
 				// Also update window.teamName for cross-component access
 				if (typeof window !== 'undefined') {
@@ -1939,12 +2081,12 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			}
 			
 			// Import maxCans if available
-			if (draftData.maxCans) {
+			if (draft.maxCans) {
 				maxCans = draft.maxCans;
 			}
 			
 			// Import darkMode if available
-			if (draftData.darkMode !== undefined) {
+			if (draft.darkMode !== undefined) {
 				darkMode = draft.darkMode;
 			}
 			
@@ -1975,6 +2117,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		if (encoded) {
 			const imported = decodeDraft(encoded);
 			if (imported) {
+				adoptRulesVersion(imported);
 				sponsorId = imported.sponsor;
 				vehicles = imported.vehicles as Veh[];
 				
@@ -2009,7 +2152,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 	
 	/* ---------- setting changes effects ---------- */
 	// When enableSponsorships is disabled, set to "No Sponsor"
-	$: if (!enableSponsorships) {
+	$: if (!enableSponsorships && rulesVersion !== 3) {
 		const noSponsorId = sponsors.find(s => s.id === 'no_sponsor')?.id ?? '';
 		sponsorId = noSponsorId;
 	}
@@ -2122,8 +2265,8 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		}));
 	}
 	
-	// Remove perks when enableSponsorships is disabled
-	$: if (!enableSponsorships) {
+	// Remove perks when enableSponsorships is disabled (v2 sponsor perks only)
+	$: if (!enableSponsorships && rulesVersion !== 3) {
 		vehicles = vehicles.map(v => ({
 			...v,
 			perks: []
@@ -2149,8 +2292,11 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		vehicles,
 		teamName,
 		maxCans,
-		darkMode
+		darkMode,
+		rulesVersion
 	} satisfies Draft;
+	$: countedVehicles = countedVehicleTotal(vehicles.map((entry) => entry.type));
+	$: vehicleAllowance = maxCountedVehicles(Number(maxCans) || 50);
 
 	// Function to force validation to run immediately
 	/**
@@ -2191,7 +2337,8 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 					vehicles: JSON.parse(JSON.stringify(vehicles)),
 					teamName,
 					maxCans,
-					darkMode
+					darkMode,
+					rulesVersion
 				};
 				
 				// Use direct validation in a separate execution context to avoid reactivity
@@ -2312,9 +2459,16 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			// Add perk costs
 			for (const perkId of vehicle.perks) {
 				const perkObj = perks.find(p => p.id === perkId);
-				if (perkObj && perkObj.level) {
+				if (rulesVersion === 3) {
+					if (perkObj) totalCost += perkObj.cost || perkObj.level || 0;
+				} else if (perkObj && perkObj.level) {
 					totalCost += perkObj.level; // Perk cost is its level
 				}
+			}
+
+			if (rulesVersion === 3 && vehicle.upgrades?.includes('turret_mount') && vehicle.turretWeaponId) {
+				const turretWeapon = resolveById(weapons, vehicle.turretWeaponId);
+				if (turretWeapon?.cost) totalCost += turretWeapon.cost;
 			}
 		}
 		
@@ -2384,8 +2538,8 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			let vehicleTrailerRemoved = false;
 			const invalidUpgrades = [];
 			
-			// Check for electrical upgrades if sponsor doesn't support electrical
-			if (currentSponsorObj && !currentSponsorObj.electrical) {
+			// v2 sponsors gate electrical gear. v3 unlocks it per vehicle (Spark or a van).
+			if (rulesVersion !== 3 && currentSponsorObj && !currentSponsorObj.electrical) {
 				const electricalUpgrades = vehicle.upgrades.filter(upId => {
 					const upgrade = upgrades.find(u => u.id === upId);
 					return upgrade && upgrade.electrical;
@@ -2408,8 +2562,8 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 				}
 			}
 			
-			// Check for trailer upgrades if sponsor doesn't support trailers
-			if (currentSponsorObj && !currentSponsorObj.trailer) {
+			// v3 trailers are ordinary upgrades gated by weight and airborne, not by the sponsor.
+			if (rulesVersion !== 3 && currentSponsorObj && !currentSponsorObj.trailer) {
 				console.log(`Checking vehicle ${vehicle.name} for trailer upgrades (sponsor doesn't support trailers)`);
 				
 				// First, find any actual trailer upgrades
@@ -2470,8 +2624,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 				});
 			}
 			
-			// Check for electrical weapons if sponsor doesn't support electrical
-			if (currentSponsorObj && !currentSponsorObj.electrical) {
+			if (rulesVersion !== 3 && currentSponsorObj && !currentSponsorObj.electrical) {
 				const electricalWeapons = vehicle.weapons.filter(weaponId => {
 					const baseWeaponId = weaponId.includes('_') ? weaponId.split('_').slice(0, -1).join('_') : weaponId;
 					const weapon = weapons.find(w => w.id === baseWeaponId);
@@ -2664,7 +2817,8 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			vehicles,
 			teamName,
 			maxCans,
-			darkMode
+			darkMode,
+			rulesVersion
 		};
 		
 		// Automatically validate with each update
@@ -3008,6 +3162,20 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 	<header class="mb-3 md:mb-4">
 		<div class="text-3xl md:text-4xl font-extrabold text-stone-800 dark:text-gray-100 tracking-tight flex flex-wrap justify-between items-center">
 			<div class="flex flex-col gap-2 w-full">
+				<div class="flex items-center gap-4 w-full">
+					<b class="text-base font-bold whitespace-nowrap" style="min-width: 95px;">Rules:</b>
+					<select
+						id="rules-version"
+						class="form-select h-[32px] flex items-center"
+						style="height: 32px !important; min-height: 32px !important; max-height: 32px !important;"
+						value={rulesVersion}
+						on:change={(e) => changeRulesVersion(Number(e.currentTarget.value))}
+						aria-label="Rules version"
+					>
+						<option value={2}>Version 2 — Refuelled</option>
+						<option value={3}>Version 3</option>
+					</select>
+				</div>
 				<div class="flex items-center justify-between w-full gap-4">
 					<div class="flex items-center gap-4">
 						<b class="text-base font-bold whitespace-nowrap" style="min-width: 50px;">Name:</b>
@@ -3058,7 +3226,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 					</button>
 				</div>
 
-				{#if enableSponsorships}
+				{#if enableSponsorships || rulesVersion === 3}
 				<div class="flex flex-col w-full mt-1">
 					<div class="flex items-center gap-4">
 						<b class="text-base font-bold whitespace-nowrap flex items-center" style="min-width: 95px;">Sponsor:</b>
@@ -3089,7 +3257,17 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 						{/if}
 					</div>
 
-					{#if classPerksList.length > 0}
+					{#if rulesVersion === 3 && currentSponsor && currentSponsor.id !== 'no_sponsor'}
+						{@const note = currentSponsor as { requirement?: string; perkName?: string; perkText?: string }}
+						<div class="text-sm text-stone-700 dark:text-gray-300 text-left mt-1 space-y-1">
+							<p><span class="font-medium">Requirement:</span> {note.requirement}</p>
+							{#if note.perkName}
+								<p><span class="font-medium">{note.perkName}:</span> {note.perkText}</p>
+							{/if}
+						</div>
+					{/if}
+
+					{#if rulesVersion !== 3 && classPerksList.length > 0}
 						<div class="text-sm text-stone-700 dark:text-gray-300 text-left mt-1">
 							<div class="flex flex-wrap items-center gap-2">
 								<span class="font-medium mr-2">Available Perks:</span>
@@ -3123,7 +3301,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 	</header>
 
 	<!-- Info message when sponsorships are disabled -->
-	{#if !enableSponsorships}
+	{#if !enableSponsorships && rulesVersion !== 3}
 		<div class="bg-blue-50 p-5 rounded-lg shadow-md mb-6">
 			<div class="flex items-start">
 				<div class="flex-shrink-0">
@@ -3155,6 +3333,12 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		<div class="flex items-center justify-between mb-2">
 			<div class="flex items-center gap-4">
 				<h2 class="text-2xl font-bold text-stone-800 dark:text-gray-100">Vehicles</h2>
+				{#if rulesVersion === 3}
+					<p class="text-sm text-stone-600 dark:text-gray-300">
+						{countedVehicles}/{vehicleAllowance} toward the limit
+						<span class="text-stone-500">(first bike is free, 3 max)</span>
+					</p>
+				{/if}
 			</div>
 			<button
 				class="py-2 px-4 w-32 flex items-center justify-center rounded-md transition-colors amber-button"
@@ -3218,10 +3402,14 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 						{showGaslandsMath}
 						{totalCans}
 						{maxCans}
-						{filteredWeapons}
-						{filteredUpgrades}
+						{rulesVersion}
+						{drivers}
+						{perkClasses}
+						filteredWeapons={rulesVersion === 3 ? weaponsFor(vehicle) : filteredWeapons}
+						filteredUpgrades={rulesVersion === 3 ? upgradesFor(vehicle) : filteredUpgrades}
 						filteredTrailerUpgrades={filteredTrailerUpgrades}
-						filteredPerks={availablePerks}
+						filteredPerks={rulesVersion === 3 ? perksFor(vehicle) : availablePerks}
+						on:patch={(e) => patchVehicle(e.detail.vehicleId, e.detail.patch)}
 						on:remove={e => removeVehicle(e.detail.id)}
 						on:clone={e => cloneVehicle(e.detail.id)}
 						on:toggleCollapse={e => toggleVehicleCollapse(e.detail.id)}
