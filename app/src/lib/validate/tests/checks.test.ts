@@ -108,10 +108,7 @@ describe('Validation Check Functions', () => {
 
     it('should handle vehicle with no upgrade slots specified', () => {
       const team = createTestTeam();
-      const noSlotsVehicle = { ...team.vehicles[0].class };
-      delete noSlotsVehicle.upgradeSlots; // Remove upgrade slots property
-      
-      team.vehicles[0].class = noSlotsVehicle;
+      team.vehicles[0].class = { ...team.vehicles[0].class, upgradeSlots: 0 };
       team.vehicles[0].upgrades = [
         { ...mockUpgrades[0] } // Trying to add an upgrade
       ];
@@ -158,7 +155,7 @@ describe('Validation Check Functions', () => {
         perksClasses: ['BADASS', 'MILITARY']
       };
       team.vehicles[0].perks = [
-        { id: 'powder_keg', name: 'Powder Keg', sponsor: '', class: 'badass', text: '', cost: 1 }
+        { id: 'powder_keg', name: 'Powder Keg', sponsor: '', class: 'badass', text: '', cost: 1, electrical: false }
       ];
 
       const reports = createTestReports();
@@ -175,7 +172,7 @@ describe('Validation Check Functions', () => {
         perksClasses: ['BADASS']
       };
       team.vehicles[0].perks = [
-        { id: 'battlehammer', name: 'Battlehammer', sponsor: '', class: 'aggression', text: '', cost: 4 }
+        { id: 'battlehammer', name: 'Battlehammer', sponsor: '', class: 'aggression', text: '', cost: 4, electrical: false }
       ];
 
       const reports = createTestReports();
@@ -192,7 +189,7 @@ describe('Validation Check Functions', () => {
         perksClasses: ['speed']
       };
       team.vehicles[0].perks = [
-        { id: 'slippery', name: 'Slippery', sponsor: '', class: 'Speed', text: '', cost: 2 }
+        { id: 'slippery', name: 'Slippery', sponsor: '', class: 'Speed', text: '', cost: 2, electrical: false }
       ];
 
       const reports = createTestReports();

@@ -1,12 +1,13 @@
 // Import any global setup functions for tests
 import '@testing-library/svelte';
+import { vi } from 'vitest';
 
 // Mock any browser-only globals that might be needed
 if (typeof window !== 'undefined') {
   // Add any window mock properties here
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
-    value: vi.fn().mockImplementation(query => ({
+    value: vi.fn().mockImplementation((query: string) => ({
       matches: false,
       media: query,
       onchange: null,

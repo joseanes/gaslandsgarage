@@ -27,7 +27,6 @@
 	import { draftToDataURL } from '$lib/draft/qr';
 	import Auth from '$lib/components/Auth.svelte';
 import SettingsMenu from '$lib/components/SettingsMenu.svelte';
-	import VehicleCard from '$lib/components/VehicleCard.svelte';
 	import Tooltip from '$lib/components/Tooltip.svelte';
 	import { user, signInWithGoogle } from '$lib/firebase';
 import { getUserSettings, saveUserSettings, DEFAULT_SETTINGS, type UserSettings } from '$lib/services/settings';
@@ -1193,7 +1192,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 
 	function shareLink() {
 		const encoded = encodeDraft(currentDraft);
-		goto(`?draft=${encoded}`, { replaceState: true });
+		goto(`?draft=${encodeURIComponent(encoded)}`, { replaceState: true });
 		alert('Link updated in address bar. Copy the current URL to share your build.');
 	}
 
@@ -1437,6 +1436,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 	
 	// Expose these functions to the global window object for use by the layout
 	onMount(() => {
+		let storageCheckInterval: ReturnType<typeof setInterval> | undefined;
 		if (typeof window !== 'undefined') {
 			// Set up a custom event listener for menu commands
 			// Listen for custom team loading events
@@ -1617,7 +1617,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			}
 			
 			// Set up interval to periodically check localStorage
-			const storageCheckInterval = setInterval(() => {
+			storageCheckInterval = setInterval(() => {
 				const newFlag = localStorage.getItem('openPrintSettings');
 				if (newFlag) {
 					// Clear the flag immediately
@@ -1626,12 +1626,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 					openSettings('print');
 				}
 			}, 1000);
-			
-			// Clear interval when component is destroyed
-			return () => {
-				clearInterval(storageCheckInterval);
-			};
-			
+
 			// Check URL parameters for settings tab request
 			const urlParams = new URLSearchParams(window.location.search);
 			if (urlParams.has('openSettingsTab')) {
@@ -1736,6 +1731,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		}
 
 		return () => {
+			if (storageCheckInterval) clearInterval(storageCheckInterval);
 			// Clean up when component is destroyed
 			if (typeof window !== 'undefined') {
 				console.log("[onUnmount] Cleaning up global functions");
@@ -3016,36 +3012,39 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 				</div>
 			</div>
 		{:else}
-			<div class="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-10">
-				{#each vehicles as vehicle (vehicle.id)}
-					<VehicleCard
-						{vehicle}
-						vehicleTypes={sortedVehicleTypes}
-						{weapons}
-						{upgrades}
-						{perks}
-						{vehicleRules}
-						collapsed={collapsedVehicles.has(vehicle.id)}
-						{playMode}
-						{filteredWeapons}
-						{filteredUpgrades}
-						filteredTrailerUpgrades={filteredTrailerUpgrades}
-						filteredPerks={availablePerks}
-						on:remove={e => removeVehicle(e.detail.id)}
-						on:clone={e => cloneVehicle(e.detail.id)}
-						on:toggleCollapse={e => toggleVehicleCollapse(e.detail.id)}
-						on:addWeapon={e => addWeapon(e.detail.vehicleId, e.detail.weaponId, e.detail.facing)}
-						on:removeWeapon={e => removeWeapon(e.detail.vehicleId, e.detail.weaponIndex)}
-						on:addUpgrade={e => addUpgrade(e.detail.vehicleId, e.detail.upgradeId)}
-						on:removeUpgrade={e => removeUpgrade(e.detail.vehicleId, e.detail.upgradeIndex)}
-						on:addPerk={e => addPerk(e.detail.vehicleId, e.detail.perkId)}
-						on:removePerk={e => removePerk(e.detail.vehicleId, e.detail.perkIndex)}
-						on:incrementHazard={e => incrementHazard(e.detail.vehicleId)}
-						on:decrementHazard={e => decrementHazard(e.detail.vehicleId)}
-						on:vehicleTypeChanged={e => handleVehicleTypeChange(e.detail.id, e.detail.vehicleType)}
-					/>
-				{/each}
-			</div>
+			{#await import('$lib/components/VehicleCard.svelte') then cardModule}
+				{@const VehicleCard = cardModule.default}
+				<div class="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-10">
+					{#each vehicles as vehicle (vehicle.id)}
+						<VehicleCard
+							{vehicle}
+							vehicleTypes={sortedVehicleTypes}
+							{weapons}
+							{upgrades}
+							{perks}
+							{vehicleRules}
+							collapsed={collapsedVehicles.has(vehicle.id)}
+							{playMode}
+							{filteredWeapons}
+							{filteredUpgrades}
+							filteredTrailerUpgrades={filteredTrailerUpgrades}
+							filteredPerks={availablePerks}
+							on:remove={e => removeVehicle(e.detail.id)}
+							on:clone={e => cloneVehicle(e.detail.id)}
+							on:toggleCollapse={e => toggleVehicleCollapse(e.detail.id)}
+							on:addWeapon={e => addWeapon(e.detail.vehicleId, e.detail.weaponId, e.detail.facing)}
+							on:removeWeapon={e => removeWeapon(e.detail.vehicleId, e.detail.weaponIndex)}
+							on:addUpgrade={e => addUpgrade(e.detail.vehicleId, e.detail.upgradeId)}
+							on:removeUpgrade={e => removeUpgrade(e.detail.vehicleId, e.detail.upgradeIndex)}
+							on:addPerk={e => addPerk(e.detail.vehicleId, e.detail.perkId)}
+							on:removePerk={e => removePerk(e.detail.vehicleId, e.detail.perkIndex)}
+							on:incrementHazard={e => incrementHazard(e.detail.vehicleId)}
+							on:decrementHazard={e => decrementHazard(e.detail.vehicleId)}
+							on:vehicleTypeChanged={e => handleVehicleTypeChange(e.detail.id, e.detail.vehicleType)}
+						/>
+					{/each}
+				</div>
+			{/await}
 		{/if}
 	</div>
 

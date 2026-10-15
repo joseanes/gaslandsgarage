@@ -75,7 +75,12 @@ export const Upgrade = z.object({
   hull: z.number().int().optional(), // Hull points modifier
   gear: z.number().int().optional(), // Max gear modifier
   handling: z.number().int().optional(), // Handling modifier
-  crew: z.number().int().optional() // Crew modifier
+  crew: z.number().int().optional(), // Crew modifier
+  limited_sponsor: z.string().optional(),
+  crewModifier: z.number().optional(),
+  hullModifier: z.number().optional(),
+  handlingModifier: z.number().optional(),
+  gearModifier: z.number().optional()
 });
 
 export type Upgrade = z.infer<typeof Upgrade>;

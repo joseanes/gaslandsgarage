@@ -1,14 +1,17 @@
 // Import the functions you need from the SDKs you need
 import { writable } from 'svelte/store';
 import { browser } from '$app/environment';
+import type { FirebaseApp } from 'firebase/app';
+import type { Auth, User } from 'firebase/auth';
+import type { Firestore } from 'firebase/firestore';
 
 // Using dynamic imports to avoid SSR issues
-let firebase;
-let app;
-let auth;
-let db;
-let GoogleProvider;
-let user = writable(null);
+let app: FirebaseApp | undefined;
+let auth: Auth | undefined;
+let db: Firestore | undefined;
+const user = writable<User | null>(null);
+
+type InitResult = { success: boolean; error?: unknown };
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -24,7 +27,7 @@ const firebaseConfig = {
 // Track initialization status
 let isInitialized = false;
 let isInitializing = false;
-let initPromise = null;
+let initPromise: Promise<InitResult> | null = null;
 
 // Initialize Firebase only in the browser using dynamic imports
 const initializeFirebase = async () => {
@@ -54,7 +57,6 @@ const initializeFirebase = async () => {
       app = firebaseApp.initializeApp(firebaseConfig);
       auth = firebaseAuth.getAuth(app);
       db = firebaseFirestore.getFirestore(app);
-      GoogleProvider = firebaseAuth.GoogleAuthProvider;
       
       // Subscribe to auth state changes
       auth.onAuthStateChanged((newUser) => {
@@ -83,18 +85,19 @@ if (browser) {
 
 // Sign in with Google
 export const signInWithGoogle = async () => {
-  // Make sure Firebase is initialized
   if (!auth) {
     const initResult = await initializeFirebase();
     if (!initResult.success) {
       return { success: false, error: "Auth not initialized" };
     }
   }
+  const currentAuth = auth;
+  if (!currentAuth) return { success: false, error: "Auth not initialized" };
   
   try {
     const firebaseAuth = await import('firebase/auth');
     const provider = new firebaseAuth.GoogleAuthProvider();
-    await firebaseAuth.signInWithPopup(auth, provider);
+    await firebaseAuth.signInWithPopup(currentAuth, provider);
     return { success: true };
   } catch (error) {
     console.error("Error signing in with Google", error);
@@ -104,17 +107,18 @@ export const signInWithGoogle = async () => {
 
 // Sign out
 export const signOutUser = async () => {
-  // Make sure Firebase is initialized
   if (!auth) {
     const initResult = await initializeFirebase();
     if (!initResult.success) {
       return { success: false, error: "Auth not initialized" };
     }
   }
+  const currentAuth = auth;
+  if (!currentAuth) return { success: false, error: "Auth not initialized" };
   
   try {
     const firebaseAuth = await import('firebase/auth');
-    await firebaseAuth.signOut(auth);
+    await firebaseAuth.signOut(currentAuth);
     return { success: true };
   } catch (error) {
     console.error("Error signing out", error);

@@ -1,8 +1,5 @@
 import { auth, db } from '../firebase';
 import { browser } from '$app/environment';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import type { Auth } from 'firebase/auth';
-import type { Firestore } from 'firebase/firestore';
 
 // Interface for user settings
 export interface UserSettings {
@@ -47,11 +44,14 @@ export const DEFAULT_SETTINGS: UserSettings = {
  */
 export async function saveUserSettings(settings: UserSettings): Promise<{ success: boolean; error?: any }> {
   try {
+    const currentAuth = auth;
+    const database = db;
     if (!browser) return { success: false, error: 'Not in browser environment' };
-    if (!auth.currentUser) return { success: false, error: 'User not authenticated' };
+    if (!currentAuth?.currentUser || !database) return { success: false, error: 'User not authenticated' };
 
-    const userId = auth.currentUser.uid;
-    await setDoc(doc(db, 'userSettings', userId), settings);
+    const { doc, setDoc } = await import('firebase/firestore');
+    const userId = currentAuth.currentUser.uid;
+    await setDoc(doc(database, 'userSettings', userId), settings);
     return { success: true };
   } catch (error) {
     console.error('Error saving user settings:', error);
@@ -64,12 +64,15 @@ export async function saveUserSettings(settings: UserSettings): Promise<{ succes
  */
 export async function getUserSettings(): Promise<{ success: boolean; settings?: UserSettings; error?: any }> {
   try {
+    const currentAuth = auth;
+    const database = db;
     if (!browser) return { success: false, error: 'Not in browser environment', settings: DEFAULT_SETTINGS };
-    if (!auth?.currentUser) return { success: false, error: 'User not authenticated', settings: DEFAULT_SETTINGS };
+    if (!currentAuth?.currentUser || !database) return { success: false, error: 'User not authenticated', settings: DEFAULT_SETTINGS };
 
-    const userId = auth.currentUser.uid;
+    const { doc, getDoc } = await import('firebase/firestore');
+    const userId = currentAuth.currentUser.uid;
     console.log("Getting settings for user:", userId);
-    const settingsSnapshot = await getDoc(doc(db, 'userSettings', userId));
+    const settingsSnapshot = await getDoc(doc(database, 'userSettings', userId));
     
     if (settingsSnapshot.exists()) {
       const data = settingsSnapshot.data() as UserSettings;

@@ -1,15 +1,15 @@
-<script>
+<script lang="ts">
   import { onMount } from 'svelte';
   
   export let text = '';
   export let content = '';
   
-  let tooltipElement;
-  let tooltipContent;
+  let tooltipElement: HTMLElement | undefined;
+  let tooltipContent: HTMLElement | undefined;
   let position = { top: 0, left: 0 };
   let showTooltip = false;
   
-  let positioningTimeout;
+  let positioningTimeout: ReturnType<typeof setTimeout> | undefined;
   
   function positionTooltip() {
     if (!tooltipElement || !tooltipContent) return;
@@ -54,7 +54,7 @@
     showTooltip = false;
   }
   
-  function handleKeyDown(event) {
+  function handleKeyDown(event: KeyboardEvent) {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
       showTooltip = !showTooltip;
