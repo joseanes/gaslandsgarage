@@ -19,6 +19,7 @@
 	
 	import { nanoid } from 'nanoid';
 	import { validateDraft } from '$lib/validate';
+	import { perkCost } from '$lib/validate/calc';
 	import type { Draft, Validation } from '$lib/validate/model';
 	import { encodeDraft, decodeDraft } from '$lib/draft/io';
 	import { goto } from '$app/navigation';
@@ -1929,7 +1930,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			vehicles = processedVehicles;
 			
 			// Import team name if available
-			if (draftData.teamName) {
+			if (draft.teamName) {
 				teamName = draft.teamName;
 				// Also update window.teamName for cross-component access
 				if (typeof window !== 'undefined') {
@@ -1939,12 +1940,12 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			}
 			
 			// Import maxCans if available
-			if (draftData.maxCans) {
+			if (draft.maxCans) {
 				maxCans = draft.maxCans;
 			}
 			
 			// Import darkMode if available
-			if (draftData.darkMode !== undefined) {
+			if (draft.darkMode !== undefined) {
 				darkMode = draft.darkMode;
 			}
 			
@@ -2266,12 +2267,10 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			}
 		}
 
-		// Add perk costs
+		// Add perk costs (rules data uses `cost`; `level` is a legacy fallback)
 		for (const perkId of vehicle.perks) {
 			const perkObj = perks.find(p => p.id === perkId);
-			if (perkObj && perkObj.level) {
-				totalCost += perkObj.level; // Perk cost is its level
-			}
+			totalCost += perkCost(perkObj);
 		}
 
 		return totalCost;
@@ -2309,12 +2308,10 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 				}
 			}
 			
-			// Add perk costs
+			// Add perk costs (rules data uses `cost`; `level` is a legacy fallback)
 			for (const perkId of vehicle.perks) {
 				const perkObj = perks.find(p => p.id === perkId);
-				if (perkObj && perkObj.level) {
-					totalCost += perkObj.level; // Perk cost is its level
-				}
+				totalCost += perkCost(perkObj);
 			}
 		}
 		

@@ -30,7 +30,7 @@ This application is created under the Friends of Gaslands program. Gaslands is Â
 
 To develop Gaslands Garage, you'll need:
 
-- [Node.js](https://nodejs.org/) (v16 or newer)
+- [Node.js](https://nodejs.org/) (v20 or newer)
 - [pnpm](https://pnpm.io/) for package management
 - A modern web browser (Chrome, Firefox, Edge, or Safari)
 - Basic understanding of TypeScript, Svelte, and web development

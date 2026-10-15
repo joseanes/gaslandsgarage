@@ -149,6 +149,56 @@ describe('Validation Check Functions', () => {
       
       expect(reports[0].errors).toContain('Invalid perk: Perk 5 is not available for Rutherford');
     });
+
+    it('should allow class perks that match the sponsor perk classes', () => {
+      const team = createTestTeam();
+      team.sponsor = {
+        ...team.sponsor,
+        perks: [],
+        perksClasses: ['BADASS', 'MILITARY']
+      };
+      team.vehicles[0].perks = [
+        { id: 'powder_keg', name: 'Powder Keg', sponsor: '', class: 'badass', text: '', cost: 1 }
+      ];
+
+      const reports = createTestReports();
+      sponsorPerkCheck(team, reports);
+
+      expect(reports[0].errors).toEqual([]);
+    });
+
+    it('should reject class perks outside the sponsor perk classes', () => {
+      const team = createTestTeam();
+      team.sponsor = {
+        ...team.sponsor,
+        perks: ['powder_keg'],
+        perksClasses: ['BADASS']
+      };
+      team.vehicles[0].perks = [
+        { id: 'battlehammer', name: 'Battlehammer', sponsor: '', class: 'aggression', text: '', cost: 4 }
+      ];
+
+      const reports = createTestReports();
+      sponsorPerkCheck(team, reports);
+
+      expect(reports[0].errors).toContain('Invalid perk: Battlehammer is not available for Rutherford');
+    });
+
+    it('should not throw when the sponsor has no perk id list', () => {
+      const team = createTestTeam();
+      team.sponsor = {
+        ...team.sponsor,
+        perks: undefined,
+        perksClasses: ['speed']
+      };
+      team.vehicles[0].perks = [
+        { id: 'slippery', name: 'Slippery', sponsor: '', class: 'Speed', text: '', cost: 2 }
+      ];
+
+      const reports = createTestReports();
+      expect(() => sponsorPerkCheck(team, reports)).not.toThrow();
+      expect(reports[0].errors).toEqual([]);
+    });
   });
 
   describe('runAllChecks', () => {
