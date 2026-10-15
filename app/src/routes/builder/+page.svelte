@@ -22,17 +22,15 @@
 	import { perkCost } from '$lib/validate/calc';
 	import type { Draft, Validation } from '$lib/validate/model';
 	import { encodeDraft, decodeDraft } from '$lib/draft/io';
+	import { normalizeIncomingDraft, withUpgradePerks } from '$lib/draft/importTeam';
 	import { goto } from '$app/navigation';
 	import { draftToDataURL } from '$lib/draft/qr';
 	import Auth from '$lib/components/Auth.svelte';
 import SettingsMenu from '$lib/components/SettingsMenu.svelte';
 	import VehicleCard from '$lib/components/VehicleCard.svelte';
-	import Coach from '$lib/components/Coach.svelte';
 	import Tooltip from '$lib/components/Tooltip.svelte';
-	// Import print functions - we alias printTeam to avoid name collision with local function
-	import { printTeam as printServiceFunc, printTeamDashboard } from '$lib/components/printing/PrintService';
 	import { user, signInWithGoogle } from '$lib/firebase';
-import { getUserSettings, saveUserSettings, DEFAULT_SETTINGS } from '$lib/services/settings';
+import { getUserSettings, saveUserSettings, DEFAULT_SETTINGS, type UserSettings } from '$lib/services/settings';
 import { saveTeam, getUserTeams } from '$lib/services/team';
 	import { onMount } from 'svelte';
 	import { fade } from 'svelte/transition';
@@ -170,7 +168,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 
 
 
-	function calculateUsedBuildSlots(vehicle) {
+	function calculateUsedBuildSlots(vehicle: Veh) {
 		let totalSlots = 0;
 		
 		// Calculate slots used by weapons
@@ -733,7 +731,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 	}
 
 	// Calculate max hull points including modifiers from upgrades and perks
-	function calculateMaxHull(vehicle): number {
+	function calculateMaxHull(vehicle: Veh): number {
 		const vehicleType = vehicleTypes.find(vt => vt.id === vehicle.type);
 		if (!vehicleType) return 0;
 
@@ -764,7 +762,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 	}
 
 	// Calculate handling with modifiers from upgrades
-	function calculateHandling(vehicle): number {
+	function calculateHandling(vehicle: Veh): number {
 		const vehicleType = vehicleTypes.find(vt => vt.id === vehicle.type);
 		if (!vehicleType) return 0;
 
@@ -782,7 +780,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 	}
 
 	// Calculate max gear with modifiers from upgrades
-	function calculateMaxGear(vehicle): number {
+	function calculateMaxGear(vehicle: Veh): number {
 		const vehicleType = vehicleTypes.find(vt => vt.id === vehicle.type);
 		if (!vehicleType) return 0;
 
@@ -800,7 +798,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 	}
 
 	// Calculate crew with modifiers from upgrades
-	function calculateCrew(vehicle): number {
+	function calculateCrew(vehicle: Veh): number {
 		const vehicleType = vehicleTypes.find(vt => vt.id === vehicle.type);
 		if (!vehicleType) return 0;
 
@@ -818,7 +816,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		return Math.max(0, crew);
 	}
 
-	function calculateTotalAttackDice(vehicle): number {
+	function calculateTotalAttackDice(vehicle: Veh): number {
 		if (!vehicle || !vehicle.weapons || vehicle.weapons.length === 0) return 0;
 
 		let totalAttackDice = 0;
@@ -876,7 +874,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 	$: if (showSettingsModal) {
 		setTimeout(() => {
 			const modal = document.querySelector('.settings-modal-content');
-			if (modal) {
+			if (modal instanceof HTMLElement) {
 				if (darkMode) {
 					modal.style.backgroundColor = '#1f2937';
 				} else {
@@ -891,15 +889,17 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 	
 	// Add click outside handler for the share menu
 	onMount(() => {
-		const handleClickOutside = (event) => {
+		const handleClickOutside = (event: Event) => {
+			const target = event.target;
+			if (!(target instanceof Node)) return;
 			const shareMenuButton = document.querySelector('.share-menu-trigger');
 			const shareMenu = document.querySelector('.share-menu-dropdown');
 			
 			if (showShareMenu && 
 				shareMenuButton && 
 				shareMenu && 
-				!shareMenuButton.contains(event.target) && 
-				!shareMenu.contains(event.target)) {
+				!shareMenuButton.contains(target) && 
+				!shareMenu.contains(target)) {
 				showShareMenu = false;
 			}
 		};
@@ -915,38 +915,24 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 						enableSponsorships = result.settings.enableSponsorships;
 						includeAdvanced = result.settings.includeAdvanced;
 						darkMode = result.settings.darkMode;
-						hasRules = result.settings.hasRules ?? DEFAULT_SETTINGS.hasRules;
+						hasRules = result.settings.hasRules ?? DEFAULT_SETTINGS.hasRules ?? false;
 
 						// Initialize new settings with defaults if not present
-						showTeamSummary = result.settings.showTeamSummary !== undefined
-							? result.settings.showTeamSummary
-							: DEFAULT_SETTINGS.showTeamSummary;
+						showTeamSummary = result.settings.showTeamSummary ?? DEFAULT_SETTINGS.showTeamSummary ?? true;
 
-						showGaslandsMath = result.settings.showGaslandsMath !== undefined
-							? result.settings.showGaslandsMath
-							: DEFAULT_SETTINGS.showGaslandsMath;
+						showGaslandsMath = result.settings.showGaslandsMath ?? DEFAULT_SETTINGS.showGaslandsMath ?? true;
 
 						// Initialize player map settings
-						showOnPlayersMap = result.settings.showOnPlayersMap !== undefined
-							? result.settings.showOnPlayersMap
-							: DEFAULT_SETTINGS.showOnPlayersMap;
+						showOnPlayersMap = result.settings.showOnPlayersMap ?? DEFAULT_SETTINGS.showOnPlayersMap ?? false;
 
-						allowContactFromPlayers = result.settings.allowContactFromPlayers !== undefined
-							? result.settings.allowContactFromPlayers
-							: DEFAULT_SETTINGS.allowContactFromPlayers;
+						allowContactFromPlayers = result.settings.allowContactFromPlayers ?? DEFAULT_SETTINGS.allowContactFromPlayers ?? false;
 
-						location = result.settings.location !== undefined
-							? result.settings.location
-							: DEFAULT_SETTINGS.location;
+						location = result.settings.location ?? DEFAULT_SETTINGS.location ?? '';
 
-							// Initialize experimental features and updates settings
-							showExperimentalFeatures = result.settings.showExperimentalFeatures !== undefined
-								? result.settings.showExperimentalFeatures
-								: DEFAULT_SETTINGS.showExperimentalFeatures;
+						// Initialize experimental features and updates settings
+						showExperimentalFeatures = result.settings.showExperimentalFeatures ?? DEFAULT_SETTINGS.showExperimentalFeatures ?? false;
 
-							receiveUpdates = result.settings.receiveUpdates !== undefined
-								? result.settings.receiveUpdates
-								: DEFAULT_SETTINGS.receiveUpdates;
+						receiveUpdates = result.settings.receiveUpdates ?? DEFAULT_SETTINGS.receiveUpdates ?? false;
 					}
 				} catch (error) {
 					console.error("Error loading settings:", error);
@@ -970,7 +956,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 	let playMode = false;
 
 	// Function to check if user has acknowledged owning the rules
-	function checkRulesAcknowledgment(action) {
+	function checkRulesAcknowledgment(action: string) {
 		if (hasRules) {
 			return true;
 		} else {
@@ -1124,9 +1110,10 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 
 	// Save settings to Firebase when they change
 	// SIMPLE FUNCTION TO SAVE SETTINGS TO FIREBASE
-	async function saveSettingsToFirebase(settings) {
-		console.log("[Builder] saveSettingsToFirebase called with:", settings);
-		console.log("[Builder] printStyle:", settings.printStyle);
+	async function saveSettingsToFirebase(settings: UserSettings | Record<string, unknown>) {
+		const userSettings = settings as unknown as UserSettings;
+		console.log("[Builder] saveSettingsToFirebase called with:", userSettings);
+		console.log("[Builder] printStyle:", userSettings.printStyle);
 		
 		if (!$user) {
 			console.log("[Builder] No user logged in, cannot save to Firebase");
@@ -1134,7 +1121,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		}
 		
 		try {
-			await saveUserSettings(settings);
+			await saveUserSettings(userSettings);
 			console.log("[Builder] Settings saved to Firebase successfully");
 		} catch (error) {
 			console.error("[Builder] Error saving to Firebase:", error);
@@ -1362,11 +1349,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 				}),
 				// Include vehicle rules for special rules descriptions
 				vehicleRules: vehicleRules
-			})),
-			// Add print settings
-			showEquipmentDescriptions: showEquipmentDescriptions,
-			showPerkDescriptions: showPerkDescriptions,
-			showSpecialRules: showSpecialRules
+			}))
 		};
 
 		// Last chance to update print settings from localStorage if they've changed
@@ -1409,12 +1392,14 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		try {
 			console.log("[printTeam] --- DEBUG ---");
 			console.log("[printTeam] Current printStyle value:", printStyle);
-			console.log("[printTeam] Settings menu printStyle:", document.getElementById('print-style-dashboard')?.checked ? 'dashboard' : 'not-dashboard');
+			const dashboardStyleInput = document.getElementById('print-style-dashboard');
+			console.log("[printTeam] Settings menu printStyle:", dashboardStyleInput instanceof HTMLInputElement && dashboardStyleInput.checked ? 'dashboard' : 'not-dashboard');
 			console.log("[printTeam] enhancedDraft.printStyle:", enhancedDraft.printStyle);
 			console.log("[printTeam] typeof enhancedDraft.printStyle:", typeof enhancedDraft.printStyle);
 			console.log("[printTeam] --- END DEBUG ---");
 			
-			// Use the proper print function based on style
+			// Load the print service on demand so it stays out of the initial bundle
+			const { printTeam: printServiceFunc, printTeamDashboard } = await import('$lib/components/printing/PrintService');
 			const finalPrintStyle = printStyle || enhancedDraft.printStyle || 'classic';
 			if (finalPrintStyle === 'dashboard' || finalPrintStyle.includes('dashboard')) {
 				console.log("[printTeam] Using dedicated dashboard print function");
@@ -1443,7 +1428,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		console.log('[importBuild] Import modal shown:', showImportModal);
 	}
 
-	function openSettings(tab = 'general') {
+	function openSettings(tab: string = 'general') {
 		console.log(`[openSettings] Opening settings modal with tab: ${tab}`);
 		activeSettingsTab = tab;
 		showSettingsModal = true;
@@ -1455,35 +1440,43 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		if (typeof window !== 'undefined') {
 			// Set up a custom event listener for menu commands
 			// Listen for custom team loading events
-			document.addEventListener('gaslands-load-team-data', (event) => {
-				console.log('[Event] Received gaslands-load-team-data event with full team data:', event.detail);
+			document.addEventListener('gaslands-load-team-data', (event: Event) => {
+				if (!(event instanceof CustomEvent)) return;
+				const detail = event.detail as {
+					sponsor?: string;
+					teamName?: string;
+					vehicles?: Veh[];
+					maxCans?: number;
+					darkMode?: boolean;
+				};
+				console.log('[Event] Received gaslands-load-team-data event with full team data:', detail);
 				
-				if (event.detail) {
+				if (detail) {
 					if (window.importDraftFn) {
 						console.log('[Event] Using window.importDraftFn to load team');
-						window.importDraftFn(event.detail);
+						window.importDraftFn(detail);
 					} else {
 						console.log('[Event] importDraftFn not available, setting team data manually');
 						try {
 							// Set team properties directly
-							if (event.detail.sponsor) {
-								sponsorId = event.detail.sponsor;
+							if (detail.sponsor) {
+								sponsorId = detail.sponsor;
 							}
 							
-							if (event.detail.teamName) {
-								teamName = event.detail.teamName;
+							if (detail.teamName) {
+								teamName = detail.teamName;
 								// Also update window.teamName for cross-component access
 								if (typeof window !== 'undefined') {
-									console.log("Setting window.teamName from event:", event.detail.teamName);
-									window.teamName = event.detail.teamName;
+									console.log("Setting window.teamName from event:", detail.teamName);
+									window.teamName = detail.teamName;
 								}
 							}
 							
-							if (Array.isArray(event.detail.vehicles)) {
+							if (Array.isArray(detail.vehicles)) {
 								// Process vehicles with additional logging for debugging
-								const processedVehicles = event.detail.vehicles.map(v => {
+								const processedVehicles = detail.vehicles.map((v: Veh) => {
 									// Create a safe vehicle object with all required arrays
-									const safeVehicle = {
+									const safeVehicle: Veh = {
 										...v,
 										weapons: Array.isArray(v.weapons) ? [...v.weapons] : [],
 										upgrades: Array.isArray(v.upgrades) ? [...v.upgrades] : [],
@@ -1499,7 +1492,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 									
 									// Add any perks from upgrades
 									const allPerks = [...safeVehicle.perks];
-									safeVehicle.upgrades.forEach(upgradeId => {
+									safeVehicle.upgrades.forEach((upgradeId: string) => {
 										const upgradeObj = upgrades.find(u => u.id === upgradeId);
 										if (upgradeObj && upgradeObj.perks && Array.isArray(upgradeObj.perks)) {
 											upgradeObj.perks.forEach(perkId => {
@@ -1521,13 +1514,13 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 							}
 							
 							// Update maxCans if specified
-							if (event.detail.maxCans && typeof event.detail.maxCans === 'number') {
-								maxCans = event.detail.maxCans;
+							if (detail.maxCans && typeof detail.maxCans === 'number') {
+								maxCans = detail.maxCans;
 							}
 							
 							// Update dark mode if specified
-							if (typeof event.detail.darkMode === 'boolean') {
-								darkMode = event.detail.darkMode;
+							if (typeof detail.darkMode === 'boolean') {
+								darkMode = detail.darkMode;
 								if (darkMode) {
 									document.documentElement.classList.add('dark-mode');
 								} else {
@@ -1548,7 +1541,8 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			});
 			
 			// Also listen on window for backup
-			window.addEventListener('gaslands-team-loaded', (event) => {
+			window.addEventListener('gaslands-team-loaded', (event: Event) => {
+				if (!(event instanceof CustomEvent)) return;
 				console.log('[Event] Received gaslands-team-loaded window event:', event.detail);
 				if (event.detail && !window.importDraftFn) {
 					// Try to reload the page with the team data stored in localStorage
@@ -1577,18 +1571,20 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			});
 			
 			// Normal menu action listener
-			window.addEventListener('gaslands-menu-action', (event) => {
-				console.log('[Event] Received gaslands-menu-action event:', event.detail);
-				const { action } = event.detail || {};
+			window.addEventListener('gaslands-menu-action', (event: Event) => {
+				if (!(event instanceof CustomEvent)) return;
+				const detail = (event.detail ?? {}) as { action?: string; draft?: unknown; tab?: string };
+				console.log('[Event] Received gaslands-menu-action event:', detail);
+				const { action } = detail;
 				
 				if (action === 'importBuild') {
 					console.log('[Event] Showing import modal from event');
 					showImportModal = true;
-				} else if (action === 'importDraft' && event.detail.draft) {
+				} else if (action === 'importDraft' && detail.draft) {
 					console.log('[Event] Importing draft from event');
 					// Call importDraftFn directly with the draft data
 					if (window.importDraftFn) {
-						window.importDraftFn(event.detail.draft);
+						window.importDraftFn(detail.draft);
 					}
 				} else if (action === 'generateQRCode') {
 					console.log('[Event] Showing QR modal from event');
@@ -1597,8 +1593,8 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 					console.log('[Event] Printing team from event');
 					printWithRulesCheck();
 				} else if (action === 'openSettings') {
-					console.log('[Event] Opening settings from event with tab:', event.detail.tab || 'general');
-					openSettings(event.detail.tab || 'general');
+					console.log('[Event] Opening settings from event with tab:', detail.tab || 'general');
+					openSettings(detail.tab || 'general');
 				}
 			});
 			
@@ -1643,7 +1639,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 				console.log("Opening settings tab from URL parameter:", tabToOpen);
 				// Use setTimeout to ensure DOM is fully loaded
 				setTimeout(() => {
-					openSettings(tabToOpen);
+					openSettings(tabToOpen ?? 'general');
 					// Clean up URL to prevent reopening on refresh
 					window.history.replaceState({}, document.title, window.location.pathname);
 				}, 100);
@@ -1729,122 +1725,12 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			};
 			window.importDraftFn = (draft) => {
 				console.log("importDraftFn called with:", JSON.stringify(draft, null, 2));
-				
-				// Clear the current state to make sure we don't mix old and new data
-				if (draft) {
-					try {
-						// Make sure we have valid draft data
-						let draftData = draft;
-						
-						// If draft is wrapped in a teamData property, unwrap it
-						if (draft.teamData && typeof draft.teamData === 'object') {
-							console.log("Found nested teamData, using that instead");
-							draftData = draft.teamData;
-						}
-						
-						// Handle the case where we have sponsorId instead of sponsor (backward compatibility)
-						if (draftData && draftData.sponsorId && typeof draftData.sponsor === 'undefined') {
-							console.log("Found sponsorId instead of sponsor, normalizing");
-							draftData.sponsor = draftData.sponsorId;
-						}
-						
-						console.log("Draft structure check:", {
-							sponsorExists: draftData && (typeof draftData.sponsor !== "undefined" || typeof draftData.sponsorId !== "undefined"),
-							vehiclesExists: draftData && Array.isArray(draftData.vehicles),
-							vehiclesLength: draftData && draftData.vehicles ? draftData.vehicles.length : "N/A"
-						});
-						
-						// Ensure draft has all required properties
-						if (typeof draftData.sponsor === 'undefined' && typeof draftData.sponsorId === 'undefined') {
-							console.error("Missing sponsor in draft data");
-							return;
-						}
-						
-						// If we only have sponsorId, use that as sponsor
-						if (typeof draftData.sponsor === 'undefined' && typeof draftData.sponsorId !== 'undefined') {
-							draftData.sponsor = draftData.sponsorId;
-						}
-						
-						if (!Array.isArray(draftData.vehicles)) {
-							console.error("Vehicles is not an array in draft data");
-							return;
-						}
-						
-						// Set sponsor ID
-						sponsorId = draftData.sponsor;
-						
-						// Process imported vehicles to ensure they have all required properties
-						const processedVehicles = draftData.vehicles.map(vehicle => {
-							console.log("Processing vehicle:", vehicle);
-							
-							// Make sure the vehicle has all required arrays
-							const safeVehicle = {
-								...vehicle,
-								weapons: Array.isArray(vehicle.weapons) ? [...vehicle.weapons] : [],
-								upgrades: Array.isArray(vehicle.upgrades) ? [...vehicle.upgrades] : [],
-								perks: Array.isArray(vehicle.perks) ? [...vehicle.perks] : []
-							};
-							
-							// Start with the vehicle's explicit perks
-							const allPerks = [...safeVehicle.perks];
-							
-							// Add any perks from the vehicle's upgrades
-							safeVehicle.upgrades.forEach(upgradeId => {
-								const upgradeObj = upgrades.find(u => u.id === upgradeId);
-								if (upgradeObj && upgradeObj.perks && Array.isArray(upgradeObj.perks)) {
-									upgradeObj.perks.forEach(perkId => {
-										if (!allPerks.includes(perkId)) {
-											allPerks.push(perkId);
-										}
-									});
-								}
-							});
-							
-							// Log what we're loading for debugging
-							console.log(`Loaded vehicle ${safeVehicle.id} with:
-								- Weapons: ${safeVehicle.weapons.join(', ')}
-								- Upgrades: ${safeVehicle.upgrades.join(', ')}
-								- Perks: ${allPerks.join(', ')}`);
-							
-							// Return the vehicle with possibly updated perks
-							return {
-								...safeVehicle,
-								perks: allPerks
-							};
-						});
-						
-						vehicles = processedVehicles;
-
-					// Import team name if available
-					if (draftData.teamName) {
-						teamName = draftData.teamName;
-						// Also update window.teamName for cross-component access
-						if (typeof window !== 'undefined') {
-							console.log("Setting window.teamName from draft data:", draftData.teamName);
-							window.teamName = draftData.teamName;
-						}
+				try {
+					if (!applyImportedDraft(draft)) {
+						console.error("Could not import draft", draft);
 					}
-
-					// Import maxCans if available
-					if (draftData.maxCans) {
-						maxCans = draftData.maxCans;
-					}
-
-					// Import darkMode if available
-					if (draftData.darkMode !== undefined) {
-						darkMode = draftData.darkMode;
-					}
-					
-					// Calculate and update totalCans after loading the team
-					totalCans = calculateTotalCansDirectly();
-					
-					// Run validation to make sure everything is properly updated
-					validateSponsorRestrictions();
-					
-					// Close the try block
-					} catch (error) {
-						console.error("Error importing draft:", error);
-					}
+				} catch (error) {
+					console.error("Error importing draft:", error);
 				}
 			};
 		}
@@ -1884,77 +1770,33 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		};
 	});
 
+	function applyImportedDraft(raw: unknown) {
+		const draft = normalizeIncomingDraft(raw);
+		if (!draft) return false;
+
+		sponsorId = draft.sponsor;
+		vehicles = withUpgradePerks(draft.vehicles as Veh[], upgrades).map((vehicle) => ({
+			...vehicle,
+			upgrades: vehicle.upgrades ?? []
+		}));
+
+		if (draft.teamName) {
+			teamName = draft.teamName;
+			if (typeof window !== 'undefined') {
+				window.teamName = draft.teamName;
+			}
+		}
+		if (draft.maxCans) maxCans = draft.maxCans;
+		if (draft.darkMode !== undefined) darkMode = draft.darkMode;
+
+		totalCans = calculateTotalCansDirectly();
+		validateSponsorRestrictions();
+		return true;
+	}
+
 	function importDraftString() {
 		const draft = decodeDraft(importString.trim());
-		if (draft) {
-			sponsorId = draft.sponsor;
-			
-			// Process imported vehicles to ensure they have all required properties and perks from upgrades are included
-			const processedVehicles = (draft.vehicles as Veh[]).map(vehicle => {
-				// Make sure the vehicle has all required arrays
-				const safeVehicle = {
-					...vehicle,
-					weapons: Array.isArray(vehicle.weapons) ? [...vehicle.weapons] : [],
-					upgrades: Array.isArray(vehicle.upgrades) ? [...vehicle.upgrades] : [],
-					perks: Array.isArray(vehicle.perks) ? [...vehicle.perks] : []
-				};
-				
-				// Start with the vehicle's explicit perks
-				const allPerks = [...safeVehicle.perks];
-				
-				// Add any perks from the vehicle's upgrades
-				safeVehicle.upgrades.forEach(upgradeId => {
-					const upgradeObj = upgrades.find(u => u.id === upgradeId);
-					if (upgradeObj && upgradeObj.perks && Array.isArray(upgradeObj.perks)) {
-						upgradeObj.perks.forEach(perkId => {
-							if (!allPerks.includes(perkId)) {
-								allPerks.push(perkId);
-							}
-						});
-					}
-				});
-				
-				// Log what we're loading for debugging
-				console.log(`Loaded vehicle ${safeVehicle.id} with:
-					- Weapons: ${safeVehicle.weapons.join(', ')}
-					- Upgrades: ${safeVehicle.upgrades.join(', ')}
-					- Perks: ${allPerks.join(', ')}`);
-				
-				// Return the vehicle with possibly updated perks
-				return {
-					...safeVehicle,
-					perks: allPerks
-				};
-			});
-			
-			vehicles = processedVehicles;
-			
-			// Import team name if available
-			if (draft.teamName) {
-				teamName = draft.teamName;
-				// Also update window.teamName for cross-component access
-				if (typeof window !== 'undefined') {
-					console.log("Setting window.teamName from draft:", draft.teamName);
-					window.teamName = draft.teamName;
-				}
-			}
-			
-			// Import maxCans if available
-			if (draft.maxCans) {
-				maxCans = draft.maxCans;
-			}
-			
-			// Import darkMode if available
-			if (draft.darkMode !== undefined) {
-				darkMode = draft.darkMode;
-			}
-			
-			// Calculate and update totalCans after loading the team
-			totalCans = calculateTotalCansDirectly();
-			
-			// Run validation to make sure everything is properly updated
-			validateSponsorRestrictions();
-			
+		if (draft && applyImportedDraft(draft)) {
 			importString = '';
 			showImportModal = false;
 		} else {
@@ -1975,36 +1817,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		const encoded = url.searchParams.get('draft');
 		if (encoded) {
 			const imported = decodeDraft(encoded);
-			if (imported) {
-				sponsorId = imported.sponsor;
-				vehicles = imported.vehicles as Veh[];
-				
-				// Import team name if available
-				if (imported.teamName) {
-					teamName = imported.teamName;
-					// Also update window.teamName for cross-component access
-					if (typeof window !== 'undefined') {
-						console.log("Setting window.teamName from imported team:", imported.teamName);
-						window.teamName = imported.teamName;
-					}
-				}
-				
-				// Import maxCans if available
-				if (imported.maxCans) {
-					maxCans = imported.maxCans;
-				}
-				
-				// Import darkMode if available
-				if (imported.darkMode !== undefined) {
-					darkMode = imported.darkMode;
-				}
-				
-				// Calculate and update totalCans after loading the team
-				totalCans = calculateTotalCansDirectly();
-				
-				// Run validation to make sure everything is properly updated
-				validateSponsorRestrictions();
-			}
+			if (imported) applyImportedDraft(imported);
 		}
 	}
 	
@@ -2026,7 +1839,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 	 * 
 	 * This approach is part of our solution to prevent infinite update loops
 	 */
-	function handleSponsorChange(newSponsorId) {
+	function handleSponsorChange(newSponsorId: string) {
 		if (newSponsorId && newSponsorId !== lastSponsorId) {
 			console.log(`Sponsor changed to: ${newSponsorId}`);
 			lastSponsorId = newSponsorId;
@@ -2066,8 +1879,9 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			pendingSponsorValidation = false;
 			
 			// Hide validation notice
-			if (document.getElementById('validation-notice')) {
-				document.getElementById('validation-notice').style.display = 'none';
+			const validationNotice = document.getElementById('validation-notice');
+			if (validationNotice instanceof HTMLElement) {
+				validationNotice.style.display = 'none';
 			}
 			
 			// Return whether changes were made
@@ -2228,7 +2042,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 	}
 
 	// Function to handle vehicle type changes
-	function handleVehicleTypeChange(vehicleId, newVehicleType) {
+	function handleVehicleTypeChange(vehicleId: string, newVehicleType: string) {
 		// Find the vehicle to update
 		const vehicle = vehicles.find(v => v.id === vehicleId);
 		if (vehicle) {
@@ -2240,7 +2054,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 	}
 
 	// Function to calculate vehicle cost for immediate updates
-	function calculateVehicleCost(vehicle) {
+	function calculateVehicleCost(vehicle: Veh) {
 		// Get the base cost from the vehicle type
 		const vehicleType = vehicleTypes.find(vt => vt.id === vehicle.type);
 		if (!vehicleType) return 0;
@@ -2379,7 +2193,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		const updatedVehicles = vehicles.map(vehicle => {
 			let vehicleChanged = false;
 			let vehicleTrailerRemoved = false;
-			const invalidUpgrades = [];
+			const invalidUpgrades: string[] = [];
 			
 			// Check for electrical upgrades if sponsor doesn't support electrical
 			if (currentSponsorObj && !currentSponsorObj.electrical) {
@@ -2739,14 +2553,17 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			if (p.sponsor && p.sponsor.trim() !== '') return false;
 			
 			// If sponsor has perksClasses and the perk has a class, do normal filtering
-			if (currentSponsor?.perksClasses?.length > 0 && p.class) {
-				return currentSponsor.perksClasses.some(
-					sponsorClass => sponsorClass.toLowerCase() === p.class.toLowerCase()
+			const perkClasses = currentSponsor?.perksClasses;
+			const perkClass = p.class;
+			if (perkClasses && perkClasses.length > 0 && perkClass) {
+				return perkClasses.some(
+					sponsorClass => sponsorClass.toLowerCase() === perkClass.toLowerCase()
 				);
 			}
 			// If sponsor has perks directly specified, include perks matching those IDs
-			else if (currentSponsor?.perks?.length > 0) {
-				return currentSponsor.perks.includes(p.id);
+			const sponsorPerks = currentSponsor?.perks;
+			if (sponsorPerks && sponsorPerks.length > 0) {
+				return sponsorPerks.includes(p.id);
 			}
 			// No matching criteria found
 			return false;
@@ -2755,7 +2572,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 
 	// Filter sponsor-specific perks (based on sponsor field)
 	// Map of sponsor ID aliases for backward compatibility with perks.json
-	const sponsorIdAliases = {
+	const sponsorIdAliases: Record<string, string[]> = {
 		'rus': ['rusty'], // Rusty's Bootleggers
 		'thp': ['highway_patrol', 'highway patrol'], // The Highway Patrol
 		'war': ['warden'], // The Warden
@@ -3064,7 +2881,10 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 								id="sponsor-select"
 								on:change={(e) => {
 									// Use our manual sponsor change handler to prevent infinite loops
-									handleSponsorChange(e.target.value);
+									const target = e.currentTarget;
+									if (target instanceof HTMLSelectElement) {
+										handleSponsorChange(target.value);
+									}
 								}}
 								value={sponsorId}
 								class="form-select h-[32px] flex items-center"
@@ -3082,8 +2902,6 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 							</select>
 						</div>
 						
-						{#if vehicles.length > 0}
-						{/if}
 					</div>
 
 					{#if classPerksList.length > 0}
@@ -3138,7 +2956,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 						<button
 							type="button"
 							class="text-sm text-blue-600 hover:text-blue-800 font-medium underline"
-							on:click={openSettings}
+							on:click={() => openSettings()}
 						>
 							Open Settings
 						</button>
@@ -3207,14 +3025,8 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 						{upgrades}
 						{perks}
 						{vehicleRules}
-						{currentSponsor}
 						collapsed={collapsedVehicles.has(vehicle.id)}
 						{playMode}
-						{validation}
-						{showTeamSummary}
-						{showGaslandsMath}
-						{totalCans}
-						{maxCans}
 						{filteredWeapons}
 						{filteredUpgrades}
 						filteredTrailerUpgrades={filteredTrailerUpgrades}
@@ -3319,7 +3131,9 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 {/if}
 <!-- Gaslands Coach -->
 {#if showGaslandsMath && vehicles.length > 0}
-    <Coach 
+  {#await import('$lib/components/Coach.svelte') then coachModule}
+    {@const Coach = coachModule.default}
+    <Coach
         {vehicles}
         {vehicleTypes}
         {weapons}
@@ -3330,6 +3144,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
         {totalCans}
         {maxCans}
     />
+  {/await}
 {/if}
 
 <!-- QR Modal -->
@@ -3611,7 +3426,23 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
             <button
               class="py-2 px-4 bg-amber-500 text-white rounded hover:bg-amber-600 transition-colors"
               on:click={() => {
-                saveSettingsToFirebase();
+                saveSettingsToFirebase({
+                  enableSponsorships,
+                  includeAdvanced,
+                  darkMode,
+                  printStyle,
+                  showTeamSummary,
+                  showGaslandsMath,
+                  hasRules,
+                  showExperimentalFeatures,
+                  receiveUpdates,
+                  showOnPlayersMap,
+                  allowContactFromPlayers,
+                  location,
+                  showEquipmentDescriptions,
+                  showPerkDescriptions,
+                  showSpecialRules
+                });
                 showRulesAcknowledgmentModal = false;
                 if (rulesModalAction === 'playMode' && hasRules) {
                   playMode = !playMode;
