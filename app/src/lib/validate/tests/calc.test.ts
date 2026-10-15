@@ -57,7 +57,7 @@ describe('Calculation Functions', () => {
   });
 
   describe('perkCost', () => {
-    it('should return the level of a perk as its cost', () => {
+    it('should fall back to level when the rules cost field is missing', () => {
       const perk1 = mockPerks[0]; // Perk 1 with level 1
       expect(perkCost(perk1)).toBe(1);
       
@@ -66,6 +66,19 @@ describe('Calculation Functions', () => {
       
       const perk3 = mockPerks[2]; // Perk 3 with level 3
       expect(perkCost(perk3)).toBe(3);
+    });
+
+    it('should prefer the cost field from the rules data over level', () => {
+      expect(perkCost({ ...mockPerks[0], cost: 5, level: 1 })).toBe(5);
+    });
+
+    it('should treat an explicit cost of 0 as free', () => {
+      expect(perkCost({ ...mockPerks[0], cost: 0, level: 3 })).toBe(0);
+    });
+
+    it('should return 0 when cost and level are both missing', () => {
+      expect(perkCost({ ...mockPerks[0], cost: undefined, level: undefined })).toBe(0);
+      expect(perkCost(undefined)).toBe(0);
     });
   });
 });

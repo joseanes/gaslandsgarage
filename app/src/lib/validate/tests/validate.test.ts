@@ -39,6 +39,24 @@ describe('validateDraft', () => {
     console.error = vi.fn();
   });
 
+  it('should count a perk cost field instead of producing NaN when level is absent', async () => {
+    const draft = {
+      ...mockValidDraft,
+      vehicles: [
+        {
+          ...mockValidDraft.vehicles[0],
+          perks: ['perk_costed']
+        }
+      ]
+    };
+
+    const validation = await validateDraft(draft);
+
+    // 10 (car) + 2 (machine gun) + 2 (armor) + 4 (perk cost) = 18
+    expect(validation.cans).toBe(18);
+    expect(Number.isNaN(validation.cans)).toBe(false);
+  });
+
   it('should validate a valid draft without errors', async () => {
     const validation = await validateDraft(mockValidDraft);
     

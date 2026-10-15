@@ -19,7 +19,7 @@
   export let allowContactFromPlayers = false;
   export let location = '';
   export let receiveUpdates = false;
-  export let saveSettingsToFirebase = () => {};
+  export let saveSettingsToFirebase: (settings: Record<string, unknown>) => void | Promise<void> = async () => {};
   
   // Local state - either 'general' or 'print'
   export let activeSettingsTab = 'general';
@@ -28,12 +28,8 @@
   $: if (showSettingsModal) {
     setTimeout(() => {
       const modal = document.querySelector('.settings-modal-content');
-      if (modal) {
-        if (darkMode) {
-          modal.style.backgroundColor = '#1f2937';
-        } else {
-          modal.style.backgroundColor = 'white';
-        }
+      if (modal instanceof HTMLElement) {
+        modal.style.backgroundColor = darkMode ? '#1f2937' : 'white';
       }
     }, 0);
   }

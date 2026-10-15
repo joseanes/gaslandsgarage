@@ -1,0 +1,55 @@
+name: Test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        working-directory: app
+        run: pnpm check
+
+      - name: Unit tests
+        working-directory: app
+        run: pnpm test
+
+      - name: Build app
+        working-directory: app
+        run: |
+          pnpm build 2>&1 | tee /tmp/app-build.log
+          if grep -E 'h-\[1\.5rem\]|empty block' /tmp/app-build.log; then
+            echo "Build still reports empty-block or invalid height warnings"
+            exit 1
+          fi
+
+      - name: Install Playwright browser
+        working-directory: app
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: UI tests
+        working-directory: app
+        run: pnpm test:e2e
+
+      - name: Build infra
+        working-directory: infra
+        run: pnpm build
+
+      - name: Infra tests
+        working-directory: infra
+        run: pnpm test

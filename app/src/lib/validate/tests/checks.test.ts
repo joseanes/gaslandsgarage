@@ -108,10 +108,7 @@ describe('Validation Check Functions', () => {
 
     it('should handle vehicle with no upgrade slots specified', () => {
       const team = createTestTeam();
-      const noSlotsVehicle = { ...team.vehicles[0].class };
-      delete noSlotsVehicle.upgradeSlots; // Remove upgrade slots property
-      
-      team.vehicles[0].class = noSlotsVehicle;
+      team.vehicles[0].class = { ...team.vehicles[0].class, upgradeSlots: 0 };
       team.vehicles[0].upgrades = [
         { ...mockUpgrades[0] } // Trying to add an upgrade
       ];
@@ -148,6 +145,56 @@ describe('Validation Check Functions', () => {
       sponsorPerkCheck(team, reports);
       
       expect(reports[0].errors).toContain('Invalid perk: Perk 5 is not available for Rutherford');
+    });
+
+    it('should allow class perks that match the sponsor perk classes', () => {
+      const team = createTestTeam();
+      team.sponsor = {
+        ...team.sponsor,
+        perks: [],
+        perksClasses: ['BADASS', 'MILITARY']
+      };
+      team.vehicles[0].perks = [
+        { id: 'powder_keg', name: 'Powder Keg', sponsor: '', class: 'badass', text: '', cost: 1, electrical: false }
+      ];
+
+      const reports = createTestReports();
+      sponsorPerkCheck(team, reports);
+
+      expect(reports[0].errors).toEqual([]);
+    });
+
+    it('should reject class perks outside the sponsor perk classes', () => {
+      const team = createTestTeam();
+      team.sponsor = {
+        ...team.sponsor,
+        perks: ['powder_keg'],
+        perksClasses: ['BADASS']
+      };
+      team.vehicles[0].perks = [
+        { id: 'battlehammer', name: 'Battlehammer', sponsor: '', class: 'aggression', text: '', cost: 4, electrical: false }
+      ];
+
+      const reports = createTestReports();
+      sponsorPerkCheck(team, reports);
+
+      expect(reports[0].errors).toContain('Invalid perk: Battlehammer is not available for Rutherford');
+    });
+
+    it('should not throw when the sponsor has no perk id list', () => {
+      const team = createTestTeam();
+      team.sponsor = {
+        ...team.sponsor,
+        perks: undefined,
+        perksClasses: ['speed']
+      };
+      team.vehicles[0].perks = [
+        { id: 'slippery', name: 'Slippery', sponsor: '', class: 'Speed', text: '', cost: 2, electrical: false }
+      ];
+
+      const reports = createTestReports();
+      expect(() => sponsorPerkCheck(team, reports)).not.toThrow();
+      expect(reports[0].errors).toEqual([]);
     });
   });
 

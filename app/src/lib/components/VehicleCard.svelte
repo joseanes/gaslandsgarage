@@ -3,19 +3,13 @@
     import { createEventDispatcher } from 'svelte';
     import BuildHeader from './BuildHeader.svelte';
     import { loadWeaponSpecialRules } from '$lib/rules/loadRules';
+    import { perkCost } from '$lib/validate/calc';
     import Tooltip from './Tooltip.svelte';
+    import type { Perk, Upgrade, Vehicle, VehicleRule, Weapon } from '$lib/rules/types';
     import { resolveById } from '$lib/validate/v3/lookup';
     import { v3BuildSlots } from '$lib/validate/v3/slots';
 
-    const dispatch = createEventDispatcher();
-
-    // Load weapon special rules
-    const weaponSpecialRules = loadWeaponSpecialRules();
-    
-    // Props are declared below, don't try to use them here
-    
-    // Props
-    export let vehicle: {
+    interface TeamVehicle {
         id: string;
         type: string;
         name: string;
@@ -28,25 +22,42 @@
         secondPerkClass?: string;
         turretWeaponId?: string;
         upgradeFacings?: Record<string, string>;
-    };
+    }
+
+    interface VehicleValidationReport {
+        vehicleId?: string;
+        cans?: number;
+        errors?: string[];
+        warnings?: string[];
+    }
+
+    const dispatch = createEventDispatcher();
+
+    // Load weapon special rules
+    const weaponSpecialRules = loadWeaponSpecialRules();
+    
+    // Props are declared below, don't try to use them here
+    
+    // Props
+    export let vehicle: TeamVehicle;
 
     // Initialize weaponFacings if undefined
     if (!vehicle.weaponFacings) {
         vehicle.weaponFacings = {};
     }
-    export let vehicleTypes = [];
-    export let weapons = [];
-    export let upgrades = [];
-    export let perks = [];
-    export let vehicleRules = [];
+    export let vehicleTypes: Vehicle[] = [];
+    export let weapons: Weapon[] = [];
+    export let upgrades: Upgrade[] = [];
+    export let perks: Perk[] = [];
+    export let vehicleRules: VehicleRule[] = [];
     export let collapsed: boolean = false;
     export let playMode: boolean = false;
-    export let validationReport = null;
+    export let validationReport: VehicleValidationReport | null = null;
     export let hazardCount: number = 0;
-    export let filteredWeapons = [];
-    export let filteredUpgrades = [];
-    export let filteredTrailerUpgrades = [];
-    export let filteredPerks = [];
+    export let filteredWeapons: Weapon[] = [];
+    export let filteredUpgrades: Upgrade[] = [];
+    export let filteredTrailerUpgrades: Upgrade[] = [];
+    export let filteredPerks: Perk[] = [];
     export let usedBuildSlots: number = 0;
     export let rulesVersion: 2 | 3 = 2;
     export let drivers: { id: string; name: string; perkClass: string; ability: string }[] = [];
@@ -78,27 +89,27 @@
         dispatch('toggleCollapse', { id: vehicle.id });
     }
     
-    function addWeapon(weaponId, facing = 'front') {
+    function addWeapon(weaponId: string, facing = 'front') {
         dispatch('addWeapon', { vehicleId: vehicle.id, weaponId, facing });
     }
     
-    function removeWeapon(index) {
+    function removeWeapon(index: number) {
         dispatch('removeWeapon', { vehicleId: vehicle.id, weaponIndex: index });
     }
     
-    function addUpgrade(upgradeId) {
+    function addUpgrade(upgradeId: string) {
         dispatch('addUpgrade', { vehicleId: vehicle.id, upgradeId });
     }
     
-    function removeUpgrade(index) {
+    function removeUpgrade(index: number) {
         dispatch('removeUpgrade', { vehicleId: vehicle.id, upgradeIndex: index });
     }
     
-    function addPerk(perkId) {
+    function addPerk(perkId: string) {
         dispatch('addPerk', { vehicleId: vehicle.id, perkId });
     }
     
-    function removePerk(index) {
+    function removePerk(index: number) {
         dispatch('removePerk', { vehicleId: vehicle.id, perkIndex: index });
     }
     
@@ -122,10 +133,10 @@
     $: vehicleCost = calculateVehicleCost(vehicle, vehicleType);
     $: resolvedWeapons = (vehicle.weapons || [])
         .map((id) => resolveById(weapons, id))
-        .filter((entry) => !!entry);
+        .filter((entry): entry is Weapon => !!entry);
     $: resolvedUpgrades = (vehicle.upgrades || [])
         .map((id) => upgrades.find((entry) => entry.id === id))
-        .filter((entry) => !!entry);
+        .filter((entry): entry is Upgrade => !!entry);
     $: v3Slots = rulesVersion === 3 && vehicleType
         ? v3BuildSlots(vehicleType, resolvedWeapons, resolvedUpgrades)
         : null;
@@ -135,7 +146,7 @@
     // Force reactivity for weapon/upgrade changes
     $: { vehicle.weapons; vehicle.upgrades; rulesVersion; usedBuildSlots = v3Slots ? v3Slots.used : calculateUsedBuildSlots(vehicle); }
 
-    function patch(partial) {
+    function patch(partial: Partial<TeamVehicle>) {
         dispatch('patch', { vehicleId: vehicle.id, patch: partial });
     }
 
@@ -153,7 +164,7 @@
         return perkClasses.find((entry) => entry.id === id)?.name || id;
     }
 
-    function calculateVehicleCost(vehicle, vehicleType) {
+    function calculateVehicleCost(vehicle: TeamVehicle, vehicleType: Vehicle | undefined) {
         // Use the passed vehicleType to avoid redundant lookups
         if (!vehicleType) return 0;
 
@@ -164,8 +175,8 @@
             // Use a more robust method to find the base weapon ID
             // Try increasingly longer potential base IDs until we find a match
             const parts = weaponInstanceId.split('_');
-            let baseWeaponId = null;
-            let weaponObj = null;
+            let baseWeaponId = '';
+            let weaponObj: Weapon | undefined;
             
             // Handle case with no underscores
             if (parts.length === 1) {
@@ -205,10 +216,7 @@
         // Add perk costs
         for (const perkId of vehicle.perks) {
             const perkObj = perks.find(p => p.id === perkId);
-            if (perkObj) {
-                // v2 perks are priced by level; v3 perks carry an explicit cost
-                totalCost += rulesVersion === 3 ? (perkObj.cost || perkObj.level || 0) : (perkObj.cost || 1);
-            }
+            totalCost += perkCost(perkObj);
         }
 
         if (rulesVersion === 3 && vehicle.upgrades?.includes('turret_mount') && vehicle.turretWeaponId) {
@@ -219,7 +227,7 @@
         return totalCost;
     }
 
-    function calculateUsedBuildSlots(vehicle) {
+    function calculateUsedBuildSlots(vehicle: TeamVehicle) {
         let totalSlots = 0;
 
         // Calculate slots used by weapons
@@ -227,8 +235,8 @@
             // Use a more robust method to find the base weapon ID
             // Try increasingly longer potential base IDs until we find a match
             const parts = weaponInstanceId.split('_');
-            let baseWeaponId = null;
-            let weaponObj = null;
+            let baseWeaponId = '';
+            let weaponObj: Weapon | undefined;
             
             // Handle case with no underscores
             if (parts.length === 1) {
@@ -394,8 +402,8 @@
             // Use a more robust method to find the base weapon ID
             // Try increasingly longer potential base IDs until we find a match
             const parts = weaponInstanceId.split('_');
-            let baseWeaponId = null;
-            let weaponObj = null;
+            let baseWeaponId = '';
+            let weaponObj: Weapon | undefined;
             
             // Handle case with no underscores
             if (parts.length === 1) {
@@ -1006,7 +1014,7 @@
                                             <div class="flex items-center">
                                                 
                                                 <select
-                                                    bind:value={vehicle.weaponFacings[weaponId]}
+                                                    bind:value={vehicle.weaponFacings![weaponId]}
                                                     class="text-xs py-0.5 px-1 border border-stone-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-stone-800 dark:text-gray-200"
                                                     disabled={weaponObj?.facing === 'fixed' || isCrewFired || playMode}
                                                     aria-label="Weapon facing direction"
@@ -1031,7 +1039,7 @@
                                         {/if}
                                     {/if}
                                     <button
-                                        class="py-0.25 px-2 flex items-center justify-center rounded transition-colors flex-shrink-0 text-xs h-[1.5rem] red-button"
+                                        class="py-0.25 px-2 flex items-center justify-center rounded transition-colors flex-shrink-0 text-xs h-6 compact-remove red-button"
                                         on:click={() => removeWeapon(i)}
                                         aria-label="Remove weapon"
                                     >
@@ -1201,7 +1209,7 @@
                                 {/if}
                             </div>
                             <button
-                                class="py-0.25 px-2 flex items-center justify-center rounded transition-colors ml-2 flex-shrink-0 text-xs h-[1.5rem] red-button"
+                                class="py-0.25 px-2 flex items-center justify-center rounded transition-colors ml-2 flex-shrink-0 text-xs h-6 compact-remove red-button"
                                 on:click={() => removeUpgrade(i)}
                                 aria-label="Remove upgrade"
                             >
@@ -1300,7 +1308,7 @@
                                 {/if}
                             </div>
                             <button
-                                class="py-0.25 px-2 flex items-center justify-center rounded transition-colors ml-2 flex-shrink-0 text-xs h-[1.5rem] red-button"
+                                class="py-0.25 px-2 flex items-center justify-center rounded transition-colors ml-2 flex-shrink-0 text-xs h-6 compact-remove red-button"
                                 on:click={() => {
                                     // Find index in the main upgrades array and remove
                                     const mainIndex = vehicle.upgrades.findIndex(id => id === trailerUpgradeId);
@@ -1377,7 +1385,7 @@
                                 <span class="text-stone-500 dark:text-gray-400 text-xs block mt-1">{@html perk?.text || ""}</span>
                             </div>
                             <button
-                                class="py-0.25 px-2 flex items-center justify-center rounded transition-colors ml-2 flex-shrink-0 text-xs h-[1.5rem] red-button"
+                                class="py-0.25 px-2 flex items-center justify-center rounded transition-colors ml-2 flex-shrink-0 text-xs h-6 compact-remove red-button"
                                 on:click={() => removePerk(i)}
                                 aria-label="Remove perk"
                             >

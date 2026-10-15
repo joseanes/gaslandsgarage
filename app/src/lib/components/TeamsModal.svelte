@@ -5,17 +5,48 @@
   import { fade } from 'svelte/transition';
   import Auth from './Auth.svelte';
 
+  type ScrapedVehicle = {
+    id: string;
+    type: string;
+    name: string;
+    weapons: string[];
+    upgrades: string[];
+    perks: string[];
+  };
+
+  type SaveDraft = {
+    sponsor: string;
+    sponsorId?: string;
+    vehicles: ScrapedVehicle[];
+    teamName: string;
+    maxCans: number;
+    darkMode: boolean;
+    rulesVersion?: 2 | 3;
+  };
+
+  type SavedTeam = {
+    id: string;
+    teamName?: string;
+    updatedAt?: string;
+    teamData?: {
+      sponsor?: string;
+      sponsorId?: string;
+      vehicles?: unknown;
+      teamName?: string;
+    };
+  };
+
   export let showModal = false;
-  export let currentDraft;
-  export let importDraft;
+  export let currentDraft: { teamName?: string } | null = null;
+  export let importDraft: (draft: unknown) => void;
   
   // Add explicit teamName prop that can be passed directly
   export let teamName = ""; // Allow direct passing of team name
   
   let isLoading = false;
   let isSaving = false;
-  let deletingTeamId = null;
-  let userTeams = [];
+  let deletingTeamId: string | null = null;
+  let userTeams: SavedTeam[] = [];
   let newTeamName = '';
   
   // Load user's teams when the modal opens
@@ -54,7 +85,7 @@
             try {
               // Try specific selector for the team name input
               const teamNameInput = document.querySelector('input[aria-label="Team Name"]');
-              if (teamNameInput && teamNameInput.value) {
+              if (teamNameInput instanceof HTMLInputElement && teamNameInput.value) {
                 newTeamName = teamNameInput.value;
                 console.log("Got team name from DOM input field (aria-label):", newTeamName);
                 // Also set window.teamName for future reference
@@ -63,7 +94,7 @@
               // Fallback to placeholder attribute
               else {
                 const altTeamNameInput = document.querySelector('input[placeholder*="Team Name"]');
-                if (altTeamNameInput && altTeamNameInput.value) {
+                if (altTeamNameInput instanceof HTMLInputElement && altTeamNameInput.value) {
                   newTeamName = altTeamNameInput.value;
                   console.log("Got team name from DOM input field (placeholder):", newTeamName);
                   // Also set window.teamName for future reference
@@ -101,9 +132,11 @@
     // When the modal is opened, immediately try to get the team name from the input field 
     if (typeof document !== 'undefined') {
       // Add event listener for the custom team name update event
-      const handleTeamNameUpdate = (event) => {
-        if (event.detail && event.detail.teamName) {
-          newTeamName = event.detail.teamName;
+      const handleTeamNameUpdate = (event: Event) => {
+        if (!(event instanceof CustomEvent)) return;
+        const detail = event.detail as { teamName?: string };
+        if (detail.teamName) {
+          newTeamName = detail.teamName;
           console.log("Got team name from custom event:", newTeamName);
         }
       };
@@ -117,7 +150,7 @@
           try {
             // Look specifically for the team name input
             const teamNameInput = document.querySelector('input[aria-label="Team Name"]');
-            if (teamNameInput && teamNameInput.value && teamNameInput.value.trim() !== '') {
+            if (teamNameInput instanceof HTMLInputElement && teamNameInput.value && teamNameInput.value.trim() !== '') {
               newTeamName = teamNameInput.value;
               console.log("onMount: Got team name directly from DOM input:", newTeamName);
             } else {
@@ -147,7 +180,7 @@
     const result = await getUserTeams();
     isLoading = false;
 
-    if (result.success) {
+    if (result.success && result.teams) {
       userTeams = result.teams;
       console.log(`Successfully loaded ${result.teams.length} teams`);
     } else {
@@ -181,7 +214,7 @@
     }
 
     try {
-      let draftToSave = null;
+      let draftToSave: SaveDraft | null = null;
       
       // Try to create a team with the most detailed data we can extract from the DOM
       // This is the most reliable approach that doesn't depend on any window functions
@@ -204,13 +237,13 @@
         }
         
         // Try to extract detailed vehicle information from the cards
-        const vehicles = [];
+        const vehicles: ScrapedVehicle[] = [];
         
         // Process each vehicle card to extract as much info as possible
         vehicleCards.forEach((card, index) => {
           try {
             // Basic vehicle structure
-            const vehicle = {
+            const vehicle: ScrapedVehicle = {
               id: `vehicle_${index + 1}`,
               type: 'car', // Default
               weapons: [],
@@ -244,6 +277,7 @@
             const weaponElements = card.querySelectorAll('.weapon-item, [data-weapon-id], [data-item-type="weapon"], .weapon');
             if (weaponElements && weaponElements.length > 0) {
               for (const element of weaponElements) {
+                if (!(element instanceof HTMLElement)) continue;
                 // Try to extract weapon ID from data attribute, class, or id
                 const weaponId = element.dataset.weaponId || 
                                  element.dataset.itemId || 
@@ -262,6 +296,7 @@
             const upgradeElements = card.querySelectorAll('.upgrade-item, [data-upgrade-id], [data-item-type="upgrade"], .upgrade');
             if (upgradeElements && upgradeElements.length > 0) {
               for (const element of upgradeElements) {
+                if (!(element instanceof HTMLElement)) continue;
                 // Try to extract upgrade ID from data attribute, class, or id
                 const upgradeId = element.dataset.upgradeId || 
                                   element.dataset.itemId || 
@@ -280,6 +315,7 @@
             const perkElements = card.querySelectorAll('.perk-item, [data-perk-id], [data-item-type="perk"], .perk');
             if (perkElements && perkElements.length > 0) {
               for (const element of perkElements) {
+                if (!(element instanceof HTMLElement)) continue;
                 // Try to extract perk ID from data attribute, class, or id
                 const perkId = element.dataset.perkId || 
                                element.dataset.itemId || 
@@ -301,6 +337,7 @@
                 // Check all children for data attributes or IDs
                 const items = list.querySelectorAll('*');
                 for (const item of items) {
+                  if (!(item instanceof HTMLElement)) continue;
                   // Try to determine the item type
                   let itemType = 'unknown';
                   if (list.classList.contains('weapon-list') || item.classList.contains('weapon')) {
@@ -353,6 +390,7 @@
         let maxCans = 50; // Default
         const maxCansInputs = document.querySelectorAll('input[type="number"]');
         for (const input of maxCansInputs) {
+          if (!(input instanceof HTMLInputElement)) continue;
           if (input.id && input.id.toLowerCase().includes('cans')) {
             maxCans = parseInt(input.value) || 50;
             break;
@@ -495,7 +533,7 @@
   }
   
   // Load selected team
-  function loadTeam(team) {
+  function loadTeam(team: SavedTeam) {
     console.log('loadTeam called with:', team);
     console.log('teamData structure:', JSON.stringify(team.teamData, null, 2));
     
@@ -668,7 +706,7 @@
   }
   
   // Delete team
-  async function removeTeam(teamId) {
+  async function removeTeam(teamId: string) {
     if (!confirm('Are you sure you want to delete this team?')) return;
     
     deletingTeamId = teamId;
@@ -783,7 +821,7 @@
                   <div class="mb-3 sm:mb-0">
                     <div class="font-medium text-stone-800 dark:text-white text-lg">{team.teamName}</div>
                     <div class="text-sm text-stone-500 dark:text-gray-400">
-                      {new Date(team.updatedAt).toLocaleDateString()}
+                      {new Date(team.updatedAt ?? '').toLocaleDateString()}
                     </div>
                   </div>
                   <div class="flex space-x-3">

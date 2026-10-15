@@ -10,7 +10,11 @@ export const Sponsor = z.object({
   color: z.string().regex(/^#([0-9a-f]{3}){1,2}$/i),
   source: z.string().optional(),
   electrical: z.boolean().optional().default(false), // Whether sponsor can use electrical items
-  trailer: z.boolean().optional().default(false) // Whether sponsor allows trailers
+  trailer: z.boolean().optional().default(false), // Whether sponsor allows trailers
+  /** 3rd Edition sponsor requirement, shown under the sponsor select. */
+  requirement: z.string().optional(),
+  perkName: z.string().optional(),
+  perkText: z.string().optional()
 });
 
 export type Sponsor = z.infer<typeof Sponsor>;
@@ -30,7 +34,14 @@ export const Vehicle = z.object({
   source: z.string().optional(),
   handling: z.number().int().optional(),
   specialRules: z.string().optional(),
-  sponsors: z.string().array().optional() // Array of sponsor IDs that can use this vehicle
+  sponsors: z.string().array().optional(), // Array of sponsor IDs that can use this vehicle
+  /** 3rd Edition armour points. Absent on Refuelled vehicles. */
+  armour: z.number().int().nonnegative().optional(),
+  rarity: z.enum(['common', 'rare']).optional(),
+  utility: z.boolean().optional(),
+  turretFree: z.boolean().optional(),
+  airborne: z.boolean().optional(),
+  mob: z.boolean().optional()
 });
 export type Vehicle = z.infer<typeof Vehicle>;
 
@@ -50,7 +61,9 @@ export const Weapon = z.object({
   specialRules: z.string().optional(),
   dropped: z.boolean().optional(),
   source: z.string().optional(),
-  electrical: z.boolean().optional().default(false) // New field for electrical weapons
+  electrical: z.boolean().optional().default(false), // New field for electrical weapons
+  /** 3rd Edition weapon group. Dropped weapons are not mounted on a turret. */
+  category: z.enum(['common', 'hand', 'dropped', 'rare']).optional()
 });
 
 export type Weapon = z.infer<typeof Weapon>;
@@ -75,7 +88,20 @@ export const Upgrade = z.object({
   hull: z.number().int().optional(), // Hull points modifier
   gear: z.number().int().optional(), // Max gear modifier
   handling: z.number().int().optional(), // Handling modifier
-  crew: z.number().int().optional() // Crew modifier
+  crew: z.number().int().optional(), // Crew modifier
+  limited_sponsor: z.string().optional(),
+  crewModifier: z.number().optional(),
+  hullModifier: z.number().optional(),
+  handlingModifier: z.number().optional(),
+  gearModifier: z.number().optional(),
+  /** 3rd Edition: this upgrade must be assigned a front, side, or rear facing. */
+  needsFacing: z.boolean().optional(),
+  isTrailer: z.boolean().optional(),
+  bonusSlots: z.number().int().optional(),
+  minWeight: z.number().int().optional(),
+  weight: z.number().int().optional(),
+  armour: z.number().int().optional(),
+  addsWeaponCost: z.boolean().optional()
 });
 
 export type Upgrade = z.infer<typeof Upgrade>;

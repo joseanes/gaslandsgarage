@@ -16,7 +16,7 @@ import {
   SecurityPolicyProtocol,
   SSLMethod
 } from 'aws-cdk-lib/aws-cloudfront';
-import { S3Origin } from 'aws-cdk-lib/aws-cloudfront-origins';
+import { S3StaticWebsiteOrigin } from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import { RemovalPolicy } from 'aws-cdk-lib';
 import * as route53 from 'aws-cdk-lib/aws-route53';
@@ -109,7 +109,7 @@ export class GarageStack extends cdk.Stack {
        ---------------------------------------------------------------- */
     const cdn = new Distribution(this, 'CDN', {
       defaultBehavior: {
-        origin: new S3Origin(siteBucket),
+        origin: new S3StaticWebsiteOrigin(siteBucket),
         viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         allowedMethods: AllowedMethods.ALLOW_GET_HEAD_OPTIONS,
       },

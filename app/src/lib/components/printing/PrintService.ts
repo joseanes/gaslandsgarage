@@ -1,6 +1,42 @@
 // PrintService.ts - Comprehensive printing functionality
-import type { Draft } from '$lib/draft/io';
+import type { Draft } from '$lib/validate/model';
 import { draftToDataURL } from '$lib/draft/qr';
+
+/** Team draft plus the extra fields the print window already receives. */
+interface PrintDraft extends Omit<Draft, 'sponsor' | 'vehicles'> {
+  sponsor?: Draft['sponsor'] | { id?: string; name?: string; description?: string } | null;
+  vehicles: any[];
+  totalCans?: number;
+  sponsorName?: string;
+  sponsorPerks?: any;
+  qrCode?: string | null;
+  showEquipmentDescriptions?: boolean;
+  showPerkDescriptions?: boolean;
+  showSpecialRules?: boolean;
+  printStyle?: string;
+}
+
+interface PrintHtmlData {
+  teamName: string;
+  totalCans: number;
+  maxCans: number;
+  sponsorName: string;
+  vehicles: any[];
+  sponsor?: any;
+  sponsorPerks?: any;
+  qrCode?: string | null;
+  showEquipmentDescriptions?: boolean;
+  showPerkDescriptions?: boolean;
+  showSpecialRules?: boolean;
+  printStyle?: string;
+  weaponAndUpgradeSpecialRules?: any[];
+}
+
+function printSponsorId(sponsor: PrintDraft['sponsor']): string {
+  if (typeof sponsor === 'string') return sponsor;
+  if (sponsor && sponsor.id) return sponsor.id;
+  return 'no_sponsor';
+}
 
 /**
  * Checks if rules acknowledgment is required before printing
@@ -38,7 +74,7 @@ function calculateTotalCost(vehicles: any[]): number {
     
     // Add weapon costs
     if (vehicle.weaponObjects && Array.isArray(vehicle.weaponObjects)) {
-      vehicle.weaponObjects.forEach(weapon => {
+      vehicle.weaponObjects.forEach((weapon: any) => {
         if (weapon && weapon.cost) {
           totalCost += weapon.cost;
         }
@@ -47,7 +83,7 @@ function calculateTotalCost(vehicles: any[]): number {
     
     // Add upgrade costs
     if (vehicle.upgradeObjects && Array.isArray(vehicle.upgradeObjects)) {
-      vehicle.upgradeObjects.forEach(upgrade => {
+      vehicle.upgradeObjects.forEach((upgrade: any) => {
         if (upgrade && upgrade.cost) {
           totalCost += upgrade.cost;
         }
@@ -56,7 +92,7 @@ function calculateTotalCost(vehicles: any[]): number {
     
     // Add perk costs
     if (vehicle.perkObjects && Array.isArray(vehicle.perkObjects)) {
-      vehicle.perkObjects.forEach(perk => {
+      vehicle.perkObjects.forEach((perk: any) => {
         if (perk && perk.cost) {
           totalCost += perk.cost;
         }
@@ -70,21 +106,7 @@ function calculateTotalCost(vehicles: any[]): number {
 /**
  * Generates a printable HTML string from the data
  */
-export function generatePrintableHtml(data: {
-  teamName: string;
-  totalCans: number;
-  maxCans: number;
-  sponsorName: string;
-  vehicles: any[];
-  sponsor?: any;
-  sponsorPerks?: any;
-  qrCode?: string;
-  showEquipmentDescriptions?: boolean;
-  showPerkDescriptions?: boolean;
-  showSpecialRules?: boolean;
-  printStyle?: string;
-  weaponAndUpgradeSpecialRules?: any[];
-}): string {
+export function generatePrintableHtml(data: PrintHtmlData): string {
   const {
     teamName,
     totalCans,
@@ -196,7 +218,7 @@ export function generatePrintableHtml(data: {
     }
 
     // Filter to only show purchased perks
-    const filteredClassPerksList = classPerksList.filter(perk => {
+    const filteredClassPerksList = classPerksList.filter((perk: any) => {
       if (perk) {
         // Try to match by id
         if (perk.id && purchasedPerkClasses.has(perk.id)) {
@@ -265,7 +287,7 @@ export function generatePrintableHtml(data: {
     vehicles.forEach(vehicle => {
       // Add weapons
       if (vehicle.weaponObjects && Array.isArray(vehicle.weaponObjects)) {
-        vehicle.weaponObjects.forEach(weapon => {
+        vehicle.weaponObjects.forEach((weapon: any) => {
           if (weapon && weapon.id && weapon.name) {
             allWeapons.set(weapon.id, weapon);
           }
@@ -274,7 +296,7 @@ export function generatePrintableHtml(data: {
 
       // Add upgrades
       if (vehicle.upgradeObjects && Array.isArray(vehicle.upgradeObjects)) {
-        vehicle.upgradeObjects.forEach(upgrade => {
+        vehicle.upgradeObjects.forEach((upgrade: any) => {
           if (upgrade && upgrade.id && upgrade.name) {
             allUpgrades.set(upgrade.id, upgrade);
           }
@@ -755,19 +777,7 @@ export function generatePrintableHtml(data: {
 /**
  * Generate HTML for Dashboard style printing
  */
-function generateDashboardHtml(data: {
-  teamName: string;
-  totalCans: number;
-  maxCans: number;
-  sponsorName: string;
-  vehicles: any[];
-  sponsor?: any;
-  sponsorPerks?: any;
-  qrCode?: string;
-  showEquipmentDescriptions?: boolean;
-  showPerkDescriptions?: boolean;
-  showSpecialRules?: boolean;
-}): string {
+function generateDashboardHtml(data: PrintHtmlData): string {
   const {
     teamName,
     totalCans,
@@ -1213,7 +1223,7 @@ function generateVehicleDashboardHtml(vehicle: any, sponsorName: string): string
       
       // Add weapon costs
       if (Array.isArray(vehicle.weaponObjects)) {
-        vehicle.weaponObjects.forEach(weapon => {
+        vehicle.weaponObjects.forEach((weapon: any) => {
           if (weapon && weapon.cost) {
             cost += weapon.cost;
           }
@@ -1222,7 +1232,7 @@ function generateVehicleDashboardHtml(vehicle: any, sponsorName: string): string
       
       // Add upgrade costs
       if (Array.isArray(vehicle.upgradeObjects)) {
-        vehicle.upgradeObjects.forEach(upgrade => {
+        vehicle.upgradeObjects.forEach((upgrade: any) => {
           if (upgrade && upgrade.cost) {
             cost += upgrade.cost;
           }
@@ -1231,7 +1241,7 @@ function generateVehicleDashboardHtml(vehicle: any, sponsorName: string): string
       
       // Add perk costs
       if (Array.isArray(vehicle.perkObjects)) {
-        vehicle.perkObjects.forEach(perk => {
+        vehicle.perkObjects.forEach((perk: any) => {
           if (perk && perk.cost) {
             cost += perk.cost;
           }
@@ -1256,7 +1266,7 @@ function generateVehicleDashboardHtml(vehicle: any, sponsorName: string): string
     console.log(`Initial crew for ${name}: ${crew}`);
     // Apply upgrade modifiers to all stats
     if (upgradeObjects && Array.isArray(upgradeObjects)) {
-      upgradeObjects.forEach(upgrade => {
+      upgradeObjects.forEach((upgrade: any) => {
         console.log(`Checking upgrade ${upgrade.name} for crew modifiers:`, upgrade);
         // Hull modifiers are commented out because hull was renamed to hullValue and declared as a constant
         /* 
@@ -1292,7 +1302,7 @@ function generateVehicleDashboardHtml(vehicle: any, sponsorName: string): string
     let maxGear = stats.gear || vehicleType.maxGear || 6;
     // Apply gear modifiers from upgrades
     if (upgradeObjects && Array.isArray(upgradeObjects)) {
-      upgradeObjects.forEach(upgrade => {
+      upgradeObjects.forEach((upgrade: any) => {
         // Add gear modifiers
         if (upgrade.gear) {
           maxGear += upgrade.gear;
@@ -1312,7 +1322,7 @@ function generateVehicleDashboardHtml(vehicle: any, sponsorName: string): string
     // Generate weapons table rows
     let weaponsTableHtml = '';
     if (weaponObjects.length > 0) {
-      weaponObjects.forEach(weapon => {
+      weaponObjects.forEach((weapon: any) => {
         // Get weapon details
         const weaponName = weapon.name || 'Unknown Weapon';
         const facing = weapon.facing || 'Front';
@@ -1403,7 +1413,7 @@ function generateVehicleDashboardHtml(vehicle: any, sponsorName: string): string
     // Generate upgrades list
     let upgradesHtml = '';
     if (upgradeObjects.length > 0) {
-      upgradeObjects.forEach(upgrade => {
+      upgradeObjects.forEach((upgrade: any) => {
         const upgradeName = upgrade.name || 'Unknown Upgrade';
         const upgradeRules = upgrade.specialRules || '';
         
@@ -1417,7 +1427,7 @@ function generateVehicleDashboardHtml(vehicle: any, sponsorName: string): string
     // Generate perks table with complete rules
     let perksTableHtml = '';
     if (perkObjects.length > 0) {
-      perkObjects.forEach(perk => {
+      perkObjects.forEach((perk: any) => {
         const perkName = perk.name || 'Unknown Perk';
         // Use text or rules, whichever is available
         const perkText = perk.text || perk.rules || 'No description available.';
@@ -1444,10 +1454,10 @@ function generateVehicleDashboardHtml(vehicle: any, sponsorName: string): string
     // Add any vehicle special rules with readable names
     let specialRulesString = vehicle.specialRules || vehicleType?.specialRules;
     if (specialRulesString) {
-      const rules = specialRulesString.split(',').map(rule => rule.trim());
-      const readableRuleNames = rules.map(ruleId => {
+      const rules = specialRulesString.split(',').map((rule: string) => rule.trim());
+      const readableRuleNames = rules.map((ruleId: string) => {
         // Find the rule details using the id but display the readable ruleName
-        const ruleDetails = vehicle.vehicleRules?.find(r => r.id === ruleId);
+        const ruleDetails = vehicle.vehicleRules?.find((r: any) => r.id === ruleId);
         return ruleDetails?.ruleName || ruleId;
       });
       vehicleTypePerks.push(...readableRuleNames);
@@ -1455,7 +1465,7 @@ function generateVehicleDashboardHtml(vehicle: any, sponsorName: string): string
     
     // Add any team-wide perks like "Thumpermonkey" or "Dynamo"
     if (perkObjects.length > 0) {
-      const teamwidePerkNames = perkObjects.map(p => p.name || '').filter(Boolean);
+      const teamwidePerkNames = perkObjects.map((p: any) => p.name || '').filter(Boolean);
       if (teamwidePerkNames.length > 0) {
         vehicleTypePerks.push(...teamwidePerkNames);
       }
@@ -1536,7 +1546,7 @@ function generateVehicleDashboardHtml(vehicle: any, sponsorName: string): string
     `;
   } catch (error) {
     console.error("[PrintService] Error generating dashboard HTML:", error);
-    return `<div class="dashboard-card">Error generating dashboard: ${error.message}</div>`;
+    return `<div class="dashboard-card">Error generating dashboard: ${error instanceof Error ? error.message : String(error)}</div>`;
   }
 }
 
@@ -1693,7 +1703,7 @@ function generateVehicleCardHtml(vehicle: any): string {
     
     // Apply upgrade modifiers to all stats
     if (upgradeObjects && Array.isArray(upgradeObjects)) {
-      upgradeObjects.forEach(upgrade => {
+      upgradeObjects.forEach((upgrade: any) => {
         // Hull modifiers are commented out because hull was renamed to hullValue and declared as a constant
         /* 
         if (upgrade.hull) {
@@ -1777,7 +1787,7 @@ function generateVehicleCardHtml(vehicle: any): string {
     `;
   } catch (error) {
     console.error("[PrintService] Error generating vehicle card HTML:", error);
-    return `<div class="vehicle-card">Error generating vehicle card: ${error.message}</div>`;
+    return `<div class="vehicle-card">Error generating vehicle card: ${error instanceof Error ? error.message : String(error)}</div>`;
   }
 }
 
@@ -2164,9 +2174,9 @@ function generateVehicleSpecialRulesHtml(vehicles: any[]): string {
     
     if (specialRulesString) {
       // Split the comma-separated rules
-      const rulesArray = specialRulesString.split(',').map(rule => rule.trim());
+      const rulesArray = specialRulesString.split(',').map((rule: string) => rule.trim());
       
-      rulesArray.forEach(ruleName => {
+      rulesArray.forEach((ruleName: string) => {
         if (!specialRulesMap.has(ruleName)) {
           // Find rule description if it exists
           let ruleDescription = 'Description not available';
@@ -2179,12 +2189,12 @@ function generateVehicleSpecialRulesHtml(vehicles: any[]): string {
           
           if (vehicle.vehicleRules && Array.isArray(vehicle.vehicleRules)) {
             // First, try with exact case matching using id
-            ruleDetails = vehicle.vehicleRules.find(r => r.id === ruleName);
+            ruleDetails = vehicle.vehicleRules.find((r: any) => r.id === ruleName);
             console.log(`[DEBUG PrintService] Exact match:`, ruleDetails);
             
             // If not found, try case-insensitive matching using id
             if (!ruleDetails) {
-              ruleDetails = vehicle.vehicleRules.find(r => 
+              ruleDetails = vehicle.vehicleRules.find((r: any) => 
                 r.id && r.id.toLowerCase() === ruleName.toLowerCase()
               );
               console.log(`[DEBUG PrintService] Case-insensitive match:`, ruleDetails);
@@ -2329,19 +2339,7 @@ function generateRosterPerksHtml(vehicles: any[], sponsorPerks: any): string {
 /**
  * Generate HTML for Roster style printing - simple table format
  */
-function generateRosterHtml(data: {
-  teamName: string;
-  totalCans: number;
-  maxCans: number;
-  sponsorName: string;
-  vehicles: any[];
-  sponsor?: any;
-  sponsorPerks?: any;
-  qrCode?: string;
-  showEquipmentDescriptions?: boolean;
-  showPerkDescriptions?: boolean;
-  showSpecialRules?: boolean;
-}): string {
+function generateRosterHtml(data: PrintHtmlData): string {
   const {
     teamName,
     totalCans,
@@ -2425,7 +2423,7 @@ function generateRosterHtml(data: {
         if (rulesText && vehicle.vehicleRules && Array.isArray(vehicle.vehicleRules)) {
           const ruleIds = rulesText.split(',').map(r => r.trim());
           for (const ruleId of ruleIds) {
-            const ruleDetails = vehicle.vehicleRules.find(r => r.id === ruleId);
+            const ruleDetails = vehicle.vehicleRules.find((r: any) => r.id === ruleId);
             if (ruleDetails && ruleDetails.ruleName) {
               rulesList.push(ruleDetails.ruleName);
             } else {
@@ -2453,7 +2451,7 @@ function generateRosterHtml(data: {
           <h4>Weapons</h4>
           <ul class="equipment-list">`;
         
-        weaponObjects.forEach(weapon => {
+        weaponObjects.forEach((weapon: any) => {
           if (weapon) {
             const facing = vehicle.weaponFacings && vehicle.weaponFacings[weapon.id] 
               ? vehicle.weaponFacings[weapon.id] 
@@ -2494,7 +2492,7 @@ function generateRosterHtml(data: {
           <h4>Upgrades</h4>
           <ul class="equipment-list">`;
         
-        upgradeObjects.forEach(upgrade => {
+        upgradeObjects.forEach((upgrade: any) => {
           if (upgrade) {
             vehiclesHtml += `<li>
               <span class="equipment-name">${upgrade.name || 'Unknown Upgrade'}</span>`;
@@ -2526,7 +2524,7 @@ function generateRosterHtml(data: {
           <h4>Perks</h4>
           <ul class="equipment-list">`;
         
-        perkObjects.forEach(perk => {
+        perkObjects.forEach((perk: any) => {
           if (perk) {
             vehiclesHtml += `<li>
               <span class="equipment-name">${perk.name || 'Unknown Perk'}</span>`;
@@ -2795,7 +2793,7 @@ function generateRosterHtml(data: {
 /**
  * Print team in Dashboard style - separate function for clarity
  */
-export async function printTeamDashboard(draft: Draft): Promise<void> {
+export async function printTeamDashboard(draft: PrintDraft): Promise<void> {
   // Validate draft before proceeding
   if (!draft) {
     console.error("[PrintService] Draft is null or undefined in dashboard print");
@@ -2840,7 +2838,7 @@ export async function printTeamDashboard(draft: Draft): Promise<void> {
     }
     
     // Collect data for printing
-    const printData = {
+    const printData: PrintHtmlData = {
       teamName: draft.teamName || 'Gaslands Team',
       totalCans: draft.totalCans || 0,
       maxCans: draft.maxCans || 50,
@@ -2906,20 +2904,21 @@ export async function printTeamDashboard(draft: Draft): Promise<void> {
       }
     }, 1000);
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     console.error("[PrintService] Error in printTeamDashboard:", error);
     console.error("[PrintService] Dashboard error details:", {
-      message: error.message,
-      stack: error.stack,
-      name: error.name,
+      message,
+      stack: error instanceof Error ? error.stack : undefined,
+      name: error instanceof Error ? error.name : undefined,
       typeof_draft: typeof draft,
       draft_keys: draft ? Object.keys(draft) : null,
       vehicles_length: draft?.vehicles?.length
     });
     
     // Provide more specific error messages based on the type of error
-    if (error.message && error.message.includes("qrCode")) {
+    if (message.includes("qrCode")) {
       alert('There was an error generating the QR code. Try again or print without QR codes.');
-    } else if (error.message && error.message.includes("vehicle")) {
+    } else if (message.includes("vehicle")) {
       alert('There was an error processing vehicle data. Please check your team and try again.');
     } else {
       alert('There was an error preparing for printing. Please try again with a different print style.');
@@ -2930,7 +2929,7 @@ export async function printTeamDashboard(draft: Draft): Promise<void> {
 /**
  * Main print function that generates and opens printable content in a new window
  */
-export async function printTeam(printStyle: string, draft: Draft): Promise<void> {
+export async function printTeam(printStyle: string, draft: PrintDraft): Promise<void> {
   // Validate draft before proceeding
   if (!draft) {
     console.error("[PrintService] Draft is null or undefined");
@@ -2986,7 +2985,7 @@ export async function printTeam(printStyle: string, draft: Draft): Promise<void>
 
         // Create a simplified version of the draft to encode with null checks
         const simpleDraft = {
-          sponsor: draft.sponsor?.id || (typeof draft.sponsor === 'string' ? draft.sponsor : 'no_sponsor'),
+          sponsor: printSponsorId(draft.sponsor),
           teamName: draft.teamName || 'Gaslands Team',
           vehicles: draft.vehicles.map(v => ({
             id: v.id,
@@ -3053,11 +3052,9 @@ export async function printTeam(printStyle: string, draft: Draft): Promise<void>
       showEquipmentDescriptions: showEquipmentDescriptions,
       showPerkDescriptions: showPerkDescriptions,
       showSpecialRules: draft.showSpecialRules ?? true,
-      weaponAndUpgradeSpecialRules: draft.weaponAndUpgradeSpecialRules || []
+      weaponAndUpgradeSpecialRules: draft.weaponAndUpgradeSpecialRules || [],
+      printStyle
     };
-    
-    // Make sure printStyle is passed correctly to the data
-    printData.printStyle = printStyle;
     console.log("[PrintService] Using print style for HTML generation:", printStyle);
     console.log("[PrintService] Print data settings:", {
       showEquipmentDescriptions: printData.showEquipmentDescriptions,
@@ -3129,21 +3126,22 @@ export async function printTeam(printStyle: string, draft: Draft): Promise<void>
     }, 1000); // Increased timeout for content loading
     
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     console.error("[PrintService] Error in printTeam:", error);
     console.error("[PrintService] Error details:", {
-      message: error.message,
-      stack: error.stack,
-      name: error.name,
+      message,
+      stack: error instanceof Error ? error.stack : undefined,
+      name: error instanceof Error ? error.name : undefined,
       typeof_draft: typeof draft,
       draft_keys: draft ? Object.keys(draft) : null,
       vehicles_length: draft?.vehicles?.length
     });
     
     // Provide more specific error messages based on the type of error
-    if (error.message && error.message.includes("qrCode")) {
+    if (message.includes("qrCode")) {
       alert('There was an error generating the QR code. You can still print, but without a QR code.');
       // Don't automatically print, let the user use the print button
-    } else if (error.message && error.message.includes("vehicle")) {
+    } else if (message.includes("vehicle")) {
       alert('There was an error processing vehicle data. Please check your team and try again.');
     } else {
       alert('There was an error preparing for printing. Please try again or try a different print style.');
@@ -3230,7 +3228,7 @@ function addPrintButtons(printWindow: Window): void {
  */
 export function printWithRulesCheck(
   printStyle: string,
-  draft: Draft,
+  draft: PrintDraft,
   hasRules: boolean,
   showRulesModal: (action: string) => void
 ): void {
