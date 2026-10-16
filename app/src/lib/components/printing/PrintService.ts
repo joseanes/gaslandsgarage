@@ -30,6 +30,30 @@ interface PrintHtmlData {
   showSpecialRules?: boolean;
   printStyle?: string;
   weaponAndUpgradeSpecialRules?: any[];
+  rulesVersion?: 2 | 3;
+}
+
+function editionFields(vehicle: any, rulesVersion: number | undefined) {
+  if (rulesVersion !== 3) return null;
+  let armour = vehicle?.stats?.armour ?? vehicle?.vehicleType?.armour ?? 0;
+  const upgrades = Array.isArray(vehicle?.upgradeObjects) ? vehicle.upgradeObjects : [];
+  for (const upgrade of upgrades) {
+    if (upgrade && typeof upgrade.armour === 'number') armour += upgrade.armour;
+  }
+  const slots = vehicle?.stats?.buildSlots ?? vehicle?.vehicleType?.buildSlots ?? 0;
+  return {
+    armour,
+    slots,
+    driver: vehicle?.driverSummary || 'No driver',
+    classes: vehicle?.perkClassSummary || 'None'
+  };
+}
+
+function editionSponsorNote(rulesVersion: number | undefined, sponsor: any): string {
+  if (rulesVersion !== 3 || !sponsor || typeof sponsor !== 'object') return '';
+  const requirement = sponsor.requirement ? `<div>Requirement: ${sponsor.requirement}</div>` : '';
+  const perk = sponsor.perkName ? `<div>${sponsor.perkName}: ${sponsor.perkText || ''}</div>` : '';
+  return requirement + perk;
 }
 
 function printSponsorId(sponsor: PrintDraft['sponsor']): string {
@@ -119,7 +143,8 @@ export function generatePrintableHtml(data: PrintHtmlData): string {
     showEquipmentDescriptions = true,
     showPerkDescriptions = true,
     showSpecialRules = true,
-    printStyle = 'classic'
+    printStyle = 'classic',
+    rulesVersion
   } = data;
   
   // Calculate actual total cost if the passed totalCans is 0 or invalid
@@ -164,7 +189,7 @@ export function generatePrintableHtml(data: PrintHtmlData): string {
   if (vehicles && Array.isArray(vehicles)) {
     vehicles.forEach((vehicle, index) => {
       console.log(`[PrintService] Processing vehicle ${index}:`, vehicle);
-      vehicleCardsHtml += generateVehicleCardHtml(vehicle);
+      vehicleCardsHtml += generateVehicleCardHtml(vehicle, rulesVersion);
     });
   } else {
     vehicleCardsHtml = '<div class="vehicle-card">No vehicles found</div>';
@@ -711,6 +736,7 @@ export function generatePrintableHtml(data: PrintHtmlData): string {
       <div class="team-info">
         <div>Total: ${actualTotalCans} / ${maxCans} cans</div>
         <div>Sponsor: ${sponsorName}</div>
+        ${editionSponsorNote(rulesVersion, sponsor)}
       </div>
     </div>
 
@@ -790,7 +816,8 @@ function generateDashboardHtml(data: PrintHtmlData): string {
     showEquipmentDescriptions = true,
     showPerkDescriptions = true,
     showSpecialRules = true,
-    printStyle = 'classic'
+    printStyle = 'classic',
+    rulesVersion
   } = data;
   
   // Calculate actual total cost if the passed totalCans is 0 or invalid
@@ -809,7 +836,7 @@ function generateDashboardHtml(data: PrintHtmlData): string {
   
   if (vehicles && Array.isArray(vehicles)) {
     vehicles.forEach((vehicle, index) => {
-      vehicleDashboardsHtml += generateVehicleDashboardHtml(vehicle, sponsorName);
+      vehicleDashboardsHtml += generateVehicleDashboardHtml(vehicle, sponsorName, rulesVersion);
       
       // Add page break after each vehicle except the last one
       if (index < vehicles.length - 1) {
@@ -1113,6 +1140,7 @@ function generateDashboardHtml(data: PrintHtmlData): string {
       <div>
         <div class="sponsor-name">${sponsorName}</div>
         <div class="sponsor-description">${sponsorDescription}</div>
+        ${editionSponsorNote(rulesVersion, sponsor)}
       </div>
       <div style="text-align: right;">
         <div class="sponsor-name">${actualTotalCans} / ${maxCans} cans</div>
@@ -1203,7 +1231,7 @@ function generateDashboardHtml(data: PrintHtmlData): string {
 /**
  * Generate HTML for a dashboard-style vehicle card
  */
-function generateVehicleDashboardHtml(vehicle: any, sponsorName: string): string {
+function generateVehicleDashboardHtml(vehicle: any, sponsorName: string, rulesVersion?: number): string {
   if (!vehicle) {
     return '<div class="dashboard-card">Error: Invalid vehicle data</div>';
   }
@@ -1508,6 +1536,11 @@ function generateVehicleDashboardHtml(vehicle: any, sponsorName: string): string
             </div>
           </div>
         </div>
+        ${(() => {
+          const edition = editionFields(vehicle, rulesVersion);
+          if (!edition) return '';
+          return `<div class="stat-row"><div class="stat-item">Armour <span>${edition.armour}</span></div><div class="stat-item">Build slots <span>${edition.slots}</span></div><div class="stat-item">Driver <span>${edition.driver}</span></div><div class="stat-item">Perk classes <span>${edition.classes}</span></div></div>`;
+        })()}
       </div>
       
       <table class="dashboard-table">
@@ -1553,7 +1586,7 @@ function generateVehicleDashboardHtml(vehicle: any, sponsorName: string): string
 /**
  * Generate HTML for a vehicle card
  */
-function generateVehicleCardHtml(vehicle: any): string {
+function generateVehicleCardHtml(vehicle: any, rulesVersion?: number): string {
   console.log("[PrintService] Generating HTML for vehicle:", vehicle);
   
   // Check if vehicle data is valid
@@ -1750,6 +1783,11 @@ function generateVehicleCardHtml(vehicle: any): string {
         <div>
           <div class="vehicle-name">${name}</div>
           <div class="vehicle-type">${vehicleTypeName}</div>
+          ${(() => {
+            const edition = editionFields(vehicle, rulesVersion);
+            if (!edition) return '';
+            return `<div class="vehicle-type">Driver: ${edition.driver}</div><div class="vehicle-type">Perk classes: ${edition.classes}</div>`;
+          })()}
         </div>
         <div class="vehicle-cost">${cost} cans</div>
       </div>
@@ -1777,6 +1815,11 @@ function generateVehicleCardHtml(vehicle: any): string {
             <span class="stat-label">Weight</span>
             <span class="stat-value">${weight}</span>
           </div>
+          ${(() => {
+            const edition = editionFields(vehicle, rulesVersion);
+            if (!edition) return '';
+            return `<div class="stat-item"><span class="stat-label">Armour</span><span class="stat-value">${edition.armour}</span></div><div class="stat-item"><span class="stat-label">Build slots</span><span class="stat-value">${edition.slots}</span></div>`;
+          })()}
         </div>
       </div>
       
@@ -2351,7 +2394,8 @@ function generateRosterHtml(data: PrintHtmlData): string {
     qrCode,
     showEquipmentDescriptions = true,
     showPerkDescriptions = true,
-    showSpecialRules = true
+    showSpecialRules = true,
+    rulesVersion
   } = data;
   
   // Calculate actual total cost if the passed totalCans is 0 or invalid
@@ -2405,6 +2449,11 @@ function generateRosterHtml(data: PrintHtmlData): string {
           <div class="stat"><span class="stat-label">Crew</span> ${crew}</div>
           <div class="stat"><span class="stat-label">Hull</span> ${hull}</div>
           <div class="stat"><span class="stat-label">Weight</span> ${weight}</div>
+          ${(() => {
+            const edition = editionFields(vehicle, rulesVersion);
+            if (!edition) return '';
+            return `<div class="stat"><span class="stat-label">Armour</span> ${edition.armour}</div><div class="stat"><span class="stat-label">Build slots</span> ${edition.slots}</div><div class="stat"><span class="stat-label">Driver</span> ${edition.driver}</div><div class="stat"><span class="stat-label">Perk classes</span> ${edition.classes}</div>`;
+          })()}
         </div>`;
         
       // Add Vehicle Rules if available (only rules specific to this vehicle type)
@@ -2765,6 +2814,7 @@ function generateRosterHtml(data: PrintHtmlData): string {
       <h1>${teamName}</h1>
       <div class="team-info">
         <div>Sponsor: ${sponsorName}</div>
+        ${editionSponsorNote(rulesVersion, sponsor)}
         <div>Team Cost: ${actualTotalCans} / ${maxCans} cans</div>
       </div>
     </div>
@@ -2849,7 +2899,8 @@ export async function printTeamDashboard(draft: PrintDraft): Promise<void> {
       qrCode: draft.qrCode,
       showEquipmentDescriptions: draft.showEquipmentDescriptions ?? true,
       showPerkDescriptions: draft.showPerkDescriptions ?? true,
-      printStyle: 'dashboard' // Force dashboard style
+      printStyle: 'dashboard', // Force dashboard style
+      rulesVersion: draft.rulesVersion
     };
     
     // Generate dashboard HTML
@@ -3053,7 +3104,8 @@ export async function printTeam(printStyle: string, draft: PrintDraft): Promise<
       showPerkDescriptions: showPerkDescriptions,
       showSpecialRules: draft.showSpecialRules ?? true,
       weaponAndUpgradeSpecialRules: draft.weaponAndUpgradeSpecialRules || [],
-      printStyle
+      printStyle,
+      rulesVersion: draft.rulesVersion
     };
     console.log("[PrintService] Using print style for HTML generation:", printStyle);
     console.log("[PrintService] Print data settings:", {

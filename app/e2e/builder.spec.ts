@@ -62,6 +62,63 @@ test('pasted build codes and ?draft= links both merge upgrade perks', async ({ p
 	await expectImportedTrailer(page);
 });
 
+test('switching rules versions clears the team, and cancelling keeps it', async ({ page }) => {
+	await page.goto('/builder');
+	await page.getByRole('button', { name: '+ Add Vehicle' }).click();
+	await expect(page.getByLabel('Vehicle Name')).toBeVisible();
+
+	page.once('dialog', (dialog) => dialog.dismiss());
+	await page.locator('#rules-version').selectOption('3');
+	await expect(page.locator('#rules-version')).toHaveValue('2');
+	await expect(page.getByLabel('Vehicle Name')).toBeVisible();
+	await expect(page.getByText('first bike is free')).toHaveCount(0);
+
+	page.once('dialog', (dialog) => dialog.accept());
+	await page.locator('#rules-version').selectOption('3');
+	await expect(page.locator('#rules-version')).toHaveValue('3');
+	await expect(page.getByText('Your team has no vehicles yet')).toBeVisible();
+	await expect(page.getByText('0/2 toward the limit')).toBeVisible();
+	await expect(page.locator('#sponsor-select')).toHaveValue('no_sponsor');
+
+	await page.reload();
+	await expect(page.locator('#rules-version')).toHaveValue('2');
+	await expect(page.getByText('Your team has no vehicles yet')).toBeVisible();
+});
+
+test('a shared draft does not come back after the rules version changes', async ({ page }) => {
+	await page.goto('/builder');
+	await page.locator('#sponsor-select').selectOption('rutherford');
+	await page.getByRole('button', { name: '+ Add Vehicle' }).click();
+	page.once('dialog', (dialog) => dialog.accept());
+	await page.getByRole('button', { name: 'Teams' }).click();
+	await page.getByRole('button', { name: 'Share Link' }).click();
+	await expect(page).toHaveURL(/draft=/);
+
+	page.once('dialog', (dialog) => dialog.accept());
+	await page.locator('#rules-version').selectOption('3');
+	await expect(page).not.toHaveURL(/draft=/);
+	await expect(page.getByText('Your team has no vehicles yet')).toBeVisible();
+
+	await page.reload();
+	await expect(page.locator('#rules-version')).toHaveValue('2');
+	await expect(page.getByText('Your team has no vehicles yet')).toBeVisible();
+});
+
+test('an empty team can switch versions without a confirm', async ({ page }) => {
+	await page.goto('/builder');
+	let dialogs = 0;
+	page.on('dialog', () => {
+		dialogs += 1;
+	});
+	await page.locator('#rules-version').selectOption('3');
+	await expect(page.locator('#rules-version')).toHaveValue('3');
+	await expect(page.getByText('first bike is free')).toBeVisible();
+	await page.getByRole('button', { name: '+ Add Vehicle' }).click();
+	await expect(page.getByTestId('coach-rules')).toHaveText('Version 3');
+	await expect(page.getByText(/counted vehicles/)).toBeVisible();
+	expect(dialogs).toBe(0);
+});
+
 async function expectImportedTrailer(page: Page) {
 	const perk = page.getByRole('listitem').filter({
 		has: page.getByRole('button', { name: 'Remove perk' })

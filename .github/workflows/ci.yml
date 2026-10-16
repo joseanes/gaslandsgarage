@@ -67,6 +67,13 @@ jobs:
         echo "Uploading files to S3 bucket: $BUCKET_NAME"
         ls -la app/build/
         aws s3 sync app/build/ s3://$BUCKET_NAME/ --delete
+        # The icon responses need image types. A generic binary type makes the tab fall back to the default globe.
+        aws s3 cp app/build/favicon.ico s3://$BUCKET_NAME/favicon.ico --content-type image/x-icon --cache-control max-age=86400
+        aws s3 cp app/build/favicon.svg s3://$BUCKET_NAME/favicon.svg --content-type image/svg+xml --cache-control max-age=86400
+        aws s3 cp app/build/apple-touch-icon.png s3://$BUCKET_NAME/apple-touch-icon.png --content-type image/png --cache-control max-age=86400
+        aws s3 cp app/build/icon-192.png s3://$BUCKET_NAME/icon-192.png --content-type image/png --cache-control max-age=86400
+        aws s3 cp app/build/icon-512.png s3://$BUCKET_NAME/icon-512.png --content-type image/png --cache-control max-age=86400
+        aws s3 cp app/build/site.webmanifest s3://$BUCKET_NAME/site.webmanifest --content-type application/manifest+json --cache-control max-age=86400
         
     - name: Invalidate CloudFront cache
       env:

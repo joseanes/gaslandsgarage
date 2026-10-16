@@ -209,6 +209,8 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 	let vehicles: Veh[] = [];
 	// Track hazard tokens for each vehicle
 	let vehicleHazards: Record<string, number> = {};
+	/** Bumps when a cancelled switch must put the rules select back. */
+	let rulesSelectKey = 0;
 
 
 
@@ -268,17 +270,62 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		updateCurrentDraft();
 	}
 
+	function syncWindowTeam() {
+		if (typeof window === 'undefined') return;
+		window.teamName = teamName;
+		window.sponsorId = sponsorId;
+		window.vehicles = vehicles;
+		window.maxCans = maxCans;
+		window.darkMode = darkMode;
+		window.rulesVersion = rulesVersion;
+	}
+
+	/** Drop a shared draft so a reload cannot restore the team we just cleared. */
+	function forgetSharedDraft() {
+		if (typeof window === 'undefined') return;
+		try {
+			localStorage.removeItem('gaslands-team-data');
+		} catch {
+			/* storage can be blocked */
+		}
+		const url = new URL(window.location.href);
+		if (!url.searchParams.has('draft')) return;
+		url.searchParams.delete('draft');
+		const next = `${url.pathname}${url.search}${url.hash}`;
+		history.replaceState(history.state, '', next);
+	}
+
+	function printDriverFields(vehicle: Veh) {
+		if (rulesVersion !== 3) return { driverSummary: '', perkClassSummary: '' };
+		const driver = drivers.find((entry) => entry.id === vehicle.driverArchetype);
+		const classLabel = (id: string) => perkClasses.find((entry) => entry.id === id)?.name || id;
+		const classes: string[] = [];
+		if (driver) classes.push(classLabel(driver.perkClass));
+		if ((vehicle.driverName || '').trim() && vehicle.secondPerkClass) classes.push(classLabel(vehicle.secondPerkClass));
+		const named = (vehicle.driverName || '').trim();
+		const driverSummary = driver
+			? `${driver.name}${named ? ` (${named})` : ''}`
+			: 'No driver';
+		return { driverSummary, perkClassSummary: classes.join(', ') || 'None' };
+	}
+
 	function changeRulesVersion(next: number) {
 		const version: RulesVersion = next === 3 ? 3 : 2;
 		if (version === rulesVersion) return;
 		if (vehicles.length > 0 && !confirm('Switching rules versions clears the vehicles on this team. Continue?')) {
-			rulesVersion = rulesVersion;
+			// The select already shows the new option. Remount it on the kept version.
+			rulesSelectKey += 1;
 			return;
 		}
 		rulesVersion = version;
 		applyCatalog(version);
 		vehicles = [];
+		vehicleHazards = {};
+		collapsedVehicles = new Set();
+		totalCans = 0;
 		sponsorId = sponsors.find((entry) => entry.id === 'no_sponsor')?.id ?? sponsors[0]?.id ?? '';
+		forgetSharedDraft();
+		syncWindowTeam();
 		updateCurrentDraft();
 	}
 
@@ -1414,8 +1461,11 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 					handling: vehicleTypes.find(vt => vt.id === v.type)?.handling || 4,
 					gear: vehicleTypes.find(vt => vt.id === v.type)?.maxGear || 6,
 					crew: vehicleTypes.find(vt => vt.id === v.type)?.crew || 1,
-					weight: vehicleTypes.find(vt => vt.id === v.type)?.weight || 2
+					weight: vehicleTypes.find(vt => vt.id === v.type)?.weight || 2,
+					armour: vehicleTypes.find(vt => vt.id === v.type)?.armour,
+					buildSlots: vehicleTypes.find(vt => vt.id === v.type)?.buildSlots
 				},
+				...printDriverFields(v),
 				// Include full weapon objects with names
 				weaponObjects: v.weapons.map(weaponId => {
 					// Use our robust method to find the base weapon ID
@@ -1469,7 +1519,8 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 						handling: upgrade?.handling || 0,
 						handlingModifier: upgrade?.handlingModifier || 0,
 						gear: upgrade?.gear || 0,
-						gearModifier: upgrade?.gearModifier || 0
+						gearModifier: upgrade?.gearModifier || 0,
+						armour: upgrade?.armour || 0
 					};
 				}),
 				// Include full perk objects with names
@@ -1892,6 +1943,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 				window.vehicles = undefined;
 				window.maxCans = undefined;
 				window.darkMode = undefined;
+				window.rulesVersion = undefined;
 				
 				// Clean up direct function references
 				window.copyDraft = undefined;
@@ -1927,6 +1979,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 
 		totalCans = calculateTotalCansDirectly();
 		validateSponsorRestrictions();
+		syncWindowTeam();
 		return true;
 	}
 
@@ -2103,6 +2156,15 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		darkMode,
 		rulesVersion
 	} satisfies Draft;
+	// Keep the teams modal and quick save on the team that is actually on screen.
+	$: if (typeof window !== 'undefined') {
+		window.teamName = teamName;
+		window.sponsorId = sponsorId;
+		window.vehicles = vehicles;
+		window.maxCans = maxCans;
+		window.darkMode = darkMode;
+		window.rulesVersion = rulesVersion;
+	}
 	$: countedVehicles = countedVehicleTotal(vehicles.map((entry) => entry.type));
 	$: vehicleAllowance = maxCountedVehicles(Number(maxCans) || 50);
 
@@ -2969,6 +3031,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			<div class="flex flex-col gap-2 w-full">
 				<div class="flex items-center gap-4 w-full">
 					<b class="text-base font-bold whitespace-nowrap" style="min-width: 95px;">Rules:</b>
+					{#key rulesSelectKey}
 					<select
 						id="rules-version"
 						class="form-select h-[32px] flex items-center"
@@ -2980,6 +3043,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 						<option value={2}>Version 2 — Refuelled</option>
 						<option value={3}>Version 3</option>
 					</select>
+					{/key}
 				</div>
 				<div class="flex items-center justify-between w-full gap-4">
 					<div class="flex items-center gap-4">
@@ -3325,6 +3389,8 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
         currentSponsor={currentSponsor}
         {totalCans}
         {maxCans}
+        {rulesVersion}
+        {drivers}
     />
   {/await}
 {/if}
