@@ -1,6 +1,10 @@
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 const pidFile = '/tmp/gaslands-firebase-emulators.pid';
 const logFile = '/tmp/gaslands-firebase-emulators.log';
@@ -30,9 +34,9 @@ export default async function globalSetup() {
 
 	const log = fs.openSync(logFile, 'a');
 	const child = spawn(
-		'npx',
+		'pnpm',
 		[
-			'--yes',
+			'dlx',
 			'firebase-tools@13.29.1',
 			'emulators:start',
 			'--only',
@@ -41,12 +45,17 @@ export default async function globalSetup() {
 			'demo-gaslands'
 		],
 		{
-			cwd: '/workspace',
+			cwd: repoRoot,
 			detached: true,
 			stdio: ['ignore', log, log]
 		}
 	);
+	const started = new Promise<void>((resolve, reject) => {
+		child.once('spawn', () => resolve());
+		child.once('error', reject);
+	});
 	child.unref();
+	await started;
 	if (child.pid) fs.writeFileSync(pidFile, String(child.pid));
 	await waitForEmulators();
 }
