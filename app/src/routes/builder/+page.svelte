@@ -2261,7 +2261,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 						
 						// Update validation in a separate execution context to break reactivity
 						setTimeout(() => {
-							validation = Object.assign({}, result);
+							validation = withLiveCanLimit(Object.assign({}, result));
 							isForceValidating = false;
 						}, 10);
 					})
@@ -2589,6 +2589,17 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		return /cans limit|can limit|exceeds \d+ cans/i.test(err);
 	}
 
+	/** Keep the banner in step with the cans field even if an older validation finishes last. */
+	function withLiveCanLimit(result: Validation): Validation {
+		const limit = Number(maxCans);
+		const spent = calculateTotalCansDirectly();
+		const errors = result.errors.filter((err) => !isCanLimitMessage(err));
+		if (Number.isFinite(limit) && spent > limit) {
+			errors.push(`Team exceeds ${limit} cans limit`);
+		}
+		return { ...result, cans: spent, errors };
+	}
+
 	function applyCanLimit(limit: number) {
 		totalCans = calculateTotalCansDirectly();
 		currentDraft = {
@@ -2641,7 +2652,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			}
 
 			// Update the validation object (non-reactively) but keep our directly calculated totalCans
-			validation = validationCopy;
+			validation = withLiveCanLimit(validationCopy);
 			
 			// Double-check if the direct calculation matches validation
 			if (Math.abs(totalCans - validationCopy.cans) > 0.1) {

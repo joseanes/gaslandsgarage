@@ -133,7 +133,7 @@ test('lowering the can limit updates the banner next to the cans field', async (
 	await page.getByRole('button', { name: '+ Add Vehicle' }).click();
 	await expect(page.getByText('Your team is legal and ready to race!')).toBeVisible();
 	await page.getByLabel('Maximum Cans').fill('10');
-	await expect(page.getByText('Team exceeds 10 cans limit')).toBeVisible();
+	await expect(page.getByTestId('legal-banner').getByText('Team exceeds 10 cans limit')).toBeVisible();
 	await expect(page.getByText('Your team is legal and ready to race!')).toHaveCount(0);
 	const cans = await page.getByLabel('Maximum Cans').boundingBox();
 	const banner = await page.getByTestId('legal-banner').boundingBox();
