@@ -2699,7 +2699,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			const validationCopy = withLiveCanLimit({ ...r });
 
 			// Update the validation object (non-reactively) but keep our directly calculated totalCans
-			validation = withLiveCanLimit(validationCopy);
+			validation = validationCopy;
 			
 			// Double-check if the direct calculation matches validation
 			if (Math.abs(totalCans - validationCopy.cans) > 0.1) {
