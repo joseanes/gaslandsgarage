@@ -59,15 +59,14 @@
         console.error("Error getting team name directly:", e);
       }
       
-      // Use the window.openTeamsModalFn if available (to ensure team name is set properly)
+      // The builder hook copies the current team name onto window. Its own
+      // showTeamsModal flag is not the dialog rendered here, so the menu
+      // still has to open this layout dialog after the name is synced.
       if (typeof window.openTeamsModalFn === 'function') {
         console.log("Using window.openTeamsModalFn to ensure team name is updated");
         window.openTeamsModalFn();
-      } else {
-        // Fallback to directly opening the modal if the function isn't available
-        console.log("Fallback: Directly opening the Teams modal in the layout");
-        showTeamsModal = true;
       }
+      showTeamsModal = true;
     } else {
       alert('Team management requires the builder page. Please use on the builder page.');
     }
