@@ -20,6 +20,7 @@ interface GarageWindow {
 	playMode?: boolean;
 	showExperimentalFeatures?: boolean;
 	quickSaveFn?: () => void | Promise<void>;
+	openSharePanelFn?: () => void | Promise<void>;
 	togglePlayModeFn?: () => void;
 	copyDraftFn?: () => void | Promise<void>;
 	shareLinkFn?: () => void;

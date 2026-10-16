@@ -21,6 +21,7 @@
   
   // Menu state
   let showTeamMenu = false;
+  let showPhoneMenu = false;
   let showShareMenu = false;
   let showHelpMenu = false;
   let showSettingsMenu = false;
@@ -96,6 +97,9 @@
       const target = event.target;
       if (!(target instanceof Node)) return;
 
+      if (showPhoneMenu && !inside('.phone-menu-trigger', target) && !inside('.phone-menu-dropdown', target)) {
+        showPhoneMenu = false;
+      }
       if (showTeamMenu && !inside('.team-menu-trigger', target) && !inside('.team-menu-dropdown', target)) {
         showTeamMenu = false;
       }
@@ -132,9 +136,23 @@
 
   function closeMenus() {
     showTeamMenu = false;
+    showPhoneMenu = false;
     showShareMenu = false;
     showHelpMenu = false;
     showSettingsMenu = false;
+  }
+
+  function togglePhoneMenu() {
+    const next = !showPhoneMenu;
+    closeMenus();
+    showPhoneMenu = next;
+  }
+
+  function openShareFromMenu() {
+    closeMenus();
+    if (typeof window.openSharePanelFn === 'function') {
+      void window.openSharePanelFn();
+    }
   }
 
   function toggleTeamMenu() {
@@ -515,7 +533,17 @@
           </span>
         </div>
 
-        <div class="flex flex-wrap items-center justify-end" style="gap: 5px;">
+        <div class="flex items-center justify-end" style="gap: 5px;">
+        <button
+          type="button"
+          class="menu-item phone-nav phone-menu-trigger"
+          on:click={togglePhoneMenu}
+          aria-expanded={showPhoneMenu}
+          style="height: auto !important; min-height: auto !important;"
+        >
+          Menu
+        </button>
+        <div class="desktop-nav flex flex-wrap items-center justify-end" style="gap: 5px;">
           <div class="relative">
             <button
               type="button"
@@ -532,22 +560,14 @@
           </button>
 
           </div>
-          <div class="relative">
-            <button
-              type="button"
-              class="menu-item flex items-center share-menu-trigger"
-              on:click={toggleShareMenu}
-              aria-haspopup="true"
-              aria-expanded={showShareMenu}
-              style="height: auto !important; min-height: auto !important;"
-            >
+          <button
+            type="button"
+            class="menu-item"
+            on:click={openShareFromMenu}
+            style="height: auto !important; min-height: auto !important;"
+          >
             Share
-            <svg class="ml-1 w-3 h-3" viewBox="0 0 20 20" fill="currentColor">
-              <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"></path>
-            </svg>
           </button>
-
-          </div>
           <button
             type="button"
             class="menu-item"
@@ -588,22 +608,29 @@
             </button>
 
           </div>
-          <Auth />
+        </div>
+        <Auth />
         </div>
       </div>
+      {#if showPhoneMenu}
+        <div class="menu-sheet phone-menu-dropdown" data-testid="menu-sheet" transition:fade={{ duration: 150 }}>
+          <button type="button" on:click={quickSaveFromMenu}>Quick Save</button>
+          <button type="button" on:click={() => { openTeamsModal(); showPhoneMenu = false; }}>Save and Load</button>
+          <button type="button" on:click={lockListFromMenu}>{playMode ? 'Unlock the list' : 'Lock list for the table'}</button>
+          <button type="button" on:click={openShareFromMenu}>Share</button>
+          <button type="button" on:click={() => { closeMenus(); printTeam(); }}>Print</button>
+          <button type="button" on:click={() => { openGeneralSettings(); showPhoneMenu = false; }}>General Settings</button>
+          <button type="button" on:click={() => { openPrintSettings(); showPhoneMenu = false; }}>Print Settings</button>
+          <button type="button" on:click={() => { openAboutGaslands(); showPhoneMenu = false; }}>About Gaslands</button>
+          <button type="button" on:click={() => { openChangeLog(); showPhoneMenu = false; }}>Change Log</button>
+          <button type="button" on:click={() => { openContactUs(); showPhoneMenu = false; }}>Contact Us</button>
+        </div>
+      {/if}
       {#if showTeamMenu}
         <div class="menu-sheet team-menu-dropdown" data-testid="menu-sheet" transition:fade={{ duration: 150 }}>
           <button type="button" on:click={quickSaveFromMenu}>Quick Save</button>
           <button type="button" on:click={() => { openTeamsModal(); showTeamMenu = false; }}>Save and Load</button>
           <button type="button" on:click={lockListFromMenu}>{playMode ? 'Unlock the list' : 'Lock list for the table'}</button>
-        </div>
-      {/if}
-      {#if showShareMenu}
-        <div class="menu-sheet share-menu-dropdown" data-testid="menu-sheet" transition:fade={{ duration: 150 }}>
-          <button type="button" on:click={() => { copyDraft(); showShareMenu = false; }}>Copy to Clipboard</button>
-          <button type="button" on:click={() => { shareLink(); showShareMenu = false; }}>Share Link</button>
-          <button type="button" on:click={() => { generateQRCode(); showShareMenu = false; }}>Generate QR Code</button>
-          <button type="button" on:click={() => { importBuild(); showShareMenu = false; }}>Import Build</button>
         </div>
       {/if}
       {#if showSettingsMenu}
@@ -1188,6 +1215,19 @@
 :global(.menu-item:hover) {
   color: #fcd34d;
   background-color: rgba(255, 255, 255, 0.1);
+}
+
+.phone-nav {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .phone-nav {
+    display: inline-flex;
+  }
+  .desktop-nav {
+    display: none !important;
+  }
 }
 
 .menu-sheet {
