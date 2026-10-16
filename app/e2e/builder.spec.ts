@@ -38,16 +38,10 @@ test('builds a car, adds Powder Keg, and shares the link', async ({ page }) => {
 	await expect(cansValue(page)).toHaveText('13');
 	await expect(page.getByText('Your team is legal and ready to race!')).toBeVisible();
 
-	await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
-	await page.getByRole('button', { name: 'Share', exact: true }).click();
-	const share = page.getByRole('dialog', { name: 'Share team' });
-	await expect(share).toBeVisible();
+	page.once('dialog', (dialog) => dialog.accept());
+	await page.getByRole('button', { name: 'Teams' }).click();
+	await page.getByRole('button', { name: 'Share Link' }).click();
 	await expect(page).toHaveURL(/draft=/);
-	await expect(share.getByRole('img', { name: 'Team QR code' })).toBeVisible();
-	await share.getByRole('button', { name: 'Copy link' }).click();
-	await expect(share.getByRole('button', { name: 'Copied' })).toBeVisible();
-	const copied = await page.evaluate(() => navigator.clipboard.readText());
-	expect(copied).toContain('draft=');
 
 	await page.reload();
 	await expect(page.locator('#sponsor-select')).toHaveValue('rutherford');
@@ -60,9 +54,10 @@ test('pasted build codes and ?draft= links both merge upgrade perks', async ({ p
 	const code = encodeDraft(trailerDraft);
 
 	await page.goto('/builder');
-	await page.getByRole('button', { name: 'Share', exact: true }).click();
+	await page.getByRole('button', { name: 'Teams' }).click();
+	await page.getByRole('button', { name: 'Import Build' }).click();
 	await page.getByPlaceholder('Paste encoded draft here').fill(code);
-	await page.getByRole('dialog', { name: 'Share team' }).getByRole('button', { name: 'Import', exact: true }).click();
+	await page.getByRole('button', { name: 'Import', exact: true }).click();
 
 	await expect(page.locator('#sponsor-select')).toHaveValue('rustys');
 	await expectImportedTrailer(page);
@@ -88,7 +83,8 @@ test('switching rules versions clears the team, and cancelling keeps it', async 
 	await switchDialog.getByRole('button', { name: 'Switch', exact: true }).click();
 	await expect(page.locator('#rules-version')).toHaveValue('3');
 	await expect(page.getByText('Your team has no vehicles yet')).toBeVisible();
-	await expect(page.getByTestId('vehicle-limit')).toHaveText('Up to 2 vehicles at 50 cans. The first bike is free.');
+	await expect(page.getByTestId('vehicle-limit')).toContainText('0/2 toward the limit');
+	await expect(page.getByTestId('vehicle-limit')).toContainText('first bike is free');
 	await expect(page.locator('#sponsor-select')).toHaveValue('no_sponsor');
 
 	await page.reload();
@@ -100,11 +96,10 @@ test('a shared draft does not come back after the rules version changes', async 
 	await page.goto('/builder');
 	await page.locator('#sponsor-select').selectOption('rutherford');
 	await page.getByRole('button', { name: '+ Add Vehicle' }).click();
-	await page.getByRole('button', { name: 'Share', exact: true }).click();
-	const share = page.getByRole('dialog', { name: 'Share team' });
-	await expect(share).toBeVisible();
+	page.once('dialog', (dialog) => dialog.accept());
+	await page.getByRole('button', { name: 'Teams' }).click();
+	await page.getByRole('button', { name: 'Share Link' }).click();
 	await expect(page).toHaveURL(/draft=/);
-	await share.getByRole('button', { name: 'Close' }).click();
 
 	await page.locator('#rules-version').selectOption('3');
 	await page.getByRole('dialog', { name: 'Switch rules version' }).getByRole('button', { name: 'Switch', exact: true }).click();
@@ -126,7 +121,8 @@ test('an empty team can switch versions without a confirm', async ({ page }) => 
 	await page.locator('#rules-version').selectOption('3');
 	await expect(page.getByRole('dialog', { name: 'Switch rules version' })).toHaveCount(0);
 	await expect(page.locator('#rules-version')).toHaveValue('3');
-	await expect(page.getByTestId('vehicle-limit')).toHaveText('Up to 2 vehicles at 50 cans. The first bike is free.');
+	await expect(page.getByTestId('vehicle-limit')).toContainText('0/2 toward the limit');
+	await expect(page.getByTestId('vehicle-limit')).toContainText('first bike is free');
 	await page.getByRole('button', { name: '+ Add Vehicle' }).click();
 	await expect(page.getByTestId('coach-rules')).toHaveText('Version 3');
 	await expect(page.getByTestId('coach-lead')).toContainText(/driver/i);
@@ -153,11 +149,9 @@ test('lowering the can limit updates the banner next to the cans field', async (
 	expect(banner!.y).toBeGreaterThan(cans!.y);
 });
 
-test('quick save while signed out opens sign-in next to save and load', async ({ page }) => {
+test('quick save while signed out opens sign-in', async ({ page }) => {
 	await page.goto('/builder');
-	await page.getByRole('button', { name: 'Team', exact: true }).click();
-	await expect(page.getByRole('button', { name: 'Save and Load' })).toBeVisible();
-	await expect(page.getByRole('button', { name: 'Lock list for the table' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Play Mode' })).toBeVisible();
 	await page.getByRole('button', { name: 'Quick Save' }).click();
 	const dialog = page.getByRole('dialog', { name: 'Sign in to save' });
 	await expect(dialog.getByText('Teams are stored on your Google account.')).toBeVisible();
@@ -193,19 +187,20 @@ test('a sponsor missing from the other edition is cleared on switch', async ({ p
 	await expect(page.getByText('Your team has no vehicles yet')).toBeVisible();
 });
 
-test('the team menu on a phone stays above the rules and name fields', async ({ page }) => {
+test('a phone shows the same Teams, Settings, and Help menus', async ({ page }) => {
 	await page.setViewportSize({ width: 390, height: 844 });
 	await page.goto('/builder');
-	const name = await page.getByLabel('Team Name').boundingBox();
-	const builder = await page.locator('#builder-ui').boundingBox();
-	expect(name && builder && name.width > builder.width * 0.6).toBeTruthy();
-
-	await page.getByRole('button', { name: 'Menu', exact: true }).click();
-	const sheet = await page.getByTestId('menu-sheet').boundingBox();
-	const rules = await page.getByText('Rules:', { exact: true }).boundingBox();
-	expect(sheet && rules && rules.y >= sheet.y + sheet.height - 2).toBeTruthy();
+	await expect(page.getByRole('button', { name: 'Menu', exact: true })).toHaveCount(0);
+	await expect(page.getByRole('button', { name: 'Teams' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Settings' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Help' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Play Mode' })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Quick Save' })).toBeVisible();
-	await expect(page.getByRole('button', { name: 'Play Mode' })).toHaveCount(0);
+
+	await page.getByRole('button', { name: 'Teams' }).click();
+	await expect(page.getByRole('button', { name: 'Save/Load Team' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Print Team' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Share Link' })).toBeVisible();
 });
 
 test('an empty list stays short, and the shopping list is under Help', async ({ page }) => {
@@ -214,8 +209,8 @@ test('an empty list stays short, and the shopping list is under Help', async ({ 
 	await expect(page.getByText('Your team has no vehicles yet')).toBeVisible();
 	await expect(page.getByText('What You Need to Start Playing')).toHaveCount(0);
 	await expect(page.locator('iframe')).toHaveCount(0);
-	await page.getByRole('button', { name: 'Menu', exact: true }).click();
-	await page.getByRole('button', { name: 'About Gaslands' }).click();
+	await page.getByRole('button', { name: 'Help' }).click();
+	await page.getByRole('button', { name: 'About Gaslands', exact: true }).click();
 	await expect(page.getByRole('dialog', { name: 'About Gaslands' }).getByText('What You Need to Start Playing')).toBeVisible();
 });
 
@@ -223,7 +218,8 @@ test('print asks once and still opens the sheet', async ({ page }) => {
 	await page.goto('/builder');
 	await page.getByRole('button', { name: '+ Add Vehicle' }).click();
 	const firstPopup = page.waitForEvent('popup');
-	await page.getByRole('button', { name: 'Print', exact: true }).click();
+	await page.getByRole('button', { name: 'Teams' }).click();
+	await page.getByRole('button', { name: 'Print Team' }).click();
 	const popup = await firstPopup;
 	await expect(popup.locator('body')).toContainText(/cans|Vehicle|Team/i);
 	await popup.close();
@@ -235,7 +231,8 @@ test('print asks once and still opens the sheet', async ({ page }) => {
 	await page.reload();
 	await page.getByRole('button', { name: '+ Add Vehicle' }).click();
 	const secondPopup = page.waitForEvent('popup');
-	await page.getByRole('button', { name: 'Print', exact: true }).click();
+	await page.getByRole('button', { name: 'Teams' }).click();
+	await page.getByRole('button', { name: 'Print Team' }).click();
 	await (await secondPopup).close();
 	await expect(page.getByRole('dialog', { name: 'Rulebook' })).toHaveCount(0);
 });

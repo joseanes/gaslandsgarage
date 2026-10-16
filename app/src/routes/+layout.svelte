@@ -20,12 +20,9 @@
   let showAds = false; // Removed ads for now
   
   // Menu state
-  let showTeamMenu = false;
-  let showPhoneMenu = false;
   let showShareMenu = false;
   let showHelpMenu = false;
   let showSettingsMenu = false;
-  let playMode = false;
   let showSignInPrompt = false;
   let showTeamsModal = false;
   let showAboutModal = false;
@@ -89,110 +86,58 @@
     // const adsDisabled = localStorage.getItem('adsDisabled') === 'true';
     // showAds = !adsDisabled;
 
-    const inside = (selector: string, target: Node) =>
-      Array.from(document.querySelectorAll(selector)).some((node) => node.contains(target));
-
     const handleClickOutside = (event: Event) => {
       const target = event.target;
       if (!(target instanceof Node)) return;
+      // Handle Share menu clicks outside
+      const shareMenuButton = document.querySelector('.share-menu-trigger');
+      const shareMenu = document.querySelector('.share-menu-dropdown');
 
-      if (showPhoneMenu && !inside('.phone-menu-trigger', target) && !inside('.phone-menu-dropdown', target)) {
-        showPhoneMenu = false;
-      }
-      if (showTeamMenu && !inside('.team-menu-trigger', target) && !inside('.team-menu-dropdown', target)) {
-        showTeamMenu = false;
-      }
-      if (showShareMenu && !inside('.share-menu-trigger', target) && !inside('.share-menu-dropdown', target)) {
+      if (showShareMenu &&
+        shareMenuButton &&
+        shareMenu &&
+        !shareMenuButton.contains(target) &&
+        !shareMenu.contains(target)) {
         showShareMenu = false;
       }
-      if (showHelpMenu && !inside('.help-menu-trigger', target) && !inside('.help-menu-dropdown', target)) {
+
+      // Handle Help menu clicks outside
+      const helpMenuButton = document.querySelector('.help-menu-trigger');
+      const helpMenu = document.querySelector('.help-menu-dropdown');
+
+      if (showHelpMenu &&
+        helpMenuButton &&
+        helpMenu &&
+        !helpMenuButton.contains(target) &&
+        !helpMenu.contains(target)) {
         showHelpMenu = false;
       }
-      if (showSettingsMenu && !inside('.settings-menu-trigger', target) && !inside('.settings-menu-dropdown', target)) {
+
+      // Handle Settings menu clicks outside
+      const settingsMenuButton = document.querySelector('.settings-menu-trigger');
+      const settingsMenu = document.querySelector('.settings-menu-dropdown');
+
+      if (showSettingsMenu &&
+        settingsMenuButton &&
+        settingsMenu &&
+        !settingsMenuButton.contains(target) &&
+        !settingsMenu.contains(target)) {
         showSettingsMenu = false;
       }
     };
 
-    const onPlayMode = (event: Event) => {
-      const detail = event instanceof CustomEvent ? event.detail as { playMode?: boolean } : {};
-      playMode = Boolean(detail.playMode);
-    };
     const onRequestSignIn = () => {
       showSignInPrompt = true;
-      showTeamMenu = false;
     };
 
     document.addEventListener('click', handleClickOutside);
-    window.addEventListener('gaslands-play-mode', onPlayMode);
     window.addEventListener('gaslands-request-sign-in', onRequestSignIn);
 
     return () => {
       document.removeEventListener('click', handleClickOutside);
-      window.removeEventListener('gaslands-play-mode', onPlayMode);
       window.removeEventListener('gaslands-request-sign-in', onRequestSignIn);
     };
   });
-
-  function closeMenus() {
-    showTeamMenu = false;
-    showPhoneMenu = false;
-    showShareMenu = false;
-    showHelpMenu = false;
-    showSettingsMenu = false;
-  }
-
-  function togglePhoneMenu() {
-    const next = !showPhoneMenu;
-    closeMenus();
-    showPhoneMenu = next;
-  }
-
-  function openShareFromMenu() {
-    closeMenus();
-    if (typeof window.openSharePanelFn === 'function') {
-      void window.openSharePanelFn();
-    }
-  }
-
-  function toggleTeamMenu() {
-    const next = !showTeamMenu;
-    closeMenus();
-    showTeamMenu = next;
-  }
-
-  function toggleShareMenu() {
-    const next = !showShareMenu;
-    closeMenus();
-    showShareMenu = next;
-  }
-
-  function toggleSettingsMenu() {
-    const next = !showSettingsMenu;
-    closeMenus();
-    showSettingsMenu = next;
-  }
-
-  function toggleHelpMenu() {
-    const next = !showHelpMenu;
-    closeMenus();
-    showHelpMenu = next;
-  }
-
-  function quickSaveFromMenu() {
-    closeMenus();
-    if (typeof window.quickSaveFn === 'function') {
-      void window.quickSaveFn();
-      return;
-    }
-    window.dispatchEvent(new CustomEvent('gaslands-request-sign-in'));
-  }
-
-  function lockListFromMenu() {
-    closeMenus();
-    if (typeof window.togglePlayModeFn === 'function') {
-      window.togglePlayModeFn();
-    }
-  }
 
   async function startGoogleSignIn() {
     showSignInPrompt = false;
@@ -532,54 +477,54 @@
           </span>
         </div>
 
-        <div class="flex items-center justify-end" style="gap: 5px;">
-        <button
-          type="button"
-          class="menu-item phone-nav phone-menu-trigger"
-          on:click={togglePhoneMenu}
-          aria-expanded={showPhoneMenu}
-          style="height: auto !important; min-height: auto !important;"
-        >
-          Menu
-        </button>
-        <div class="desktop-nav flex flex-wrap items-center justify-end" style="gap: 5px;">
+        <div class="flex flex-wrap items-center justify-end" style="gap: 5px;">
           <div class="relative">
             <button
               type="button"
-              class="menu-item flex items-center team-menu-trigger"
-              on:click={toggleTeamMenu}
+              class="menu-item flex items-center share-menu-trigger"
+              on:click={() => showShareMenu = !showShareMenu}
               aria-haspopup="true"
-              aria-expanded={showTeamMenu}
+              aria-expanded={showShareMenu}
               style="height: auto !important; min-height: auto !important;"
             >
-            Team
+            Teams
             <svg class="ml-1 w-3 h-3" viewBox="0 0 20 20" fill="currentColor">
               <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"></path>
             </svg>
           </button>
 
+            {#if showShareMenu}
+          <div
+            class="absolute w-44 bg-black border-2 border-amber-500 shadow-xl rounded-lg overflow-hidden z-20 py-2 share-menu-dropdown"
+            style="box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5); background-color: #000000 !important; top: 40px; left: 0;"
+            transition:fade={{ duration: 150 }}
+          >
+            <button type="button" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600" on:click={() => { openTeamsModal(); showShareMenu = false; }}>
+              Save/Load Team
+            </button>
+            <button type="button" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600" on:click={() => { printTeam(); showShareMenu = false; }}>
+              Print Team
+            </button>
+            <button type="button" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600" on:click={() => { copyDraft(); showShareMenu = false; }}>
+              Copy to Clipboard
+            </button>
+            <button type="button" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600" on:click={() => { shareLink(); showShareMenu = false; }}>
+              Share Link
+            </button>
+            <button type="button" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600" on:click={() => { generateQRCode(); showShareMenu = false; }}>
+              Generate QR Code
+            </button>
+            <button type="button" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600" on:click={() => { importBuild(); showShareMenu = false; }}>
+              Import Build
+            </button>
           </div>
-          <button
-            type="button"
-            class="menu-item"
-            on:click={openShareFromMenu}
-            style="height: auto !important; min-height: auto !important;"
-          >
-            Share
-          </button>
-          <button
-            type="button"
-            class="menu-item"
-            on:click={() => { closeMenus(); printTeam(); }}
-            style="height: auto !important; min-height: auto !important;"
-          >
-            Print
-          </button>
+            {/if}
+          </div>
           <div class="relative">
             <button
               type="button"
               class="menu-item flex items-center settings-menu-trigger"
-              on:click={toggleSettingsMenu}
+              on:click={() => showSettingsMenu = !showSettingsMenu}
               aria-haspopup="true"
               aria-expanded={showSettingsMenu}
               style="height: auto !important; min-height: auto !important;"
@@ -590,12 +535,26 @@
               </svg>
             </button>
 
+            {#if showSettingsMenu}
+            <div
+              class="absolute w-56 bg-black border-2 border-amber-500 shadow-xl rounded-lg overflow-hidden z-20 py-2 settings-menu-dropdown"
+              style="box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5); background-color: #000000 !important; top: 40px; left: 0;"
+              transition:fade={{ duration: 150 }}
+            >
+              <button type="button" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600" on:click={() => { openGeneralSettings(); showSettingsMenu = false; }}>
+                General Settings
+              </button>
+              <button type="button" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600" on:click={() => { openPrintSettings(); showSettingsMenu = false; }}>
+                Print Settings
+              </button>
+            </div>
+            {/if}
           </div>
           <div class="relative">
             <button
               type="button"
               class="menu-item flex items-center help-menu-trigger"
-              on:click={toggleHelpMenu}
+              on:click={() => showHelpMenu = !showHelpMenu}
               aria-haspopup="true"
               aria-expanded={showHelpMenu}
               style="height: auto !important; min-height: auto !important;"
@@ -606,53 +565,44 @@
               </svg>
             </button>
 
+            {#if showHelpMenu}
+            <div
+              class="absolute w-56 bg-black border-2 border-amber-500 shadow-xl rounded-lg overflow-hidden z-20 py-2 help-menu-dropdown"
+              style="box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5); background-color: #000000 !important; top: 40px; left: 0;"
+              transition:fade={{ duration: 150 }}
+            >
+              <button type="button" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600" on:click={() => { openAbout(); showHelpMenu = false; }}>
+                About Gaslands Garage
+              </button>
+              <button type="button" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600" on:click={() => { openAboutGaslands(); showHelpMenu = false; }}>
+                About Gaslands
+              </button>
+              <a href="/stats" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600 block" on:click={() => showHelpMenu = false}>
+                Usage Stats
+              </a>
+              {#if typeof window !== 'undefined' && window.showExperimentalFeatures}
+              <button type="button" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600" on:click={() => { openPlayersMap(); showHelpMenu = false; }}>
+                Players Map
+              </button>
+              {/if}
+              <button type="button" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600" on:click={() => { openChangeLog(); showHelpMenu = false; }}>
+                Change Log
+              </button>
+              <button type="button" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600" on:click={() => { openUpcomingFeatures(); showHelpMenu = false; }}>
+                Upcoming Features
+              </button>
+              <button type="button" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600" on:click={() => { openContributors(); showHelpMenu = false; }}>
+                Contributors
+              </button>
+              <button type="button" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600" on:click={() => { openContactUs(); showHelpMenu = false; }}>
+                Contact Us
+              </button>
+            </div>
+            {/if}
           </div>
-        </div>
-        <Auth />
+          <Auth />
         </div>
       </div>
-      {#if showPhoneMenu}
-        <div class="menu-sheet phone-menu-dropdown" data-testid="menu-sheet" transition:fade={{ duration: 150 }}>
-          <button type="button" on:click={quickSaveFromMenu}>Quick Save</button>
-          <button type="button" on:click={() => { openTeamsModal(); showPhoneMenu = false; }}>Save and Load</button>
-          <button type="button" on:click={lockListFromMenu}>{playMode ? 'Unlock the list' : 'Lock list for the table'}</button>
-          <button type="button" on:click={openShareFromMenu}>Share</button>
-          <button type="button" on:click={() => { closeMenus(); printTeam(); }}>Print</button>
-          <button type="button" on:click={() => { openGeneralSettings(); showPhoneMenu = false; }}>General Settings</button>
-          <button type="button" on:click={() => { openPrintSettings(); showPhoneMenu = false; }}>Print Settings</button>
-          <button type="button" on:click={() => { openAboutGaslands(); showPhoneMenu = false; }}>About Gaslands</button>
-          <a href="/stats" on:click={() => showPhoneMenu = false}>Usage Stats</a>
-          <button type="button" on:click={() => { openChangeLog(); showPhoneMenu = false; }}>Change Log</button>
-          <button type="button" on:click={() => { openContactUs(); showPhoneMenu = false; }}>Contact Us</button>
-        </div>
-      {/if}
-      {#if showTeamMenu}
-        <div class="menu-sheet team-menu-dropdown" data-testid="menu-sheet" transition:fade={{ duration: 150 }}>
-          <button type="button" on:click={quickSaveFromMenu}>Quick Save</button>
-          <button type="button" on:click={() => { openTeamsModal(); showTeamMenu = false; }}>Save and Load</button>
-          <button type="button" on:click={lockListFromMenu}>{playMode ? 'Unlock the list' : 'Lock list for the table'}</button>
-        </div>
-      {/if}
-      {#if showSettingsMenu}
-        <div class="menu-sheet settings-menu-dropdown" data-testid="menu-sheet" transition:fade={{ duration: 150 }}>
-          <button type="button" on:click={() => { openGeneralSettings(); showSettingsMenu = false; }}>General Settings</button>
-          <button type="button" on:click={() => { openPrintSettings(); showSettingsMenu = false; }}>Print Settings</button>
-        </div>
-      {/if}
-      {#if showHelpMenu}
-        <div class="menu-sheet help-menu-dropdown" data-testid="menu-sheet" transition:fade={{ duration: 150 }}>
-          <button type="button" on:click={() => { openAbout(); showHelpMenu = false; }}>About Gaslands Garage</button>
-          <button type="button" on:click={() => { openAboutGaslands(); showHelpMenu = false; }}>About Gaslands</button>
-          <a href="/stats" on:click={() => showHelpMenu = false}>Usage Stats</a>
-          {#if typeof window !== 'undefined' && window.showExperimentalFeatures}
-            <button type="button" on:click={() => { openPlayersMap(); showHelpMenu = false; }}>Players Map</button>
-          {/if}
-          <button type="button" on:click={() => { openChangeLog(); showHelpMenu = false; }}>Change Log</button>
-          <button type="button" on:click={() => { openUpcomingFeatures(); showHelpMenu = false; }}>Upcoming Features</button>
-          <button type="button" on:click={() => { openContributors(); showHelpMenu = false; }}>Contributors</button>
-          <button type="button" on:click={() => { openContactUs(); showHelpMenu = false; }}>Contact Us</button>
-        </div>
-      {/if}
     </nav>
   </header>
   
@@ -1216,60 +1166,6 @@
 :global(.menu-item:hover) {
   color: #fcd34d;
   background-color: rgba(255, 255, 255, 0.1);
-}
-
-.phone-nav {
-  display: none;
-}
-
-@media (max-width: 767px) {
-  .phone-nav {
-    display: inline-flex;
-  }
-  .desktop-nav {
-    display: none !important;
-  }
-}
-
-.menu-sheet {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  background: #000000;
-  border-top: 2px solid #f59e0b;
-}
-
-.menu-sheet button,
-.menu-sheet a {
-  text-align: left;
-  width: 100%;
-  padding: 12px 16px;
-  color: white;
-  background: transparent;
-  border: none;
-  font: inherit;
-  cursor: pointer;
-  text-decoration: none;
-  display: block;
-}
-
-.menu-sheet button:hover,
-.menu-sheet a:hover {
-  background: rgba(245, 158, 11, 0.25);
-}
-
-@media (min-width: 768px) {
-  .menu-sheet {
-    position: absolute;
-    top: 100%;
-    right: 1rem;
-    width: 16rem;
-    border: 2px solid #f59e0b;
-    border-top: 2px solid #f59e0b;
-    border-radius: 0.5rem;
-    z-index: 30;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-  }
 }
 
 /* Print styles moved to separate print.css file */
