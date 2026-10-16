@@ -108,6 +108,15 @@
     function addPerk(perkId: string) {
         dispatch('addPerk', { vehicleId: vehicle.id, perkId });
     }
+
+    let weaponSearch = '';
+    let upgradeSearch = '';
+    let perkSearch = '';
+
+    function matchesQuery(name: string, query: string) {
+        const needle = query.trim().toLowerCase();
+        return needle.length === 0 || name.toLowerCase().includes(needle);
+    }
     
     function removePerk(index: number) {
         dispatch('removePerk', { vehicleId: vehicle.id, perkIndex: index });
@@ -560,6 +569,32 @@
 </script>
 
 <div class="vehicle-card bg-stone-200 dark:bg-gray-800 rounded-lg shadow-md overflow-hidden border-2 p-1 mb-1" style="border-color: {vehicleTypes.find(vt => vt.id === vehicle.type)?.color || '#f59e0b'};">
+    {#if collapsed}
+        {@const typeName = vehicleTypes.find(vt => vt.id === vehicle.type)?.name || vehicle.type}
+        {@const driverLabel = drivers.find(driver => driver.id === vehicle.driverArchetype)?.name || 'No driver'}
+        <div class="px-4 py-3 bg-stone-100 dark:bg-gray-800 flex flex-wrap items-center justify-between gap-2">
+            <p class="text-sm font-medium text-stone-800 dark:text-gray-100" data-testid="vehicle-summary">
+                {typeName} · {vehicle.name || 'Unnamed'} · {vehicleCost} cans · {usedBuildSlots}/{maxBuildSlots} slots
+                {#if rulesVersion === 3} · {driverLabel}{/if}
+            </p>
+            <div class="flex gap-2">
+                <button
+                    class="h-[32px] px-2 flex items-center justify-center rounded-md text-xs amber-button"
+                    on:click={toggleCollapse}
+                    aria-label="Expand vehicle"
+                >
+                    <span>+ Expand</span>
+                </button>
+                <button
+                    class="h-[32px] px-2 flex items-center justify-center rounded-md text-xs red-button"
+                    on:click={removeVehicle}
+                    aria-label="Remove vehicle"
+                >
+                    <span>× Remove</span>
+                </button>
+            </div>
+        </div>
+    {:else}
     <div class="px-4 py-3 bg-stone-100 dark:bg-gray-800 flex flex-wrap justify-between items-center">
         <div class="flex flex-col md:flex-row items-start md:items-center gap-2 flex-grow w-full">
             <div class="form-group mb-0 flex-grow">
@@ -641,48 +676,6 @@
             </div>
         </div>
     </div>
-    
-    <!-- Collapsed view - Only shown when collapsed -->
-    {#if collapsed}
-        <div class="p-2 flex flex-col md:flex-row md:items-center md:justify-between bg-stone-100 dark:bg-gray-800">
-            <div class="flex items-center gap-2 mb-2 md:mb-0">
-                <div class="vehicle-type-icon vehicle-type-{vehicle.type}" title="{vehicleTypes.find(vt => vt.id === vehicle.type)?.name || 'Unknown'}"></div>
-                <div class="font-medium text-sm md:text-base">
-                    {#if vehicle.weapons && vehicle.weapons.length > 0}
-                        {vehicle.weapons.length} weapons
-                    {/if}
-                    {#if vehicle.upgrades && vehicle.upgrades.length > 0}
-                        <span class="mx-1">|</span> {vehicle.upgrades.length} upgrades
-                    {/if}
-                    {#if vehicle.perks && vehicle.perks.length > 0}
-                        <span class="mx-1">|</span> {vehicle.perks.length} perks
-                    {/if}
-                </div>
-            </div>
-
-            <div class="flex flex-col md:flex-row gap-2 md:gap-4">
-                <div class="flex gap-2 justify-start">
-                    <BuildHeader
-                        vehicleCost={vehicleCost}
-                        usedBuildSlots={usedBuildSlots}
-                        maxBuildSlots={maxBuildSlots}
-                    />
-                </div>
-
-                <div class="weight-class-indicator weight-{typeof vehicleTypes.find(vt => vt.id === vehicle.type)?.weight === 'string' ? 'custom' : vehicleTypes.find(vt => vt.id === vehicle.type)?.weight || 1} text-xs md:text-sm">
-                    {(() => {
-                        const weight = vehicleTypes.find(vt => vt.id === vehicle.type)?.weight;
-                        if (typeof weight === 'string') {
-                            return weight;
-                        } else {
-                            return weight === 1 ? 'Light' :
-                                   weight === 2 ? 'Medium' :
-                                   weight === 3 ? 'Heavy' : 'Massive';
-                        }
-                    })()}
-                </div>
-            </div>
-        </div>
     {/if}
     
     <!-- Vehicle details - Hidden when collapsed -->
@@ -1053,6 +1046,14 @@
             {/if}
             
             <div class="relative">
+                <label for="search-weapon-{vehicle.id}" class="sr-only">Search weapons</label>
+                <input
+                    id="search-weapon-{vehicle.id}"
+                    type="search"
+                    class="w-full mb-1 py-1 px-2 border border-stone-300 rounded bg-white text-stone-800 text-sm"
+                    placeholder="Search weapons"
+                    bind:value={weaponSearch}
+                />
                 <label for="add-weapon-{vehicle.id}" class="sr-only">Add a weapon</label>
                 <select
                     id="add-weapon-{vehicle.id}"
@@ -1078,7 +1079,7 @@
                     <!-- Move Machine Gun to the top of the list -->
                     {#if true}
                         {@const machineGun = filteredWeapons.find(w => w.id === 'machine_gun')}
-                        {#if machineGun}
+                        {#if machineGun && matchesQuery(machineGun.name, weaponSearch)}
                             {@const weaponSlots = machineGun.slots}
                             {@const canAddWeapon = rulesVersion === 3
                                 ? v3BuildSlots(vehicleType || { buildSlots: maxBuildSlots }, [...resolvedWeapons, machineGun], resolvedUpgrades).used <= (v3Slots?.capacity ?? maxBuildSlots)
@@ -1096,7 +1097,7 @@
                         {/if}
                     {/if}
                     
-                    {#each filteredWeapons.filter(w => w.id !== 'machine_gun').slice().sort((a, b) => a.name.localeCompare(b.name)) as w}
+                    {#each filteredWeapons.filter(w => w.id !== 'machine_gun' && matchesQuery(w.name, weaponSearch)).slice().sort((a, b) => a.name.localeCompare(b.name)) as w}
                         {@const weaponSlots = w.slots}
                         {@const canAddWeapon = rulesVersion === 3
                             ? v3BuildSlots(vehicleType || { buildSlots: maxBuildSlots }, [...resolvedWeapons, w], resolvedUpgrades).used <= (v3Slots?.capacity ?? maxBuildSlots)
@@ -1221,6 +1222,14 @@
             {/if}
             
             <div class="relative">
+                <label for="search-upgrade-{vehicle.id}" class="sr-only">Search upgrades</label>
+                <input
+                    id="search-upgrade-{vehicle.id}"
+                    type="search"
+                    class="w-full mb-1 py-1 px-2 border border-stone-300 rounded bg-white text-stone-800 text-sm"
+                    placeholder="Search upgrades"
+                    bind:value={upgradeSearch}
+                />
                 <label for="add-upgrade-{vehicle.id}" class="sr-only">Add an upgrade</label>
                 <select
                     id="add-upgrade-{vehicle.id}"
@@ -1242,7 +1251,7 @@
                     disabled={!filteredUpgrades.some(u => u.slots === 0 || u.isTrailer) && usedBuildSlots >= maxBuildSlots}
                 >
                     <option value="" disabled selected>+ Add upgrade</option>
-                    {#each filteredUpgrades.slice().sort((a, b) => a.name.localeCompare(b.name)) as u}
+                    {#each filteredUpgrades.filter(u => matchesQuery(u.name, upgradeSearch)).slice().sort((a, b) => a.name.localeCompare(b.name)) as u}
                         {@const upgradeSlots = u.slots}
                         {@const canAddUpgrade = rulesVersion === 3
                             ? v3BuildSlots(vehicleType || { buildSlots: maxBuildSlots }, resolvedWeapons, [...resolvedUpgrades, u]).used <= (v3Slots?.capacity ?? maxBuildSlots)
@@ -1397,6 +1406,14 @@
             {/if}
 
             <div class="relative">
+                <label for="search-perk-{vehicle.id}" class="sr-only">Search perks</label>
+                <input
+                    id="search-perk-{vehicle.id}"
+                    type="search"
+                    class="w-full mb-1 py-1 px-2 border border-stone-300 rounded bg-white text-stone-800 text-sm"
+                    placeholder="Search perks"
+                    bind:value={perkSearch}
+                />
                 <label for="add-perk-{vehicle.id}" class="sr-only">Add a perk</label>
                 <select
                     id="add-perk-{vehicle.id}"
@@ -1411,7 +1428,7 @@
                     }}
                 >
                     <option value="" disabled selected>+ Add perk</option>
-                    {#each filteredPerks.slice().sort((a, b) => a.name.localeCompare(b.name)) as p}
+                    {#each filteredPerks.filter(p => matchesQuery(p.name, perkSearch)).slice().sort((a, b) => a.name.localeCompare(b.name)) as p}
                         <option value={p.id}>{p.name}{p.cost ? ` (${p.cost} cans)` : ""}</option>
                     {/each}
                 </select>

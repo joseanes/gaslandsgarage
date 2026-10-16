@@ -23,7 +23,7 @@
 	import type { Draft, Validation } from '$lib/validate/model';
 	import { encodeDraft, decodeDraft } from '$lib/draft/io';
 	import { normalizeIncomingDraft, withUpgradePerks } from '$lib/draft/importTeam';
-	import { countedVehicleTotal, defaultRulesVersion, maxCountedVehicles, normalizeRulesVersion, type RulesVersion } from '$lib/rules/version';
+	import { defaultRulesVersion, maxCountedVehicles, normalizeRulesVersion, type RulesVersion } from '$lib/rules/version';
 	import { resolveById } from '$lib/validate/v3/lookup';
 	import { v3BuildSlots } from '$lib/validate/v3/slots';
 	import { goto } from '$app/navigation';
@@ -211,6 +211,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 	let vehicleHazards: Record<string, number> = {};
 	/** Bumps when a cancelled switch must put the rules select back. */
 	let rulesSelectKey = 0;
+	let pendingRulesVersion: RulesVersion | null = null;
 
 
 
@@ -309,24 +310,49 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		return { driverSummary, perkClassSummary: classes.join(', ') || 'None' };
 	}
 
-	function changeRulesVersion(next: number) {
-		const version: RulesVersion = next === 3 ? 3 : 2;
-		if (version === rulesVersion) return;
-		if (vehicles.length > 0 && !confirm('Switching rules versions clears the vehicles on this team. Continue?')) {
-			// The select already shows the new option. Remount it on the kept version.
-			rulesSelectKey += 1;
-			return;
-		}
+	function applyRulesVersion(version: RulesVersion) {
+		const previousSponsor = sponsorId;
 		rulesVersion = version;
 		applyCatalog(version);
 		vehicles = [];
 		vehicleHazards = {};
 		collapsedVehicles = new Set();
 		totalCans = 0;
-		sponsorId = sponsors.find((entry) => entry.id === 'no_sponsor')?.id ?? sponsors[0]?.id ?? '';
+		const sponsorStillExists = sponsors.some((entry) => entry.id === previousSponsor);
+		sponsorId = sponsorStillExists
+			? previousSponsor
+			: (sponsors.find((entry) => entry.id === 'no_sponsor')?.id ?? sponsors[0]?.id ?? '');
 		forgetSharedDraft();
 		syncWindowTeam();
 		updateCurrentDraft();
+	}
+
+	function changeRulesVersion(next: number) {
+		const version: RulesVersion = next === 3 ? 3 : 2;
+		if (version === rulesVersion) return;
+		if (vehicles.length === 0) {
+			applyRulesVersion(version);
+			return;
+		}
+		pendingRulesVersion = version;
+		// The select already shows the new option. Remount it until the player confirms.
+		rulesSelectKey += 1;
+	}
+
+	function cancelRulesSwitch() {
+		pendingRulesVersion = null;
+		rulesSelectKey += 1;
+	}
+
+	function confirmRulesSwitch() {
+		if (pendingRulesVersion == null) return;
+		const version = pendingRulesVersion;
+		pendingRulesVersion = null;
+		applyRulesVersion(version);
+	}
+
+	async function saveCopyBeforeSwitch() {
+		await quickSaveTeam();
 	}
 
 	function calculateUsedBuildSlots(vehicle: Veh) {
@@ -415,6 +441,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		
 		// Add to vehicles list - ensure reactivity by creating a new array
 		vehicles = [...vehicles, newVehicle];
+		collapsedVehicles = new Set([...collapsedVehicles, newVehicleId]);
 		
 		// Update totalCans immediately for better responsiveness
 		totalCans = calculateTotalCansDirectly();
@@ -516,6 +543,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 
 		// Add the cloned vehicle to the vehicles array
 		vehicles = [...vehicles, clonedVehicle];
+		collapsedVehicles = new Set([...collapsedVehicles, clonedVehicleId]);
 		
 		// Update totalCans immediately for better responsiveness
 		totalCans = calculateTotalCansDirectly();
@@ -543,11 +571,12 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 	
 	function toggleVehicleCollapse(id: string) {
 		if (collapsedVehicles.has(id)) {
-			collapsedVehicles.delete(id);
-		} else {
-			collapsedVehicles.add(id);
+			const next = new Set(vehicles.map((entry) => entry.id));
+			next.delete(id);
+			collapsedVehicles = next;
+			return;
 		}
-		collapsedVehicles = collapsedVehicles; // Trigger reactivity
+		collapsedVehicles = new Set([...collapsedVehicles, id]);
 	}
 
 	function addWeapon(vehicleId: string, weaponId: string, facing?: string) {
@@ -1046,6 +1075,10 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 	let qrDataUrl: string | null = null;
 	let showQRModal = false; // Whether to show the QR code modal
 	let showImportModal = false;
+	let showSharePanel = false;
+	let showPrintRulesPrompt = false;
+	let shareUrl = '';
+	let shareCopied = false;
 	let showSettingsModal = false;
 	let activeSettingsTab = 'general'; // Which tab to show in settings: 'general' or 'print'
 	let quickSaving = false;
@@ -1255,28 +1288,45 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			return;
 		}
 		
-		// Check if user has acknowledged having rules
-		if (hasRules) {
-			// User has already acknowledged having the rules
-			console.log('[printWithRulesCheck] Rules acknowledged, printing team');
-			// Use the proper print service instead of window.print()
-			isPrinting = true;
-			printTeam()
-				.then(() => {
-					setTimeout(() => { isPrinting = false; }, 3000);
-				})
-				.catch(err => {
-					console.error('[printWithRulesCheck] Error printing:', err);
-					isPrinting = false;
-				});
-			
-			// Manual trigger validation update to ensure costs are recalculated
-			setTimeout(() => updateValidation(), 0);
-		} else {
-			// Show the rules acknowledgment modal
-			console.log('[printWithRulesCheck] Rules not acknowledged, showing modal');
-			showRulesAcknowledgmentModal = true;
-			rulesModalAction = 'printTeam';
+		const alreadyAsked = hasRules || (typeof localStorage !== 'undefined' && localStorage.getItem('printRulesPromptSeen') === 'true');
+		if (!alreadyAsked) {
+			showPrintRulesPrompt = true;
+			try {
+				localStorage.setItem('printRulesPromptSeen', 'true');
+			} catch {
+				/* storage can be blocked */
+			}
+		}
+
+		isPrinting = true;
+		printTeam()
+			.then(() => {
+				setTimeout(() => { isPrinting = false; }, 3000);
+			})
+			.catch(err => {
+				console.error('[printWithRulesCheck] Error printing:', err);
+				isPrinting = false;
+			});
+		setTimeout(() => updateValidation(), 0);
+	}
+
+	function ownRulebook() {
+		hasRules = true;
+		showPrintRulesPrompt = false;
+		try {
+			localStorage.setItem('hasRules', 'true');
+			localStorage.setItem('printRulesPromptSeen', 'true');
+		} catch {
+			/* storage can be blocked */
+		}
+	}
+
+	function dismissPrintRulesPrompt() {
+		showPrintRulesPrompt = false;
+		try {
+			localStorage.setItem('printRulesPromptSeen', 'true');
+		} catch {
+			/* storage can be blocked */
 		}
 	}
 
@@ -1311,7 +1361,9 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 	// Quick save team function
 	async function quickSaveTeam() {
 		if (!$user) {
-			alert("Please log in to save your team.");
+			if (typeof window !== 'undefined') {
+				window.dispatchEvent(new CustomEvent('gaslands-request-sign-in'));
+			}
 			return;
 		}
 
@@ -1373,10 +1425,45 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		alert('Draft copied to clipboard!');
 	}
 
-	function shareLink() {
+	function publishShareUrl() {
 		const encoded = encodeDraft(currentDraft);
-		goto(`?draft=${encodeURIComponent(encoded)}`, { replaceState: true });
-		alert('Link updated in address bar. Copy the current URL to share your build.');
+		const url = new URL(window.location.href);
+		url.searchParams.set('draft', encoded);
+		const next = `${url.pathname}${url.search}${url.hash}`;
+		history.replaceState(history.state, '', next);
+		shareUrl = url.toString();
+		return encoded;
+	}
+
+	async function openSharePanel() {
+		shareCopied = false;
+		publishShareUrl();
+		showSharePanel = true;
+		try {
+			qrDataUrl = await draftToDataURL(currentDraft);
+		} catch (error) {
+			console.error('[openSharePanel] QR error:', error);
+			qrDataUrl = '';
+		}
+	}
+
+	async function copyShareUrl() {
+		if (!shareUrl) publishShareUrl();
+		try {
+			await navigator.clipboard.writeText(shareUrl);
+		} catch (error) {
+			console.error('[copyShareUrl]', error);
+			const field = document.getElementById('share-link');
+			if (field instanceof HTMLInputElement) {
+				field.focus();
+				field.select();
+			}
+		}
+		shareCopied = true;
+	}
+
+	function shareLink() {
+		void openSharePanel();
 	}
 
 	async function generateQRCode() {
@@ -1837,6 +1924,9 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			
 			// Directly assign functions from the component scope to the window
 			window.copyDraftFn = copyDraft;
+			window.openSharePanelFn = openSharePanel;
+			window.quickSaveFn = quickSaveTeam;
+			window.togglePlayModeFn = togglePlayMode;
 			window.shareLinkFn = shareLink;
 			window.generateQRCodeFn = generateQRCode;
 			window.importBuildFn = importBuild;
@@ -1928,6 +2018,9 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 				console.log("[onUnmount] Cleaning up global functions");
 				// Clean up function references with Fn suffix
 				window.copyDraftFn = undefined;
+				window.openSharePanelFn = undefined;
+				window.quickSaveFn = undefined;
+				window.togglePlayModeFn = undefined;
 				window.shareLinkFn = undefined;
 				window.generateQRCodeFn = undefined;
 				window.importBuildFn = undefined;
@@ -1979,6 +2072,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		if (draft.darkMode !== undefined) darkMode = draft.darkMode;
 
 		totalCans = calculateTotalCansDirectly();
+		collapsedVehicles = new Set(vehicles.map((entry) => entry.id));
 		validateSponsorRestrictions();
 		syncWindowTeam();
 		return true;
@@ -1989,6 +2083,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		if (draft && applyImportedDraft(draft)) {
 			importString = '';
 			showImportModal = false;
+			showSharePanel = false;
 		} else {
 			alert('Invalid draft string');
 		}
@@ -2165,8 +2260,9 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		window.maxCans = maxCans;
 		window.darkMode = darkMode;
 		window.rulesVersion = rulesVersion;
+		window.playMode = playMode;
+		window.dispatchEvent(new CustomEvent('gaslands-play-mode', { detail: { playMode } }));
 	}
-	$: countedVehicles = countedVehicleTotal(vehicles.map((entry) => entry.type));
 	$: vehicleAllowance = maxCountedVehicles(Number(maxCans) || 50);
 
 	// Function to force validation to run immediately
@@ -2229,7 +2325,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 						
 						// Update validation in a separate execution context to break reactivity
 						setTimeout(() => {
-							validation = Object.assign({}, result);
+							validation = withLiveCanLimit(Object.assign({}, result));
 							isForceValidating = false;
 						}, 10);
 					})
@@ -2553,29 +2649,55 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 	}
 	
 	// Create a non-reactive function to update validation
+	function isCanLimitMessage(err: string) {
+		return /cans limit|can limit|exceeds \d+ cans/i.test(err);
+	}
+
+	/** Keep the banner in step with the cans field even if an older validation finishes last. */
+	function withLiveCanLimit<T extends { errors: string[]; cans: number }>(result: T): T {
+		const limit = Number(maxCans);
+		const spent = calculateTotalCansDirectly();
+		const errors = result.errors.filter((err) => !isCanLimitMessage(err));
+		if (Number.isFinite(limit) && spent > limit) {
+			errors.push(`Team exceeds ${limit} cans limit`);
+		}
+		return { ...result, cans: spent, errors };
+	}
+
+	function applyCanLimit(limit: number) {
+		totalCans = calculateTotalCansDirectly();
+		currentDraft = {
+			sponsor: sponsorId,
+			vehicles,
+			teamName,
+			maxCans: limit,
+			darkMode,
+			rulesVersion
+		};
+		const errors = validation.errors.filter((err) => !isCanLimitMessage(err));
+		if (totalCans > limit) {
+			errors.push(`Team exceeds ${limit} cans limit`);
+		}
+		validation = { ...validation, cans: totalCans, errors };
+	}
+
+	function onMaxCansInput(event: Event) {
+		const target = event.currentTarget;
+		if (!(target instanceof HTMLInputElement)) return;
+		const next = Number(target.value);
+		if (!Number.isFinite(next) || next < 1) return;
+		maxCans = next;
+		applyCanLimit(next);
+		updateValidation();
+	}
+
 	function updateValidation() {
 		// First calculate cans directly for immediate feedback
 		totalCans = calculateTotalCansDirectly();
 		
 		// Then run the full validation for rules checks
 		validateDraft(currentDraft).then((r) => {
-			// Create a copy of the validation result
-			const validationCopy = { ...r };
-
-			// Replace the max cans error with custom max cans if it exists
-			if (validationCopy.errors.length > 0) {
-				validationCopy.errors = validationCopy.errors.map(err => {
-					if (err.includes("cans limit") || err.includes("can limit")) {
-						return `Team exceeds ${maxCans} cans limit`;
-					}
-					return err;
-				});
-			}
-
-			// Check against custom max cans
-			if (validationCopy.cans > maxCans && !validationCopy.errors.some(e => e.includes("cans limit"))) {
-				validationCopy.errors.push(`Team exceeds ${maxCans} cans limit`);
-			}
+			const validationCopy = withLiveCanLimit({ ...r });
 
 			// Update the validation object (non-reactively) but keep our directly calculated totalCans
 			validation = validationCopy;
@@ -3030,70 +3152,75 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 	<header class="mb-3 md:mb-4">
 		<div class="text-3xl md:text-4xl font-extrabold text-stone-800 dark:text-gray-100 tracking-tight flex flex-wrap justify-between items-center">
 			<div class="flex flex-col gap-2 w-full">
-				<div class="flex items-center gap-4 w-full">
-					<b class="text-base font-bold whitespace-nowrap" style="min-width: 95px;">Rules:</b>
-					{#key rulesSelectKey}
-					<select
-						id="rules-version"
-						class="form-select h-[32px] flex items-center"
-						style="height: 32px !important; min-height: 32px !important; max-height: 32px !important;"
-						value={rulesVersion}
-						on:change={(e) => changeRulesVersion(Number(e.currentTarget.value))}
-						aria-label="Rules version"
-					>
-						<option value={2}>Version 2 — Refuelled</option>
-						<option value={3}>Version 3</option>
-					</select>
-					{/key}
-				</div>
-				<div class="flex items-center justify-between w-full gap-4">
-					<div class="flex items-center gap-4">
-						<b class="text-base font-bold whitespace-nowrap" style="min-width: 50px;">Name:</b>
-						<input
-							type="text"
-							bind:value={teamName}
-							class="bg-transparent border-2 border-amber-500 rounded-lg px-3 py-0.25 font-bold text-amber-700 dark:text-white focus:outline-none focus:border-amber-600 min-w-[127px] w-auto max-w-[150px] text-base dark-text-input"
+				<div class="flex flex-col gap-1 w-full">
+					<div class="flex items-center gap-4 w-full">
+						<b class="text-base font-bold whitespace-nowrap" style="min-width: 95px;">Rules:</b>
+						{#key rulesSelectKey}
+						<select
+							id="rules-version"
+							class="form-select h-[32px] flex items-center"
 							style="height: 32px !important; min-height: 32px !important; max-height: 32px !important;"
-							aria-label="Team Name"
-						/>
+							value={rulesVersion}
+							on:change={(e) => changeRulesVersion(Number(e.currentTarget.value))}
+							aria-label="Rules version"
+						>
+							<option value={2}>Version 2 — Refuelled</option>
+							<option value={3}>Version 3</option>
+						</select>
+						{/key}
 					</div>
-					<!-- Edit/Play Mode Toggle Button -->
-					<button
-						class="py-2 px-4 w-32 flex items-center justify-center rounded-md transition-colors amber-button"
-						on:click={togglePlayMode}
-					>
-						<span class="w-3 h-3 rounded-full {playMode ? 'bg-green-500' : 'bg-amber-500'} transition-colors mr-2"></span>
-						<span class="text-sm font-medium">{playMode ? 'Edit Team' : 'Play Mode'}</span>
-					</button>
+					{#if rulesVersion === 3}
+						<p class="text-sm text-stone-600 dark:text-gray-300" data-testid="vehicle-limit">
+							Up to {vehicleAllowance} vehicles at {maxCans} cans. The first bike is free.
+						</p>
+					{/if}
 				</div>
-				<div class="flex items-center justify-between w-full gap-4">
+				<div class="flex items-center w-full gap-4">
+					<b class="text-base font-bold whitespace-nowrap" style="min-width: 50px;">Name:</b>
+					<input
+						type="text"
+						bind:value={teamName}
+						class="bg-transparent border-2 border-amber-500 rounded-lg px-3 py-0.25 font-bold text-amber-700 dark:text-white focus:outline-none focus:border-amber-600 flex-1 min-w-0 w-full text-base dark-text-input"
+						style="height: 32px !important; min-height: 32px !important; max-height: 32px !important;"
+						aria-label="Team Name"
+					/>
+				</div>
+				<div class="flex flex-col gap-2 w-full">
 					<div class="flex items-center gap-4">
 						<b class="text-base font-bold whitespace-nowrap">Cans: </b>
 						<span class="font-extrabold text-amber-700 dark:text-amber-300 text-lg md:text-xl">{totalCans || calculateTotalCansDirectly()}</span>
 						<span class="text-lg font-bold text-amber-700 dark:text-amber-300">/</span>
 						<input
 							type="number"
-							bind:value={maxCans}
+							value={maxCans}
 							min="1"
 							max="1000"
+							on:input={onMaxCansInput}
 							class="bg-transparent border-2 border-amber-500 rounded-lg px-3 py-0.25 font-bold text-amber-700 dark:text-white focus:outline-none focus:border-amber-600 min-w-[80px] w-auto text-base dark-text-input"
 							style="height: 32px !important; min-height: 32px !important; max-height: 32px !important;"
 							aria-label="Maximum Cans"
 						/>
 					</div>
-					<!-- Quick Save Button -->
-					<button
-						class="py-2 px-4 w-32 flex items-center justify-center rounded-md transition-colors amber-button"
-						on:click={quickSaveTeam}
-						disabled={quickSaving}
-					>
-						{#if quickSaving}
-							<div class="animate-spin mr-2 h-3 w-3 border-b-2 border-white rounded-full"></div>
-							<span class="text-sm font-medium">Saving...</span>
+					{#if vehicles.length > 0}
+						{#if teamErrors.length === 0}
+							<div class="flex items-center bg-green-50 text-green-800 p-3 rounded-lg" data-testid="legal-banner">
+								<span class="mr-2 text-green-500">✓</span>
+								<span class="font-medium">Your team is legal and ready to race!</span>
+							</div>
 						{:else}
-							<span class="text-sm font-medium">Quick Save</span>
+							<div class="bg-red-50 text-red-800 p-3 rounded-lg" data-testid="legal-banner">
+								<div class="flex items-center mb-2">
+									<span class="mr-2 text-red-500">!</span>
+									<span class="font-medium">Your team has issues that need fixing:</span>
+								</div>
+								<ul class="list-disc ml-6 space-y-1">
+									{#each teamErrors as err}
+										<li>{err}</li>
+									{/each}
+								</ul>
+							</div>
 						{/if}
-					</button>
+					{/if}
 				</div>
 
 				{#if enableSponsorships || rulesVersion === 3}
@@ -3171,6 +3298,36 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		</div>
 	</header>
 
+	{#if pendingRulesVersion !== null}
+		<div class="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/60 p-4">
+			<div
+				role="dialog"
+				aria-modal="true"
+				aria-label="Switch rules version"
+				class="bg-white dark:bg-gray-800 rounded-xl border-2 border-amber-500 p-6 max-w-md w-full shadow-xl"
+			>
+				<h2 class="text-lg font-bold text-stone-800 dark:text-white mb-2">Switch rules version</h2>
+				<p class="text-stone-700 dark:text-gray-200 mb-2">
+					Switching to Version {pendingRulesVersion} clears the vehicles, weapons, upgrades, and perks on this team.
+				</p>
+				<p class="text-stone-700 dark:text-gray-200 mb-4">
+					The sponsor stays when that sponsor exists in the other edition. Save a copy first if you want to keep this list.
+				</p>
+				<div class="flex flex-wrap gap-2 justify-end">
+					<button type="button" class="px-4 py-2 rounded-lg border border-stone-300 text-stone-700" on:click={cancelRulesSwitch}>
+						Cancel
+					</button>
+					<button type="button" class="px-4 py-2 rounded-lg border border-amber-500 text-amber-700" on:click={saveCopyBeforeSwitch}>
+						Save a copy
+					</button>
+					<button type="button" class="px-4 py-2 rounded-lg bg-amber-500 text-white font-medium" on:click={confirmRulesSwitch}>
+						Switch
+					</button>
+				</div>
+			</div>
+		</div>
+	{/if}
+
 	<!-- Info message when sponsorships are disabled -->
 	{#if !enableSponsorships && rulesVersion !== 3}
 		<div class="bg-blue-50 p-5 rounded-lg shadow-md mb-6">
@@ -3204,12 +3361,6 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		<div class="flex items-center justify-between mb-2">
 			<div class="flex items-center gap-4">
 				<h2 class="text-2xl font-bold text-stone-800 dark:text-gray-100">Vehicles</h2>
-				{#if rulesVersion === 3}
-					<p class="text-sm text-stone-600 dark:text-gray-300">
-						{countedVehicles}/{vehicleAllowance} toward the limit
-						<span class="text-stone-500">(first bike is free, 3 max)</span>
-					</p>
-				{/if}
 			</div>
 			<button
 				class="py-2 px-4 w-32 flex items-center justify-center rounded-md transition-colors amber-button"
@@ -3225,35 +3376,6 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		{#if vehicles.length === 0}
 			<div class="bg-white dark:bg-gray-800 rounded-lg shadow-md text-center">
 				<p class="text-stone-600 dark:text-gray-300 text-lg font-bold py-4 px-8">Your team has no vehicles yet. Get started by adding a vehicle to your team.</p>
-			</div>
-
-			<!-- About Gaslands Content when no vehicles -->
-			<div class="mt-3 bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-				<div class="flex justify-between items-center mb-6">
-					<h3 class="text-xl font-bold text-stone-800 dark:text-white">Gaslands: The Post Apocalyptic Car Combat Game</h3>
-				</div>
-
-				<div class="space-y-6 text-stone-700 dark:text-gray-200">
-					<h4 class="font-bold text-stone-800 dark:text-white text-lg mb-3">What You Need to Start Playing:</h4>
-					<ul class="list-disc pl-5 space-y-2">
-						<li><a href="https://amzn.to/4m7OQYa" target="_blank" rel="noopener noreferrer" class="text-amber-600 dark:text-amber-400 hover:underline">Rulebook</a> - The Gaslands Refuelled rulebook contains all the rules and scenarios.  <b>You must purchase the rulebook to use this website.</b>  It is available in printed and electronic formats.</li>
-						<li><a href="https://creatoriq.cc/434pUIp" target="_blank" rel="noopener noreferrer" class="text-amber-600 dark:text-amber-400 hover:underline">Gaslands Dice</a> - Special dice designed for the game.</li>
-						<li><a href="https://amzn.to/4kaUcA2" target="_blank" rel="noopener noreferrer" class="text-amber-600 dark:text-amber-400 hover:underline">Regular 6-Sided Dice</a> - For resolving various game mechanics.</li>
-						<li><a href="https://creatoriq.cc/3GR0qqD" target="_blank" rel="noopener noreferrer" class="text-amber-600 dark:text-amber-400 hover:underline">Gaslands Templates</a> - Movement templates for driving your vehicles.</li>
-						<li><a href="https://creatoriq.cc/3GR0qqD" target="_blank" rel="noopener noreferrer" class="text-amber-600 dark:text-amber-400 hover:underline">Vehicles</a> - Hotwheels or Matchbox cars that you can modify.</li>
-					</ul>
-
-					<h4 class="font-bold text-stone-800 dark:text-white text-lg mb-3">Recommended Resources:</h4>
-					<div class="bg-stone-100 dark:bg-gray-700 p-4 rounded-lg">
-						<div class="flex items-center gap-3 mb-2">
-							<div class="w-full">
-								<div class="flex justify-center">
-									<iframe width="560" height="315" src="https://www.youtube.com/embed/CL66NMhWwHo?si=KltcYCh9RbCqU2HQ" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
-								</div>
-							</div>
-						</div>
-					</div>
-				</div>
 			</div>
 		{:else}
 			{#await import('$lib/components/VehicleCard.svelte') then cardModule}
@@ -3356,24 +3478,6 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		</div>
 	{/if}
 
-	{#if teamErrors.length === 0}
-		<div class="flex items-center bg-green-50 text-green-800 p-4 rounded-lg">
-			<span class="mr-2 text-green-500">✓</span>
-			<span class="font-medium">Your team is legal and ready to race!</span>
-		</div>
-	{:else}
-		<div class="bg-red-50 text-red-800 p-4 rounded-lg">
-			<div class="flex items-center mb-2">
-				<span class="mr-2 text-red-500">!</span>
-				<span class="font-medium">Your team has issues that need fixing:</span>
-			</div>
-			<ul class="list-disc ml-12 space-y-1">
-				{#each teamErrors as err}
-					<li>{err}</li>
-				{/each}
-			</ul>
-		</div>
-	{/if}
 </div>
 {/if}
 <!-- Gaslands Coach -->
@@ -3392,6 +3496,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
         {maxCans}
         {rulesVersion}
         {drivers}
+        issues={teamErrors}
     />
   {/await}
 {/if}
@@ -3454,6 +3559,53 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
               Print
             </button>
           </div>
+        </div>
+      </div>
+    {/if}
+
+    {#if showSharePanel}
+      <div class="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/60 p-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Share team"
+          class="bg-white dark:bg-gray-800 rounded-xl border-2 border-amber-500 p-6 max-w-lg w-full shadow-xl max-h-[90vh] overflow-y-auto"
+        >
+          <h2 class="text-lg font-bold text-stone-800 dark:text-white mb-3">Share team</h2>
+          <label class="block text-sm font-medium text-stone-700 dark:text-gray-200 mb-1" for="share-link">Link</label>
+          <input id="share-link" class="w-full border border-stone-300 rounded px-3 py-2 text-sm mb-3" readonly value={shareUrl} />
+          <button type="button" class="px-4 py-2 rounded-lg bg-amber-500 text-white font-medium" on:click={copyShareUrl}>
+            {shareCopied ? 'Copied' : 'Copy link'}
+          </button>
+          {#if qrDataUrl}
+            <img class="mt-4 mx-auto" alt="Team QR code" src={qrDataUrl} width="180" height="180" />
+          {/if}
+          <label class="block text-sm font-medium text-stone-700 dark:text-gray-200 mt-4 mb-1" for="share-import">Paste a build</label>
+          <textarea
+            id="share-import"
+            class="w-full border border-stone-300 rounded px-3 py-2 text-sm"
+            rows="3"
+            placeholder="Paste encoded draft here"
+            bind:value={importString}
+          ></textarea>
+          <div class="flex flex-wrap gap-2 justify-end mt-4">
+            <button type="button" class="px-4 py-2 rounded-lg border border-stone-300 text-stone-700" on:click={() => showSharePanel = false}>Close</button>
+            <button type="button" class="px-4 py-2 rounded-lg bg-amber-500 text-white font-medium" on:click={importDraftString}>Import</button>
+          </div>
+        </div>
+      </div>
+    {/if}
+
+    {#if showPrintRulesPrompt}
+      <div
+        class="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-4 sm:max-w-sm z-40 bg-white border-2 border-amber-500 rounded-xl shadow-xl p-4"
+        role="dialog"
+        aria-label="Rulebook"
+      >
+        <p class="text-sm text-stone-800 mb-3">The sheet opens either way. If you own the rulebook, we will skip this question next time.</p>
+        <div class="flex flex-wrap gap-2 justify-end">
+          <button type="button" class="px-3 py-2 rounded-lg border border-stone-300 text-stone-700" on:click={dismissPrintRulesPrompt}>Not now</button>
+          <button type="button" class="px-3 py-2 rounded-lg bg-amber-500 text-white font-medium" on:click={ownRulebook}>I own a copy</button>
         </div>
       </div>
     {/if}
