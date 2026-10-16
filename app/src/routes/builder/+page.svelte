@@ -441,6 +441,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		
 		// Add to vehicles list - ensure reactivity by creating a new array
 		vehicles = [...vehicles, newVehicle];
+		collapsedVehicles = new Set([...collapsedVehicles, newVehicleId]);
 		
 		// Update totalCans immediately for better responsiveness
 		totalCans = calculateTotalCansDirectly();
@@ -542,6 +543,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 
 		// Add the cloned vehicle to the vehicles array
 		vehicles = [...vehicles, clonedVehicle];
+		collapsedVehicles = new Set([...collapsedVehicles, clonedVehicleId]);
 		
 		// Update totalCans immediately for better responsiveness
 		totalCans = calculateTotalCansDirectly();
@@ -569,11 +571,12 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 	
 	function toggleVehicleCollapse(id: string) {
 		if (collapsedVehicles.has(id)) {
-			collapsedVehicles.delete(id);
-		} else {
-			collapsedVehicles.add(id);
+			const next = new Set(vehicles.map((entry) => entry.id));
+			next.delete(id);
+			collapsedVehicles = next;
+			return;
 		}
-		collapsedVehicles = collapsedVehicles; // Trigger reactivity
+		collapsedVehicles = new Set([...collapsedVehicles, id]);
 	}
 
 	function addWeapon(vehicleId: string, weaponId: string, facing?: string) {
@@ -1072,6 +1075,10 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 	let qrDataUrl: string | null = null;
 	let showQRModal = false; // Whether to show the QR code modal
 	let showImportModal = false;
+	let showSharePanel = false;
+	let showPrintRulesPrompt = false;
+	let shareUrl = '';
+	let shareCopied = false;
 	let showSettingsModal = false;
 	let activeSettingsTab = 'general'; // Which tab to show in settings: 'general' or 'print'
 	let quickSaving = false;
@@ -1281,28 +1288,45 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			return;
 		}
 		
-		// Check if user has acknowledged having rules
-		if (hasRules) {
-			// User has already acknowledged having the rules
-			console.log('[printWithRulesCheck] Rules acknowledged, printing team');
-			// Use the proper print service instead of window.print()
-			isPrinting = true;
-			printTeam()
-				.then(() => {
-					setTimeout(() => { isPrinting = false; }, 3000);
-				})
-				.catch(err => {
-					console.error('[printWithRulesCheck] Error printing:', err);
-					isPrinting = false;
-				});
-			
-			// Manual trigger validation update to ensure costs are recalculated
-			setTimeout(() => updateValidation(), 0);
-		} else {
-			// Show the rules acknowledgment modal
-			console.log('[printWithRulesCheck] Rules not acknowledged, showing modal');
-			showRulesAcknowledgmentModal = true;
-			rulesModalAction = 'printTeam';
+		const alreadyAsked = hasRules || (typeof localStorage !== 'undefined' && localStorage.getItem('printRulesPromptSeen') === 'true');
+		if (!alreadyAsked) {
+			showPrintRulesPrompt = true;
+			try {
+				localStorage.setItem('printRulesPromptSeen', 'true');
+			} catch {
+				/* storage can be blocked */
+			}
+		}
+
+		isPrinting = true;
+		printTeam()
+			.then(() => {
+				setTimeout(() => { isPrinting = false; }, 3000);
+			})
+			.catch(err => {
+				console.error('[printWithRulesCheck] Error printing:', err);
+				isPrinting = false;
+			});
+		setTimeout(() => updateValidation(), 0);
+	}
+
+	function ownRulebook() {
+		hasRules = true;
+		showPrintRulesPrompt = false;
+		try {
+			localStorage.setItem('hasRules', 'true');
+			localStorage.setItem('printRulesPromptSeen', 'true');
+		} catch {
+			/* storage can be blocked */
+		}
+	}
+
+	function dismissPrintRulesPrompt() {
+		showPrintRulesPrompt = false;
+		try {
+			localStorage.setItem('printRulesPromptSeen', 'true');
+		} catch {
+			/* storage can be blocked */
 		}
 	}
 
@@ -1401,10 +1425,45 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		alert('Draft copied to clipboard!');
 	}
 
-	function shareLink() {
+	function publishShareUrl() {
 		const encoded = encodeDraft(currentDraft);
-		goto(`?draft=${encodeURIComponent(encoded)}`, { replaceState: true });
-		alert('Link updated in address bar. Copy the current URL to share your build.');
+		const url = new URL(window.location.href);
+		url.searchParams.set('draft', encoded);
+		const next = `${url.pathname}${url.search}${url.hash}`;
+		history.replaceState(history.state, '', next);
+		shareUrl = url.toString();
+		return encoded;
+	}
+
+	async function openSharePanel() {
+		shareCopied = false;
+		publishShareUrl();
+		showSharePanel = true;
+		try {
+			qrDataUrl = await draftToDataURL(currentDraft);
+		} catch (error) {
+			console.error('[openSharePanel] QR error:', error);
+			qrDataUrl = '';
+		}
+	}
+
+	async function copyShareUrl() {
+		if (!shareUrl) publishShareUrl();
+		try {
+			await navigator.clipboard.writeText(shareUrl);
+		} catch (error) {
+			console.error('[copyShareUrl]', error);
+			const field = document.getElementById('share-link');
+			if (field instanceof HTMLInputElement) {
+				field.focus();
+				field.select();
+			}
+		}
+		shareCopied = true;
+	}
+
+	function shareLink() {
+		void openSharePanel();
 	}
 
 	async function generateQRCode() {
@@ -1865,6 +1924,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			
 			// Directly assign functions from the component scope to the window
 			window.copyDraftFn = copyDraft;
+			window.openSharePanelFn = openSharePanel;
 			window.quickSaveFn = quickSaveTeam;
 			window.togglePlayModeFn = togglePlayMode;
 			window.shareLinkFn = shareLink;
@@ -1957,6 +2017,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 				console.log("[onUnmount] Cleaning up global functions");
 				// Clean up function references with Fn suffix
 				window.copyDraftFn = undefined;
+				window.openSharePanelFn = undefined;
 				window.quickSaveFn = undefined;
 				window.togglePlayModeFn = undefined;
 				window.shareLinkFn = undefined;
@@ -2010,6 +2071,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		if (draft.darkMode !== undefined) darkMode = draft.darkMode;
 
 		totalCans = calculateTotalCansDirectly();
+		collapsedVehicles = new Set(vehicles.map((entry) => entry.id));
 		validateSponsorRestrictions();
 		syncWindowTeam();
 		return true;
@@ -2020,6 +2082,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		if (draft && applyImportedDraft(draft)) {
 			importString = '';
 			showImportModal = false;
+			showSharePanel = false;
 		} else {
 			alert('Invalid draft string');
 		}
@@ -2590,7 +2653,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 	}
 
 	/** Keep the banner in step with the cans field even if an older validation finishes last. */
-	function withLiveCanLimit(result: Validation): Validation {
+	function withLiveCanLimit<T extends { errors: string[]; cans: number }>(result: T): T {
 		const limit = Number(maxCans);
 		const spent = calculateTotalCansDirectly();
 		const errors = result.errors.filter((err) => !isCanLimitMessage(err));
@@ -2633,26 +2696,10 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		
 		// Then run the full validation for rules checks
 		validateDraft(currentDraft).then((r) => {
-			// Create a copy of the validation result
-			const validationCopy = { ...r };
-
-			// Replace the max cans error with custom max cans if it exists
-			if (validationCopy.errors.length > 0) {
-				validationCopy.errors = validationCopy.errors.map(err => {
-					if (err.includes("cans limit") || err.includes("can limit")) {
-						return `Team exceeds ${maxCans} cans limit`;
-					}
-					return err;
-				});
-			}
-
-			// Check against custom max cans
-			if (validationCopy.cans > maxCans && !validationCopy.errors.some(e => e.includes("cans limit"))) {
-				validationCopy.errors.push(`Team exceeds ${maxCans} cans limit`);
-			}
+			const validationCopy = withLiveCanLimit({ ...r });
 
 			// Update the validation object (non-reactively) but keep our directly calculated totalCans
-			validation = withLiveCanLimit(validationCopy);
+			validation = validationCopy;
 			
 			// Double-check if the direct calculation matches validation
 			if (Math.abs(totalCans - validationCopy.cans) > 0.1) {
@@ -3329,35 +3376,6 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			<div class="bg-white dark:bg-gray-800 rounded-lg shadow-md text-center">
 				<p class="text-stone-600 dark:text-gray-300 text-lg font-bold py-4 px-8">Your team has no vehicles yet. Get started by adding a vehicle to your team.</p>
 			</div>
-
-			<!-- About Gaslands Content when no vehicles -->
-			<div class="mt-3 bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-				<div class="flex justify-between items-center mb-6">
-					<h3 class="text-xl font-bold text-stone-800 dark:text-white">Gaslands: The Post Apocalyptic Car Combat Game</h3>
-				</div>
-
-				<div class="space-y-6 text-stone-700 dark:text-gray-200">
-					<h4 class="font-bold text-stone-800 dark:text-white text-lg mb-3">What You Need to Start Playing:</h4>
-					<ul class="list-disc pl-5 space-y-2">
-						<li><a href="https://amzn.to/4m7OQYa" target="_blank" rel="noopener noreferrer" class="text-amber-600 dark:text-amber-400 hover:underline">Rulebook</a> - The Gaslands Refuelled rulebook contains all the rules and scenarios.  <b>You must purchase the rulebook to use this website.</b>  It is available in printed and electronic formats.</li>
-						<li><a href="https://creatoriq.cc/434pUIp" target="_blank" rel="noopener noreferrer" class="text-amber-600 dark:text-amber-400 hover:underline">Gaslands Dice</a> - Special dice designed for the game.</li>
-						<li><a href="https://amzn.to/4kaUcA2" target="_blank" rel="noopener noreferrer" class="text-amber-600 dark:text-amber-400 hover:underline">Regular 6-Sided Dice</a> - For resolving various game mechanics.</li>
-						<li><a href="https://creatoriq.cc/3GR0qqD" target="_blank" rel="noopener noreferrer" class="text-amber-600 dark:text-amber-400 hover:underline">Gaslands Templates</a> - Movement templates for driving your vehicles.</li>
-						<li><a href="https://creatoriq.cc/3GR0qqD" target="_blank" rel="noopener noreferrer" class="text-amber-600 dark:text-amber-400 hover:underline">Vehicles</a> - Hotwheels or Matchbox cars that you can modify.</li>
-					</ul>
-
-					<h4 class="font-bold text-stone-800 dark:text-white text-lg mb-3">Recommended Resources:</h4>
-					<div class="bg-stone-100 dark:bg-gray-700 p-4 rounded-lg">
-						<div class="flex items-center gap-3 mb-2">
-							<div class="w-full">
-								<div class="flex justify-center">
-									<iframe width="560" height="315" src="https://www.youtube.com/embed/CL66NMhWwHo?si=KltcYCh9RbCqU2HQ" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
-								</div>
-							</div>
-						</div>
-					</div>
-				</div>
-			</div>
 		{:else}
 			{#await import('$lib/components/VehicleCard.svelte') then cardModule}
 				{@const VehicleCard = cardModule.default}
@@ -3540,6 +3558,53 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
               Print
             </button>
           </div>
+        </div>
+      </div>
+    {/if}
+
+    {#if showSharePanel}
+      <div class="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/60 p-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Share team"
+          class="bg-white dark:bg-gray-800 rounded-xl border-2 border-amber-500 p-6 max-w-lg w-full shadow-xl max-h-[90vh] overflow-y-auto"
+        >
+          <h2 class="text-lg font-bold text-stone-800 dark:text-white mb-3">Share team</h2>
+          <label class="block text-sm font-medium text-stone-700 dark:text-gray-200 mb-1" for="share-link">Link</label>
+          <input id="share-link" class="w-full border border-stone-300 rounded px-3 py-2 text-sm mb-3" readonly value={shareUrl} />
+          <button type="button" class="px-4 py-2 rounded-lg bg-amber-500 text-white font-medium" on:click={copyShareUrl}>
+            {shareCopied ? 'Copied' : 'Copy link'}
+          </button>
+          {#if qrDataUrl}
+            <img class="mt-4 mx-auto" alt="Team QR code" src={qrDataUrl} width="180" height="180" />
+          {/if}
+          <label class="block text-sm font-medium text-stone-700 dark:text-gray-200 mt-4 mb-1" for="share-import">Paste a build</label>
+          <textarea
+            id="share-import"
+            class="w-full border border-stone-300 rounded px-3 py-2 text-sm"
+            rows="3"
+            placeholder="Paste encoded draft here"
+            bind:value={importString}
+          ></textarea>
+          <div class="flex flex-wrap gap-2 justify-end mt-4">
+            <button type="button" class="px-4 py-2 rounded-lg border border-stone-300 text-stone-700" on:click={() => showSharePanel = false}>Close</button>
+            <button type="button" class="px-4 py-2 rounded-lg bg-amber-500 text-white font-medium" on:click={importDraftString}>Import</button>
+          </div>
+        </div>
+      </div>
+    {/if}
+
+    {#if showPrintRulesPrompt}
+      <div
+        class="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-4 sm:max-w-sm z-40 bg-white border-2 border-amber-500 rounded-xl shadow-xl p-4"
+        role="dialog"
+        aria-label="Rulebook"
+      >
+        <p class="text-sm text-stone-800 mb-3">The sheet opens either way. If you own the rulebook, we will skip this question next time.</p>
+        <div class="flex flex-wrap gap-2 justify-end">
+          <button type="button" class="px-3 py-2 rounded-lg border border-stone-300 text-stone-700" on:click={dismissPrintRulesPrompt}>Not now</button>
+          <button type="button" class="px-3 py-2 rounded-lg bg-amber-500 text-white font-medium" on:click={ownRulebook}>I own a copy</button>
         </div>
       </div>
     {/if}
