@@ -1514,7 +1514,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			...currentDraft,
 			// Add extra data needed for printing
 			teamName: teamName || "My Gaslands Team",
-			totalCans: validation.cans, // Use validation.cans directly for consistency
+			totalCans: 0,
 			maxCans: maxCans,
 			sponsorName: currentSponsor?.name || 'No Sponsor',
 			// Explicitly add ALL print settings - ensure we're using the latest values
@@ -1522,8 +1522,10 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			showEquipmentDescriptions: showEquipmentDescriptions,
 			showPerkDescriptions: showPerkDescriptions,
 			showSpecialRules: showSpecialRules,
-			// Include special rules for weapons and upgrades
-			weaponAndUpgradeSpecialRules: await import('$lib/rules/loadRules').then(module => module.loadWeaponSpecialRules()),
+			// Version 2 looks these essays up by keyword. Version 3 already has a short effect on each item.
+			weaponAndUpgradeSpecialRules: rulesVersion === 3
+				? []
+				: await import('$lib/rules/loadRules').then(module => module.loadWeaponSpecialRules()),
 			// Include sponsor perks information
 			sponsor: currentSponsor,
 			sponsorPerks: {
@@ -1582,7 +1584,8 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 						range: weapon?.range || 'Short',
 						attackDice: weapon?.attackDice || '-',
 						cost: weapon?.cost || 0,
-						specialRules: weapon?.specialRules || ''
+						specialRules: weapon?.specialRules || '',
+						effect: (weapon as { effect?: string } | undefined)?.effect || ''
 					};
 				}),
 				// Include full upgrade objects with names
@@ -1607,7 +1610,8 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 						handlingModifier: upgrade?.handlingModifier || 0,
 						gear: upgrade?.gear || 0,
 						gearModifier: upgrade?.gearModifier || 0,
-						armour: upgrade?.armour || 0
+						armour: upgrade?.armour || 0,
+						effect: (upgrade as { effect?: string } | undefined)?.effect || ''
 					};
 				}),
 				// Include full perk objects with names
@@ -1624,6 +1628,10 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 				vehicleRules: vehicleRules
 			}))
 		};
+		enhancedDraft.totalCans = enhancedDraft.vehicles.reduce(
+			(sum, vehicle) => sum + (Number(vehicle.cost) || 0),
+			0
+		);
 
 		// Last chance to update print settings from localStorage if they've changed
 		if (typeof localStorage !== 'undefined') {

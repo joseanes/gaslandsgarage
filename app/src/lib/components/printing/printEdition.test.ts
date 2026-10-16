@@ -52,4 +52,108 @@ describe('print sheets', () => {
 		expect(html).not.toContain('Spark (Zap)');
 		expect(html).not.toContain('Perk classes');
 	});
+
+	it('prints roster stats from the vehicle, not placeholder defaults', () => {
+		const html = generatePrintableHtml({
+			teamName: 'Haulers & Co',
+			totalCans: 40,
+			maxCans: 50,
+			sponsorName: 'Rutherford',
+			vehicles: [
+				{
+					...vehicle,
+					name: 'Long Haul',
+					stats: { hull: 26, handling: 2, gear: 4, crew: 5, weight: 'Heavyweight' },
+					upgradeObjects: [{ id: 'extra_crewmember', name: 'Extra Crewmember', crew: 1 }]
+				}
+			],
+			printStyle: 'roster',
+			rulesVersion: 2
+		});
+		expect(html).toContain('Handling</span> 2');
+		expect(html).toContain('Max Gear</span> 4');
+		expect(html).toContain('Crew</span> 6');
+		expect(html).toContain('Hull</span> 26');
+		expect(html).toContain('Heavyweight');
+		expect(html).not.toContain('Weight</span> Medium');
+		expect(html).not.toContain('class="page-break"');
+		expect(html).toContain('Haulers &amp; Co');
+	});
+
+	it('uses version 3 weight numbers, rule paraphrases, and item effects', () => {
+		const html = generatePrintableHtml({
+			teamName: 'Idris',
+			totalCans: 56,
+			maxCans: 50,
+			sponsorName: 'Idris',
+			vehicles: [
+				{
+					...vehicle,
+					name: 'Rig',
+					type: 'war_rig',
+					specialRules: 'Up And Over, Sluggish',
+					stats: { hull: 20, handling: 3, gear: 3, crew: 6, weight: 6, armour: 4, buildSlots: 8 },
+					vehicleType: { name: 'War Rig', maxHull: 20, handling: 3, maxGear: 3, crew: 6, weight: 6, armour: 4, buildSlots: 8 },
+					weaponObjects: [
+						{
+							id: 'rockets_a1b2',
+							name: 'Rockets',
+							facing: 'side',
+							specialRules: 'Ammo 3, Blast',
+							effect: 'Three shots. Criticals blast and hand out hazards.',
+							cost: 2
+						}
+					],
+					vehicleRules: [
+						{ id: 'up-and-over', ruleName: 'Up And Over', rule: 'While ploughing through, spend hazards to ignore obstacles.' },
+						{ id: 'sluggish', ruleName: 'Sluggish', rule: 'Cannot choose a hazardous template.' }
+					]
+				}
+			],
+			weaponAndUpgradeSpecialRules: [
+				{ id: 'ammo_3', ruleName: 'AMMO 3', rule: '<p>Audience Votes reload this weapon.</p>' }
+			],
+			printStyle: 'classic',
+			rulesVersion: 3,
+			showEquipmentDescriptions: true,
+			showSpecialRules: true
+		});
+		expect(html).toContain('stat-value">6</span>');
+		expect(html).not.toContain('Middleweight');
+		expect(html).not.toContain('Ultraheavy');
+		expect(html).toContain('While ploughing through');
+		expect(html).not.toContain('Description not available');
+		expect(html).toContain('Three shots. Criticals blast and hand out hazards.');
+		expect(html).not.toContain('Audience Votes');
+		expect(html).not.toContain('page-break-before: always');
+	});
+
+	it('keeps version 2 ammo text and a single printable column', () => {
+		const html = generatePrintableHtml({
+			teamName: 'Old Team',
+			totalCans: 12,
+			maxCans: 50,
+			sponsorName: 'Rutherford',
+			vehicles: [
+				{
+					...vehicle,
+					stats: { hull: 10, handling: 3, gear: 5, crew: 2, weight: 'Middleweight' },
+					weaponObjects: [
+						{ id: 'rockets_a1b2', name: 'Rockets', facing: 'front', specialRules: 'AMMO 3', attackDice: 6, cost: 5 }
+					]
+				}
+			],
+			weaponAndUpgradeSpecialRules: [
+				{ id: 'ammo_3', ruleName: 'AMMO 3', rule: '<p>Discard an Ammo Token before the attack.</p>' }
+			],
+			printStyle: 'classic',
+			rulesVersion: 2,
+			showEquipmentDescriptions: true,
+			showSpecialRules: false
+		});
+		expect(html).toContain('Discard an Ammo Token');
+		expect(html).toContain('Middleweight');
+		expect(html).toContain('.vehicle-cards');
+		expect(html).not.toContain('minmax(300px');
+	});
 });
