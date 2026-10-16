@@ -3504,6 +3504,9 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
         {maxCans}
         {rulesVersion}
         {drivers}
+        {includeAdvanced}
+        addingDisabled={playMode}
+        onAddVehicle={addVehicle}
         issues={teamErrors}
     />
   {/await}
