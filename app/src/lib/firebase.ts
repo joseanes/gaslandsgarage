@@ -57,6 +57,21 @@ const initializeFirebase = async () => {
       app = firebaseApp.initializeApp(firebaseConfig);
       auth = firebaseAuth.getAuth(app);
       db = firebaseFirestore.getFirestore(app);
+
+      if (localStorage.getItem('gaslands-firebase-emulators') === '1') {
+        firebaseAuth.connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
+        firebaseFirestore.connectFirestoreEmulator(db, '127.0.0.1', 8080);
+        const emulatorAuth = auth;
+        window.signInEmulatorUser = async (email: string, password: string) => {
+          try {
+            await firebaseAuth.createUserWithEmailAndPassword(emulatorAuth, email, password);
+          } catch (error) {
+            const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
+            if (code !== 'auth/email-already-in-use') throw error;
+            await firebaseAuth.signInWithEmailAndPassword(emulatorAuth, email, password);
+          }
+        };
+      }
       
       // Subscribe to auth state changes
       auth.onAuthStateChanged((newUser) => {
