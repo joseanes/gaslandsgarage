@@ -5,6 +5,13 @@ service cloud.firestore {
     match /{document=**} {
       allow read, write: if false;
     }
+
+    // Aggregated usage totals only. No team lists, user ids, or other documents.
+    // The scheduled job writes with the Admin SDK, which does not use these rules.
+    match /stats/{statId} {
+      allow read: if statId == 'public';
+      allow write: if false;
+    }
     
     // Teams collection rules
     match /teams/{teamId} {

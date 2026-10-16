@@ -566,6 +566,9 @@
               <button type="button" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600" on:click={() => { openAboutGaslands(); showHelpMenu = false; }}>
                 About Gaslands
               </button>
+              <a href="/stats" class="menu-item block w-full text-left px-4 py-2 text-white no-underline hover:bg-amber-600" on:click={() => showHelpMenu = false}>
+                Usage Stats
+              </a>
               {#if typeof window !== 'undefined' && window.showExperimentalFeatures}
               <button type="button" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600" on:click={() => { openPlayersMap(); showHelpMenu = false; }}>
                 Players Map
