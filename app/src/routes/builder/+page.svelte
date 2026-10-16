@@ -1967,6 +1967,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 
 			// Expose showExperimentalFeatures for the menu visibility
 			Object.defineProperty(window, 'showExperimentalFeatures', {
+				configurable: true,
 				get: () => showExperimentalFeatures
 			});
 

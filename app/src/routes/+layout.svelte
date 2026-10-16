@@ -622,6 +622,7 @@
           <button type="button" on:click={() => { openGeneralSettings(); showPhoneMenu = false; }}>General Settings</button>
           <button type="button" on:click={() => { openPrintSettings(); showPhoneMenu = false; }}>Print Settings</button>
           <button type="button" on:click={() => { openAboutGaslands(); showPhoneMenu = false; }}>About Gaslands</button>
+          <a href="/stats" on:click={() => showPhoneMenu = false}>Usage Stats</a>
           <button type="button" on:click={() => { openChangeLog(); showPhoneMenu = false; }}>Change Log</button>
           <button type="button" on:click={() => { openContactUs(); showPhoneMenu = false; }}>Contact Us</button>
         </div>
@@ -643,6 +644,7 @@
         <div class="menu-sheet help-menu-dropdown" data-testid="menu-sheet" transition:fade={{ duration: 150 }}>
           <button type="button" on:click={() => { openAbout(); showHelpMenu = false; }}>About Gaslands Garage</button>
           <button type="button" on:click={() => { openAboutGaslands(); showHelpMenu = false; }}>About Gaslands</button>
+          <a href="/stats" on:click={() => showHelpMenu = false}>Usage Stats</a>
           {#if typeof window !== 'undefined' && window.showExperimentalFeatures}
             <button type="button" on:click={() => { openPlayersMap(); showHelpMenu = false; }}>Players Map</button>
           {/if}
@@ -1238,7 +1240,8 @@
   border-top: 2px solid #f59e0b;
 }
 
-.menu-sheet button {
+.menu-sheet button,
+.menu-sheet a {
   text-align: left;
   width: 100%;
   padding: 12px 16px;
@@ -1247,9 +1250,12 @@
   border: none;
   font: inherit;
   cursor: pointer;
+  text-decoration: none;
+  display: block;
 }
 
-.menu-sheet button:hover {
+.menu-sheet button:hover,
+.menu-sheet a:hover {
   background: rgba(245, 158, 11, 0.25);
 }
 

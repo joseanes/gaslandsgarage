@@ -1,0 +1,19 @@
+{
+  "name": "usage-stats",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "check": "tsc --noEmit",
+    "publish-stats": "tsx publish.ts"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.17",
+    "tsx": "^4.20.5",
+    "typescript": "~5.6.3",
+    "vitest": "^3.1.3"
+  }
+}
