@@ -23,7 +23,7 @@
 	import type { Draft, Validation } from '$lib/validate/model';
 	import { encodeDraft, decodeDraft } from '$lib/draft/io';
 	import { normalizeIncomingDraft, withUpgradePerks } from '$lib/draft/importTeam';
-	import { defaultRulesVersion, maxCountedVehicles, normalizeRulesVersion, type RulesVersion } from '$lib/rules/version';
+	import { countedVehicleTotal, defaultRulesVersion, maxCountedVehicles, normalizeRulesVersion, type RulesVersion } from '$lib/rules/version';
 	import { resolveById } from '$lib/validate/v3/lookup';
 	import { v3BuildSlots } from '$lib/validate/v3/slots';
 	import { goto } from '$app/navigation';
@@ -1463,7 +1463,9 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 	}
 
 	function shareLink() {
-		void openSharePanel();
+		const encoded = encodeDraft(currentDraft);
+		goto(`?draft=${encodeURIComponent(encoded)}`, { replaceState: true });
+		alert('Link updated in address bar. Copy the current URL to share your build.');
 	}
 
 	async function generateQRCode() {
@@ -2272,6 +2274,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		window.dispatchEvent(new CustomEvent('gaslands-play-mode', { detail: { playMode } }));
 	}
 	$: vehicleAllowance = maxCountedVehicles(Number(maxCans) || 50);
+	$: countedVehicles = countedVehicleTotal(vehicles.map((entry) => entry.type));
 
 	// Function to force validation to run immediately
 	/**
@@ -3160,40 +3163,43 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 	<header class="mb-3 md:mb-4">
 		<div class="text-3xl md:text-4xl font-extrabold text-stone-800 dark:text-gray-100 tracking-tight flex flex-wrap justify-between items-center">
 			<div class="flex flex-col gap-2 w-full">
-				<div class="flex flex-col gap-1 w-full">
-					<div class="flex items-center gap-4 w-full">
-						<b class="text-base font-bold whitespace-nowrap" style="min-width: 95px;">Rules:</b>
-						{#key rulesSelectKey}
-						<select
-							id="rules-version"
-							class="form-select h-[32px] flex items-center"
-							style="height: 32px !important; min-height: 32px !important; max-height: 32px !important;"
-							value={rulesVersion}
-							on:change={(e) => changeRulesVersion(Number(e.currentTarget.value))}
-							aria-label="Rules version"
-						>
-							<option value={2}>Version 2 — Refuelled</option>
-							<option value={3}>Version 3</option>
-						</select>
-						{/key}
-					</div>
-					{#if rulesVersion === 3}
-						<p class="text-sm text-stone-600 dark:text-gray-300" data-testid="vehicle-limit">
-							Up to {vehicleAllowance} vehicles at {maxCans} cans. The first bike is free.
-						</p>
-					{/if}
-				</div>
-				<div class="flex items-center w-full gap-4">
-					<b class="text-base font-bold whitespace-nowrap" style="min-width: 50px;">Name:</b>
-					<input
-						type="text"
-						bind:value={teamName}
-						class="bg-transparent border-2 border-amber-500 rounded-lg px-3 py-0.25 font-bold text-amber-700 dark:text-white focus:outline-none focus:border-amber-600 flex-1 min-w-0 w-full text-base dark-text-input"
+				<div class="flex items-center gap-4 w-full">
+					<b class="text-base font-bold whitespace-nowrap" style="min-width: 95px;">Rules:</b>
+					{#key rulesSelectKey}
+					<select
+						id="rules-version"
+						class="form-select h-[32px] flex items-center"
 						style="height: 32px !important; min-height: 32px !important; max-height: 32px !important;"
-						aria-label="Team Name"
-					/>
+						value={rulesVersion}
+						on:change={(e) => changeRulesVersion(Number(e.currentTarget.value))}
+						aria-label="Rules version"
+					>
+						<option value={2}>Version 2 — Refuelled</option>
+						<option value={3}>Version 3</option>
+					</select>
+					{/key}
 				</div>
-				<div class="flex flex-col gap-2 w-full">
+				<div class="flex items-center justify-between w-full gap-4">
+					<div class="flex items-center gap-4">
+						<b class="text-base font-bold whitespace-nowrap" style="min-width: 50px;">Name:</b>
+						<input
+							type="text"
+							bind:value={teamName}
+							class="bg-transparent border-2 border-amber-500 rounded-lg px-3 py-0.25 font-bold text-amber-700 dark:text-white focus:outline-none focus:border-amber-600 min-w-[127px] w-auto max-w-[150px] text-base dark-text-input"
+							style="height: 32px !important; min-height: 32px !important; max-height: 32px !important;"
+							aria-label="Team Name"
+						/>
+					</div>
+					<!-- Edit/Play Mode Toggle Button -->
+					<button
+						class="py-2 px-4 w-32 flex items-center justify-center rounded-md transition-colors amber-button"
+						on:click={togglePlayMode}
+					>
+						<span class="w-3 h-3 rounded-full {playMode ? 'bg-green-500' : 'bg-amber-500'} transition-colors mr-2"></span>
+						<span class="text-sm font-medium">{playMode ? 'Edit Team' : 'Play Mode'}</span>
+					</button>
+				</div>
+				<div class="flex items-center justify-between w-full gap-4">
 					<div class="flex items-center gap-4">
 						<b class="text-base font-bold whitespace-nowrap">Cans: </b>
 						<span class="font-extrabold text-amber-700 dark:text-amber-300 text-lg md:text-xl">{totalCans || calculateTotalCansDirectly()}</span>
@@ -3209,26 +3215,19 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 							aria-label="Maximum Cans"
 						/>
 					</div>
-					{#if vehicles.length > 0}
-						{#if teamErrors.length === 0}
-							<div class="flex items-center bg-green-50 text-green-800 p-3 rounded-lg" data-testid="legal-banner">
-								<span class="mr-2 text-green-500">✓</span>
-								<span class="font-medium">Your team is legal and ready to race!</span>
-							</div>
+					<!-- Quick Save Button -->
+					<button
+						class="py-2 px-4 w-32 flex items-center justify-center rounded-md transition-colors amber-button"
+						on:click={quickSaveTeam}
+						disabled={quickSaving}
+					>
+						{#if quickSaving}
+							<div class="animate-spin mr-2 h-3 w-3 border-b-2 border-white rounded-full"></div>
+							<span class="text-sm font-medium">Saving...</span>
 						{:else}
-							<div class="bg-red-50 text-red-800 p-3 rounded-lg" data-testid="legal-banner">
-								<div class="flex items-center mb-2">
-									<span class="mr-2 text-red-500">!</span>
-									<span class="font-medium">Your team has issues that need fixing:</span>
-								</div>
-								<ul class="list-disc ml-6 space-y-1">
-									{#each teamErrors as err}
-										<li>{err}</li>
-									{/each}
-								</ul>
-							</div>
+							<span class="text-sm font-medium">Quick Save</span>
 						{/if}
-					{/if}
+					</button>
 				</div>
 
 				{#if enableSponsorships || rulesVersion === 3}
@@ -3369,6 +3368,12 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		<div class="flex items-center justify-between mb-2">
 			<div class="flex items-center gap-4">
 				<h2 class="text-2xl font-bold text-stone-800 dark:text-gray-100">Vehicles</h2>
+				{#if rulesVersion === 3}
+					<p class="text-sm text-stone-600 dark:text-gray-300" data-testid="vehicle-limit">
+						{countedVehicles}/{vehicleAllowance} toward the limit
+						<span class="text-stone-500">(first bike is free, 3 max)</span>
+					</p>
+				{/if}
 			</div>
 			<button
 				class="py-2 px-4 w-32 flex items-center justify-center rounded-md transition-colors amber-button"
@@ -3486,6 +3491,24 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		</div>
 	{/if}
 
+	{#if teamErrors.length === 0}
+		<div class="flex items-center bg-green-50 text-green-800 p-4 rounded-lg" data-testid="legal-banner">
+			<span class="mr-2 text-green-500">✓</span>
+			<span class="font-medium">Your team is legal and ready to race!</span>
+		</div>
+	{:else}
+		<div class="bg-red-50 text-red-800 p-4 rounded-lg" data-testid="legal-banner">
+			<div class="flex items-center mb-2">
+				<span class="mr-2 text-red-500">!</span>
+				<span class="font-medium">Your team has issues that need fixing:</span>
+			</div>
+			<ul class="list-disc ml-12 space-y-1">
+				{#each teamErrors as err}
+					<li>{err}</li>
+				{/each}
+			</ul>
+		</div>
+	{/if}
 </div>
 {/if}
 <!-- Gaslands Coach -->

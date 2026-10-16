@@ -142,7 +142,8 @@ async function printTeam(
 	await expect(page.getByTestId('vehicle-summary').first()).toBeVisible();
 
 	const popupPromise = page.waitForEvent('popup');
-	await page.getByRole('button', { name: 'Print', exact: true }).click();
+	await page.getByRole('button', { name: 'Teams' }).click();
+	await page.getByRole('button', { name: 'Print Team' }).click();
 	const popup = await popupPromise;
 	popup.on('pageerror', (error) => errors.push(error.message));
 	popup.on('console', (message) => {
