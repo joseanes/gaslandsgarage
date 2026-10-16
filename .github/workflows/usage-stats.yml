@@ -1,0 +1,33 @@
+# Daily usage totals for the public stats page.
+# Scheduled Cloud Functions need the Blaze plan, so this job uses the Admin SDK instead.
+# It only writes stats/public. It does not deploy the site or the rules.
+name: Usage stats
+
+on:
+  schedule:
+    - cron: '15 6 * * *'
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Publish stats/public
+        working-directory: stats
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: pnpm publish-stats

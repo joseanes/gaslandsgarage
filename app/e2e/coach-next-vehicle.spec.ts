@@ -5,15 +5,11 @@ async function addSuggestedVehicle(page: Page) {
 	await expect(next).toBeVisible();
 	const add = next.locator('[data-testid^="coach-add-"]').first();
 	await expect(add).toBeVisible();
-	const testId = await add.getAttribute('data-testid');
-	const typeId = testId?.replace('coach-add-', '') ?? '';
-	expect(typeId.length).toBeGreaterThan(0);
+	const suggestedName = await add.locator('xpath=ancestor::li[1]').locator('span').first().innerText();
+	expect(suggestedName.length).toBeGreaterThan(0);
 	await add.click();
-	await expect(page.locator('select[id^="vehicle-type-"]')).toHaveCount(2);
-	const values = await page.locator('select[id^="vehicle-type-"]').evaluateAll((elements) =>
-		elements.map((element) => (element as HTMLSelectElement).value)
-	);
-	expect(values).toContain(typeId);
+	await expect(page.getByTestId('vehicle-summary')).toHaveCount(2);
+	await expect(page.getByTestId('vehicle-summary').filter({ hasText: suggestedName })).toHaveCount(1);
 }
 
 test('coach Add puts the suggested vehicle on the team in both editions', async ({ page }) => {
@@ -22,8 +18,8 @@ test('coach Add puts the suggested vehicle on the team in both editions', async 
 	await expect(page.getByTestId('coach-rules')).toHaveText('Version 2');
 	await addSuggestedVehicle(page);
 
-	page.once('dialog', (dialog) => dialog.accept());
 	await page.locator('#rules-version').selectOption('3');
+	await page.getByRole('dialog', { name: 'Switch rules version' }).getByRole('button', { name: 'Switch', exact: true }).click();
 	await expect(page.locator('#rules-version')).toHaveValue('3');
 	await expect(page.getByText('Your team has no vehicles yet')).toBeVisible();
 

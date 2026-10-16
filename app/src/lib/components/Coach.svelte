@@ -40,6 +40,23 @@
     export let includeAdvanced = true;
     export let addingDisabled = false;
     export let onAddVehicle: (vehicleType: string) => void = () => {};
+    export let issues: string[] = [];
+
+    let detailsChoice: boolean | null = null;
+
+    function listHasGear(list: TeamVehicle[]) {
+        return list.some((vehicle) =>
+            (vehicle.weapons?.length || 0) > 0 ||
+            (vehicle.upgrades?.length || 0) > 0 ||
+            (vehicle.perks?.length || 0) > 0
+        );
+    }
+
+    $: detailsOpen = detailsChoice === null ? listHasGear(vehicles) : detailsChoice;
+
+    function toggleDetails() {
+        detailsChoice = !detailsOpen;
+    }
 
     // Accepted from the builder so the catalog stays in sync; not read by the coach metrics.
     $: void perks;
@@ -513,6 +530,39 @@
         
         return suggestions;
     }
+
+    function leadRule() {
+        const fromValidation = issues.find((issue) => issue.trim().length > 0);
+        if (fromValidation) return fromValidation;
+        if (totalCans > Number(maxCans)) return `Team exceeds ${maxCans} cans limit`;
+        if (rulesVersion === 3) {
+            if (vehicles.some((vehicle) => !vehicle.driverArchetype)) {
+                return 'Give every vehicle a driver. Drivers are free, and each archetype can be used once.';
+            }
+            const archetypes = vehicles
+                .map((vehicle) => vehicle.driverArchetype)
+                .filter((id): id is string => Boolean(id));
+            if (new Set(archetypes).size !== archetypes.length) {
+                return 'Two vehicles share a driver archetype. Each archetype can be used once.';
+            }
+            if (getSlotEfficiency() > 100) return 'A vehicle is using more build slots than it has.';
+            const allowance = maxCountedVehicles(Number(maxCans) || 50);
+            const counted = countedVehicleTotal(vehicles.map((vehicle) => vehicle.type));
+            if (counted > allowance) return `Too many vehicles for ${maxCans} cans.`;
+            const electricalWeapons = getElectricalBalance().electrical;
+            const spark = vehicles.some((vehicle) => vehicle.driverArchetype === 'spark');
+            const van = vehicles.some((vehicle) => vehicle.type === 'van');
+            if (electricalWeapons > 0 && !spark && !van) {
+                return 'Electrical weapons need a Spark driver on the team, or a van for that vehicle.';
+            }
+            if (currentSponsor && currentSponsor.id !== 'no_sponsor' && currentSponsor.requirement) {
+                return `Sponsor requirement: ${currentSponsor.requirement}`;
+            }
+        } else if (getSlotEfficiency() > 100) {
+            return 'A vehicle is using more build slots than it has.';
+        }
+        return 'No rules issues on this list yet.';
+    }
     
     // Automatically refresh metrics when props change
     $: refreshTime = Date.now();
@@ -529,16 +579,22 @@
 </script>
 
 <div class="mt-6 bg-stone-100 dark:bg-gray-700 p-4 rounded-lg" in:fade={{ duration: 200 }}>
-    <div class="flex flex-wrap justify-between items-center mb-4">
+    <div class="flex flex-wrap justify-between items-center gap-2">
         <h3 class="text-lg font-bold text-stone-800 dark:text-white">Gaslands Coach <span data-testid="coach-rules">Version {rulesVersion}</span></h3>
         <div class="flex items-center space-x-2">
             <div class="text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 py-1 px-3 rounded-full">
                 {totalCans} / {maxCans} cans ({Math.round((totalCans / maxCans) * 100)}%)
             </div>
+            <button
+                type="button"
+                class="text-sm font-medium text-amber-700 dark:text-amber-300 underline"
+                on:click={toggleDetails}
+            >
+                {detailsOpen ? 'Hide details' : 'Show details'}
+            </button>
         </div>
     </div>
-
-    <div class="mb-6 bg-amber-50 dark:bg-amber-900/20 p-4 rounded-lg border border-amber-200 dark:border-amber-800" data-testid="coach-next-vehicle">
+    <div class="mt-4 mb-2 bg-amber-50 dark:bg-amber-900/20 p-4 rounded-lg border border-amber-200 dark:border-amber-800" data-testid="coach-next-vehicle">
         <h4 class="text-sm font-bold text-amber-800 dark:text-amber-300 mb-3">What to add next</h4>
         {#if nextVehicles.length === 0}
             <p class="text-sm text-amber-700 dark:text-amber-300" data-testid="coach-next-empty">{EMPTY_NEXT_VEHICLE_MESSAGE}</p>
@@ -563,7 +619,10 @@
             </ul>
         {/if}
     </div>
-    
+
+    <p class="mt-2 text-sm font-medium text-stone-800 dark:text-white" data-testid="coach-lead">{leadRule()}</p>
+
+    {#if detailsOpen}
     <!-- Main Metrics Dashboard -->
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <div class="bg-stone-200 dark:bg-gray-600 p-3 rounded-lg text-center">
@@ -573,7 +632,7 @@
                     text={getCombatEffectivenessIndex().toFixed(2)}
                     content="<strong>Combat Effectiveness</strong><p>Measures attack power per can spent. Higher is better.</p><p>Improve by adding weapons with more attack dice or removing inefficient weapons.</p><p>Aim for: 0.5+ (decent) or 0.7+ (excellent)</p>"
                 />
-                <span class="text-xs text-stone-500 dark:text-gray-400">dice/can</span>
+                <span class="block text-xs text-stone-500 dark:text-gray-400">Attack dice per can.</span>
             </div>
         </div>
         
@@ -586,7 +645,7 @@
                         ? "<strong>Survivability</strong><p>Hull plus armour, per can spent.</p><p>Improve with extra armour or tougher vehicles.</p>"
                         : "<strong>Survivability</strong><p>Measures hull points per can spent. Higher is better.</p><p>Improve by adding armor upgrades or choosing vehicles with better hull-to-cost ratio.</p><p>Aim for: 0.6+ (decent) or 0.8+ (excellent)</p>"}
                 />
-                <span class="text-xs text-stone-500 dark:text-gray-400">hull/can</span>
+                <span class="block text-xs text-stone-500 dark:text-gray-400">Hull per can.</span>
             </div>
         </div>
         
@@ -597,7 +656,7 @@
                     text={getMobilityScore().toFixed(1)}
                     content="<strong>Mobility Score</strong><p>Combines max gear and handling stats. Higher is better.</p><p>Improve by adding handling upgrades or choosing faster vehicles.</p><p>Aim for: 6+ (decent) or 8+ (excellent)</p>"
                 />
-                <span class="text-xs text-stone-500 dark:text-gray-400">/10</span>
+                <span class="block text-xs text-stone-500 dark:text-gray-400">Gear and handling, out of 10.</span>
             </div>
         </div>
         
@@ -608,6 +667,7 @@
                     text={getSlotEfficiency() + '%'}
                     content="<strong>Slot Efficiency</strong><p>Percentage of available weapon/upgrade slots used. Higher is better.</p><p>Upgrade slots are modified by certain upgrades that provide additional slots (shown with negative slot values).</p><p>Improve by filling empty slots with weapons or upgrades.</p><p>Aim for: 70%+ (decent) or 90%+ (excellent)</p>"
                 />
+                <span class="block text-xs text-stone-500 dark:text-gray-400">Percent of build slots used.</span>
             </div>
         </div>
     </div>
@@ -815,5 +875,6 @@
                 {/each}
             </ul>
         </div>
+    {/if}
     {/if}
 </div>

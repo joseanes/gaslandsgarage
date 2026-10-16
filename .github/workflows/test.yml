@@ -29,6 +29,12 @@ jobs:
         working-directory: app
         run: pnpm test
 
+      - name: Usage stats unit tests
+        working-directory: stats
+        run: |
+          pnpm check
+          pnpm test
+
       - name: Build app
         working-directory: app
         run: |

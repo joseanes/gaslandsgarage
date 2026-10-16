@@ -33,6 +33,28 @@ interface PrintHtmlData {
   rulesVersion?: 2 | 3;
 }
 
+function escapeHtml(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function ruleKey(value: unknown): string {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ');
+}
+
+function findVehicleRule(rules: any[] | undefined, ruleName: string) {
+  if (!Array.isArray(rules)) return undefined;
+  const key = ruleKey(ruleName);
+  if (!key) return undefined;
+  return rules.find((rule) => ruleKey(rule?.id) === key || ruleKey(rule?.ruleName) === key);
+}
+
 function editionFields(vehicle: any, rulesVersion: number | undefined) {
   if (rulesVersion !== 3) return null;
   let armour = vehicle?.stats?.armour ?? vehicle?.vehicleType?.armour ?? 0;
@@ -44,8 +66,40 @@ function editionFields(vehicle: any, rulesVersion: number | undefined) {
   return {
     armour,
     slots,
-    driver: vehicle?.driverSummary || 'No driver',
-    classes: vehicle?.perkClassSummary || 'None'
+    driver: escapeHtml(vehicle?.driverSummary || 'No driver'),
+    classes: escapeHtml(vehicle?.perkClassSummary || 'None')
+  };
+}
+
+/** Stats the sheet should show. Roster used to ignore `stats` and print placeholder numbers. */
+function resolvedPrintStats(vehicle: any) {
+  const vehicleType = vehicle?.vehicleType || {};
+  const stats = vehicle?.stats || {};
+  const upgradeObjects = Array.isArray(vehicle?.upgradeObjects) ? vehicle.upgradeObjects : [];
+  let handling = stats.handling ?? vehicleType.handling ?? vehicle?.handling ?? 4;
+  let gear = stats.gear ?? vehicleType.maxGear ?? vehicle?.maxGear ?? 6;
+  let hull = stats.hull ?? vehicleType.maxHull ?? vehicle?.hull ?? 4;
+  let crew = stats.crew ?? vehicleType.crew ?? vehicle?.crew ?? 1;
+  const hullAlreadyIncludesUpgrades = stats.hull != null;
+
+  for (const upgrade of upgradeObjects) {
+    if (!upgrade) continue;
+    if (upgrade.handling) handling += upgrade.handling;
+    else if (upgrade.handlingModifier) handling += upgrade.handlingModifier;
+    if (upgrade.gear) gear += upgrade.gear;
+    else if (upgrade.gearModifier) gear += upgrade.gearModifier;
+    if (upgrade.crew) crew += upgrade.crew;
+    else if (upgrade.crewModifier) crew += upgrade.crewModifier;
+    if (!hullAlreadyIncludesUpgrades && upgrade.hull) hull += upgrade.hull;
+  }
+
+  const weightSource = stats.weight ?? vehicleType.weight ?? vehicle?.weight;
+  return {
+    handling,
+    gear,
+    hull,
+    crew,
+    weight: weightSource == null ? 'Middleweight' : getWeightText(weightSource)
   };
 }
 
@@ -359,8 +413,8 @@ export function generatePrintableHtml(data: PrintHtmlData): string {
         if (!ruleDescription) {
           // Look for any rule with an ID that matches this rule name or its prefix
           // For example, "caltrop_dropper" in the special rules should match a rule with ID "caltrop_dropper"
-          const matchingRule = data.weaponAndUpgradeSpecialRules?.find(r => 
-            r.id && (r.id.toLowerCase() === lowerRuleName || lowerRuleName.startsWith(r.id.toLowerCase()))
+          const matchingRule = data.weaponAndUpgradeSpecialRules?.find(r =>
+            r.id && r.id.toLowerCase() === lowerRuleName
           );
           if (matchingRule) {
             ruleDescription = matchingRule.rule;
@@ -397,10 +451,12 @@ export function generatePrintableHtml(data: PrintHtmlData): string {
             <span class="equipment-stat">Cost: ${weapon.cost} cans</span>
             <span class="equipment-stat">Attack Dice: ${weapon.attackDice !== '-' ? weapon.attackDice : 'N/A'}</span>
             <span class="equipment-stat">Default Facing: ${weapon.facing || 'Front'}</span>
-            ${weapon.specialRules ? `
+            ${weapon.specialRules || weapon.effect ? `
             <div class="equipment-rules">
               <div class="special-rules-header">Special Rules:</div>
-              ${getRuleDescription(weapon.specialRules)}
+              ${rulesVersion === 3
+                ? `<div class="rule-item"><div class="rule-name">${escapeHtml(weapon.specialRules || '')}</div><div class="rule-description">${escapeHtml(weapon.effect || '')}</div></div>`
+                : getRuleDescription(weapon.specialRules)}
             </div>` : ''}
           </div>
         </li>`;
@@ -424,10 +480,12 @@ export function generatePrintableHtml(data: PrintHtmlData): string {
           <div class="equipment-name">${upgrade.name}</div>
           <div class="equipment-details">
             <span class="equipment-stat">Cost: ${upgrade.cost} cans</span>
-            ${upgrade.specialRules ? `
+            ${upgrade.specialRules || upgrade.effect ? `
             <div class="equipment-rules">
               <div class="special-rules-header">Special Rules:</div>
-              ${getRuleDescription(upgrade.specialRules)}
+              ${rulesVersion === 3
+                ? `<div class="rule-item"><div class="rule-name">${escapeHtml(upgrade.specialRules || '')}</div><div class="rule-description">${escapeHtml(upgrade.effect || '')}</div></div>`
+                : getRuleDescription(upgrade.specialRules)}
             </div>` : ''}
           </div>
         </li>`;
@@ -489,14 +547,18 @@ export function generatePrintableHtml(data: PrintHtmlData): string {
 
       .team-info {
         display: flex;
+        flex-wrap: wrap;
         justify-content: space-between;
+        gap: 8px 16px;
       }
 
-      /* Vehicle card grid */
+      h1, h2, h3, .vehicle-name, .sponsor-name {
+        overflow-wrap: anywhere;
+      }
+
+      /* One column. A second column was clipped off the printed page. */
       .vehicle-cards {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-        gap: 20px;
+        display: block;
         margin-bottom: 30px;
       }
 
@@ -505,7 +567,11 @@ export function generatePrintableHtml(data: PrintHtmlData): string {
         border: 1px solid #888;
         border-radius: 8px;
         padding: 15px;
-        page-break-inside: avoid;
+        margin-bottom: 16px;
+        max-width: 100%;
+        box-sizing: border-box;
+        break-inside: auto;
+        page-break-inside: auto;
       }
 
       .card-header {
@@ -571,7 +637,9 @@ export function generatePrintableHtml(data: PrintHtmlData): string {
 
       .hull-boxes {
         display: flex;
+        flex-wrap: wrap;
         gap: 2px;
+        max-width: 100%;
       }
 
       .hull-box {
@@ -603,7 +671,8 @@ export function generatePrintableHtml(data: PrintHtmlData): string {
       /* Equipment section */
       .equipment-container {
         margin-top: 30px;
-        page-break-before: always;
+        break-before: auto;
+        page-break-before: auto;
         border-top: 2px solid #d97706;
         padding-top: 20px;
       }
@@ -666,7 +735,8 @@ export function generatePrintableHtml(data: PrintHtmlData): string {
       /* Sponsor perks section */
       .sponsor-perks-container {
         margin-top: 30px;
-        page-break-before: always;
+        break-before: auto;
+        page-break-before: auto;
         border-top: 2px solid #d97706;
         padding-top: 20px;
       }
@@ -698,8 +768,9 @@ export function generatePrintableHtml(data: PrintHtmlData): string {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        page-break-before: auto;
-        page-break-inside: avoid;
+        break-before: avoid;
+        page-break-before: avoid;
+        page-break-inside: auto;
       }
 
       /* QR code section */
@@ -732,10 +803,10 @@ export function generatePrintableHtml(data: PrintHtmlData): string {
   <body>
     <!-- Header Section -->
     <div class="print-header">
-      <h1>${teamName}</h1>
+      <h1>${escapeHtml(teamName)}</h1>
       <div class="team-info">
         <div>Total: ${actualTotalCans} / ${maxCans} cans</div>
-        <div>Sponsor: ${sponsorName}</div>
+        <div>Sponsor: ${escapeHtml(sponsorName)}</div>
         ${editionSponsorNote(rulesVersion, sponsor)}
       </div>
     </div>
@@ -835,13 +906,8 @@ function generateDashboardHtml(data: PrintHtmlData): string {
   let vehicleDashboardsHtml = '';
   
   if (vehicles && Array.isArray(vehicles)) {
-    vehicles.forEach((vehicle, index) => {
+    vehicles.forEach((vehicle) => {
       vehicleDashboardsHtml += generateVehicleDashboardHtml(vehicle, sponsorName, rulesVersion);
-      
-      // Add page break after each vehicle except the last one
-      if (index < vehicles.length - 1) {
-        vehicleDashboardsHtml += '<div class="page-break"></div>';
-      }
     });
   } else {
     vehicleDashboardsHtml = '<div class="dashboard-card">No vehicles found</div>';
@@ -881,12 +947,14 @@ function generateDashboardHtml(data: PrintHtmlData): string {
         }
 
         body {
+          padding: 0;
           -webkit-print-color-adjust: exact !important;
           print-color-adjust: exact !important;
         }
         
         .page-break {
-          page-break-after: always;
+          page-break-after: auto;
+          break-after: auto;
         }
         
         .print-buttons {
@@ -953,7 +1021,10 @@ function generateDashboardHtml(data: PrintHtmlData): string {
       .dashboard-card {
         border: 1px solid black;
         margin-bottom: 15px;
-        page-break-inside: avoid;
+        max-width: 100%;
+        box-sizing: border-box;
+        break-inside: auto;
+        page-break-inside: auto;
       }
       
       .vehicle-header {
@@ -963,6 +1034,8 @@ function generateDashboardHtml(data: PrintHtmlData): string {
         display: flex;
         justify-content: space-between;
         align-items: flex-start;
+        gap: 12px;
+        overflow-wrap: anywhere;
       }
       
       .vehicle-subheader {
@@ -1099,9 +1172,11 @@ function generateDashboardHtml(data: PrintHtmlData): string {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-top: 30px;
-        padding-top: 20px;
+        margin-top: 8px;
+        padding-top: 4px;
         border-top: 1px solid #ccc;
+        break-before: avoid;
+        page-break-before: avoid;
         page-break-inside: avoid;
       }
       
@@ -1110,8 +1185,8 @@ function generateDashboardHtml(data: PrintHtmlData): string {
       }
       
       .qr-code {
-        max-width: 120px;
-        height: auto;
+        width: 64px;
+        height: 64px;
         margin: 0 auto;
         display: block;
         border: 1px solid #000;
@@ -1127,10 +1202,10 @@ function generateDashboardHtml(data: PrintHtmlData): string {
       /* Footer */
       .dashboard-footer {
         text-align: center;
-        margin-top: 20px;
-        font-size: 12px;
+        margin-top: 2px;
+        font-size: 10px;
+        line-height: 1.2;
         color: #666;
-        flex-grow: 1;
       }
     </style>
   </head>
@@ -1138,13 +1213,16 @@ function generateDashboardHtml(data: PrintHtmlData): string {
     <!-- Sponsor Header -->
     <div class="sponsor-header">
       <div>
-        <div class="sponsor-name">${sponsorName}</div>
+        <div class="sponsor-name">${escapeHtml(sponsorName)}</div>
         <div class="sponsor-description">${sponsorDescription}</div>
         ${editionSponsorNote(rulesVersion, sponsor)}
       </div>
       <div style="text-align: right;">
         <div class="sponsor-name">${actualTotalCans} / ${maxCans} cans</div>
         <div class="sponsor-description">Total team cost</div>
+        ${qrCode
+          ? `<img src="${qrCode}" alt="QR code for this team" style="width:64px; height:64px; margin-top:6px; border:1px solid #000; background:#fff;"><div class="sponsor-description">gaslandsgarage.com</div>`
+          : ''}
       </div>
     </div>
 
@@ -1165,7 +1243,7 @@ function generateDashboardHtml(data: PrintHtmlData): string {
             </tr>
           </thead>
           <tbody>
-            ${generateEquipmentDescriptionsHtml(vehicles)}
+            ${generateEquipmentDescriptionsHtml(vehicles, rulesVersion)}
           </tbody>
         </table>
       </div>
@@ -1207,22 +1285,6 @@ function generateDashboardHtml(data: PrintHtmlData): string {
     </div>
     ` : ''}
 
-    <!-- Footer with QR Code -->
-    <div class="print-footer-container">
-      <div class="dashboard-footer">
-        Generated by <a href="https://www.GaslandsGarage.com" target="_blank">GaslandsGarage.com</a> on ${new Date().toLocaleDateString()}
-      </div>
-
-      <div class="qr-section">
-        ${qrCode ?
-          `<img src="${qrCode}" class="qr-code" alt="QR Code for team" style="width:120px; height:120px;">` :
-          `<div style="width:120px; height:120px; border:1px solid #000; background:#fff; text-align:center; line-height:120px; font-size:10px;">
-            Visit gaslandsgarage.com
-          </div>`
-        }
-        <div class="qr-caption">Scan to load this team build</div>
-      </div>
-    </div>
   </body>
   </html>
   `;
@@ -1282,64 +1344,12 @@ function generateVehicleDashboardHtml(vehicle: any, sponsorName: string, rulesVe
     const upgradeObjects = Array.isArray(vehicle.upgradeObjects) ? vehicle.upgradeObjects : [];
     const perkObjects = Array.isArray(vehicle.perkObjects) ? vehicle.perkObjects : [];
     
-    // Get hull, handling, crew, and max gear with upgrade modifiers
-    // Start with base hull
-    let hull = stats.hull || vehicleType.maxHull || 4;
-    
-    // Start with base handling
-    let handling = stats.handling || vehicleType.handling || 4;
-    
-    // Calculate crew with upgrades
-    let crew = stats.crew || vehicleType.crew || 1;
-    console.log(`Initial crew for ${name}: ${crew}`);
-    // Apply upgrade modifiers to all stats
-    if (upgradeObjects && Array.isArray(upgradeObjects)) {
-      upgradeObjects.forEach((upgrade: any) => {
-        console.log(`Checking upgrade ${upgrade.name} for crew modifiers:`, upgrade);
-        // Hull modifiers are commented out because hull was renamed to hullValue and declared as a constant
-        /* 
-        if (upgrade.hull) {
-          hull += upgrade.hull;
-        } else if (upgrade.id === 'armor') {
-          // Special case for armor upgrade
-          hull += 1;
-        } else if (upgrade.hullModifier) {
-          hull += upgrade.hullModifier;
-        }
-        */
-        
-        // Add handling modifiers
-        if (upgrade.handling) {
-          handling += upgrade.handling;
-        } else if (upgrade.handlingModifier) {
-          handling += upgrade.handlingModifier;
-        }
-        
-        // Add crew modifiers
-        if (upgrade.crew) {
-          crew += upgrade.crew;
-          console.log(`Added ${upgrade.crew} crew from upgrade ${upgrade.name}, new total: ${crew}`);
-        } else if (upgrade.crewModifier) {
-          crew += upgrade.crewModifier;
-          console.log(`Added ${upgrade.crewModifier} crew from upgrade ${upgrade.name} (crewModifier), new total: ${crew}`);
-        }
-      });
-    }
-    
-    // Calculate max gear with upgrades
-    let maxGear = stats.gear || vehicleType.maxGear || 6;
-    // Apply gear modifiers from upgrades
-    if (upgradeObjects && Array.isArray(upgradeObjects)) {
-      upgradeObjects.forEach((upgrade: any) => {
-        // Add gear modifiers
-        if (upgrade.gear) {
-          maxGear += upgrade.gear;
-        } else if (upgrade.gearModifier) {
-          maxGear += upgrade.gearModifier;
-        }
-      });
-    }
-    const weight = getWeightText(stats.weight || vehicleType.weight || 2);
+    const printed = resolvedPrintStats(vehicle);
+    const hull = printed.hull;
+    const handling = printed.handling;
+    const crew = printed.crew;
+    const maxGear = printed.gear;
+    const weight = printed.weight;
     
     // Generate hull boxes (more similar to reference image)
     let hullBoxesHtml = '';
@@ -1474,8 +1484,9 @@ function generateVehicleDashboardHtml(vehicle: any, sponsorName: string, rulesVe
     }
     
     // Combine vehicle type and perks/abilities for the subheader
+    const weightLabel = /^\d+$/.test(String(weight)) ? `Weight ${weight}` : weight;
     const vehicleTypePerks = [
-      weight, 
+      weightLabel,
       typeName
     ];
     
@@ -1485,7 +1496,7 @@ function generateVehicleDashboardHtml(vehicle: any, sponsorName: string, rulesVe
       const rules = specialRulesString.split(',').map((rule: string) => rule.trim());
       const readableRuleNames = rules.map((ruleId: string) => {
         // Find the rule details using the id but display the readable ruleName
-        const ruleDetails = vehicle.vehicleRules?.find((r: any) => r.id === ruleId);
+        const ruleDetails = findVehicleRule(vehicle.vehicleRules, ruleId);
         return ruleDetails?.ruleName || ruleId;
       });
       vehicleTypePerks.push(...readableRuleNames);
@@ -1504,7 +1515,7 @@ function generateVehicleDashboardHtml(vehicle: any, sponsorName: string, rulesVe
     <div class="dashboard-card">
       <div class="vehicle-header">
         <div>
-          <div>${name}</div>
+          <div>${escapeHtml(name)}</div>
           <div class="vehicle-type-perks">${vehicleTypePerks.join(', ')}</div>
         </div>
         <div>
@@ -1609,8 +1620,14 @@ function generateVehicleCardHtml(vehicle: any, rulesVersion?: number): string {
     const upgradeObjects = Array.isArray(vehicle.upgradeObjects) ? vehicle.upgradeObjects : [];
     const perkObjects = Array.isArray(vehicle.perkObjects) ? vehicle.perkObjects : [];
     
+    const printed = resolvedPrintStats(vehicle);
+    const hull = printed.hull;
+    const handling = printed.handling;
+    const gear = printed.gear;
+    const crew = printed.crew;
+    const weight = printed.weight;
+
     // Generate hull boxes HTML
-    const hull = stats.hull || 4;
     let hullBoxesHtml = '';
     for (let i = 0; i < hull; i++) {
       hullBoxesHtml += '<div class="hull-box"></div>';
@@ -1725,63 +1742,12 @@ function generateVehicleCardHtml(vehicle: any, rulesVersion?: number): string {
       vehicleTypeName = type.charAt(0).toUpperCase() + type.slice(1);
     }
     
-    // Calculate stats with upgrade modifiers
-    // Start with base values
-    let handling = stats.handling || vehicleType.handling || 4;
-    let gear = stats.gear || vehicleType.maxGear || 6;
-    // Note: We don't use hull directly in classic style but include it for upgrade calculations
-    const hullValue = stats.hull || vehicleType.maxHull || 4;
-    let crew = stats.crew || vehicleType.crew || 1;
-    console.log(`Classic style - Initial crew for ${name}: ${crew}`);
-    
-    // Apply upgrade modifiers to all stats
-    if (upgradeObjects && Array.isArray(upgradeObjects)) {
-      upgradeObjects.forEach((upgrade: any) => {
-        // Hull modifiers are commented out because hull was renamed to hullValue and declared as a constant
-        /* 
-        if (upgrade.hull) {
-          hull += upgrade.hull;
-        } else if (upgrade.id === 'armor') {
-          // Special case for armor upgrade
-          hull += 1;
-        } else if (upgrade.hullModifier) {
-          hull += upgrade.hullModifier;
-        }
-        */
-        
-        // Add handling modifiers
-        if (upgrade.handling) {
-          handling += upgrade.handling;
-        } else if (upgrade.handlingModifier) {
-          handling += upgrade.handlingModifier;
-        }
-        
-        // Add gear modifiers
-        if (upgrade.gear) {
-          gear += upgrade.gear;
-        } else if (upgrade.gearModifier) {
-          gear += upgrade.gearModifier;
-        }
-        
-        // Add crew modifiers
-        if (upgrade.crew) {
-          crew += upgrade.crew;
-          console.log(`Added ${upgrade.crew} crew from upgrade ${upgrade.name}, new total: ${crew}`);
-        } else if (upgrade.crewModifier) {
-          crew += upgrade.crewModifier;
-          console.log(`Added ${upgrade.crewModifier} crew from upgrade ${upgrade.name} (crewModifier), new total: ${crew}`);
-        }
-      });
-    }
-    
-    const weight = getWeightText(stats.weight || vehicleType.weight || 2);
-    
     // Return complete vehicle card HTML
     return `
     <div class="vehicle-card">
       <div class="card-header">
         <div>
-          <div class="vehicle-name">${name}</div>
+          <div class="vehicle-name">${escapeHtml(name)}</div>
           <div class="vehicle-type">${vehicleTypeName}</div>
           ${(() => {
             const edition = editionFields(vehicle, rulesVersion);
@@ -1838,26 +1804,16 @@ function generateVehicleCardHtml(vehicle: any, rulesVersion?: number): string {
  * Convert weight number to text
  */
 function getWeightText(weight: number | string): string {
-  // If it's a string, return as is
+  // Version 2 stores a class name. Version 3 stores the weight number, and that number is the stat.
   if (typeof weight === 'string') return weight;
-  
-  // For backward compatibility with numeric weights
-  // (This will only be used if any numeric weights remain in old data)
-  switch(weight) {
-    case 0: return 'Lightweight';
-    case 1: return 'Middleweight';
-    case 2: return 'Heavyweight';
-    case 3: return 'Massive';
-    case 4: return 'Ultraheavy';
-    default:
-      return 'Middleweight';
-  }
+  if (typeof weight === 'number' && Number.isFinite(weight)) return String(weight);
+  return 'Middleweight';
 }
 
 /**
  * Generate HTML for equipment descriptions table
  */
-function generateEquipmentDescriptionsHtml(vehicles: any[]): string {
+function generateEquipmentDescriptionsHtml(vehicles: any[], rulesVersion?: number): string {
   if (!vehicles || !Array.isArray(vehicles) || vehicles.length === 0) {
     return '<tr><td colspan="2">No equipment found</td></tr>';
   }
@@ -1926,8 +1882,8 @@ function generateEquipmentDescriptionsHtml(vehicles: any[]): string {
       // If not found by name, try to find by ID
       if (!ruleDescription) {
         // Look for any rule with an ID that matches this rule name
-        const matchingRule = vehicles[0]?.draft?.weaponAndUpgradeSpecialRules?.find((r: any) => 
-          r.id && (r.id.toLowerCase() === lowerRuleName || lowerRuleName.startsWith(r.id.toLowerCase()))
+        const matchingRule = vehicles[0]?.draft?.weaponAndUpgradeSpecialRules?.find((r: any) =>
+          r.id && r.id.toLowerCase() === lowerRuleName
         );
         if (matchingRule) {
           ruleDescription = matchingRule.rule;
@@ -1956,6 +1912,14 @@ function generateEquipmentDescriptionsHtml(vehicles: any[]): string {
   
   // Add weapons
   weaponMap.forEach(weapon => {
+    if (rulesVersion === 3) {
+      rowsHtml += `
+    <tr style="border-bottom: 1px solid #ddd;">
+      <td style="padding: 8px; text-align: left; vertical-align: top; font-weight: bold;">${escapeHtml(weapon.name)} (${weapon.cost} cans)</td>
+      <td style="padding: 8px; text-align: left;">${escapeHtml(weapon.specialRules || '')}${weapon.effect ? `<div>${escapeHtml(weapon.effect)}</div>` : ''}</td>
+    </tr>`;
+      return;
+    }
     // Find matching special rule directly from weaponAndUpgradeSpecialRules if available
     let directRuleMatch = '';
     if (vehicles[0]?.draft?.weaponAndUpgradeSpecialRules) {
@@ -2005,6 +1969,14 @@ function generateEquipmentDescriptionsHtml(vehicles: any[]): string {
   
   // Add upgrades
   upgradeMap.forEach(upgrade => {
+    if (rulesVersion === 3) {
+      rowsHtml += `
+    <tr style="border-bottom: 1px solid #ddd;">
+      <td style="padding: 8px; text-align: left; vertical-align: top; font-weight: bold;">${escapeHtml(upgrade.name)} (${upgrade.cost} cans)</td>
+      <td style="padding: 8px; text-align: left;">${escapeHtml(upgrade.specialRules || '')}${upgrade.effect ? `<div>${escapeHtml(upgrade.effect)}</div>` : ''}</td>
+    </tr>`;
+      return;
+    }
     // Find matching special rule directly from weaponAndUpgradeSpecialRules if available
     let directRuleMatch = '';
     if (vehicles[0]?.draft?.weaponAndUpgradeSpecialRules) {
@@ -2222,38 +2194,10 @@ function generateVehicleSpecialRulesHtml(vehicles: any[]): string {
       rulesArray.forEach((ruleName: string) => {
         if (!specialRulesMap.has(ruleName)) {
           // Find rule description if it exists
-          let ruleDescription = 'Description not available';
-          let ruleDetails = null;
-          
-          console.log(`[DEBUG PrintService] Looking for rule: "${ruleName}"`);
-          console.log(`[DEBUG PrintService] vehicle.vehicleRules exists:`, !!vehicle.vehicleRules);
-          console.log(`[DEBUG PrintService] vehicle.vehicleRules length:`, vehicle.vehicleRules?.length || 0);
-          console.log(`[DEBUG PrintService] First rule:`, vehicle.vehicleRules?.[0]);
-          
-          if (vehicle.vehicleRules && Array.isArray(vehicle.vehicleRules)) {
-            // First, try with exact case matching using id
-            ruleDetails = vehicle.vehicleRules.find((r: any) => r.id === ruleName);
-            console.log(`[DEBUG PrintService] Exact match:`, ruleDetails);
-            
-            // If not found, try case-insensitive matching using id
-            if (!ruleDetails) {
-              ruleDetails = vehicle.vehicleRules.find((r: any) => 
-                r.id && r.id.toLowerCase() === ruleName.toLowerCase()
-              );
-              console.log(`[DEBUG PrintService] Case-insensitive match:`, ruleDetails);
-            }
-            
-            // If found and has rule text, use it
-            if (ruleDetails && ruleDetails.rule) {
-              ruleDescription = ruleDetails.rule;
-            }
-            
-            // Debug info for troubleshooting
-            if (!ruleDetails) {
-              console.warn(`[PrintService] No rule found for "${ruleName}"`);
-            }
-          } else {
-            console.log(`[DEBUG PrintService] vehicleRules not available or not array`);
+          let ruleDescription = '';
+          const ruleDetails = findVehicleRule(vehicle.vehicleRules, ruleName);
+          if (ruleDetails && ruleDetails.rule) {
+            ruleDescription = ruleDetails.rule;
           }
           
           // Use the readable ruleName for display, but keep the original name for matching
@@ -2412,26 +2356,23 @@ function generateRosterHtml(data: PrintHtmlData): string {
   
   // Create vehicle sections
   if (vehicles && Array.isArray(vehicles)) {
-    vehicles.forEach((vehicle, index) => {
+    vehicles.forEach((vehicle) => {
       const {
-        id = 'unknown',
-        type = 'Car', 
-        name = 'Vehicle', 
+        type = 'Car',
+        name = 'Vehicle',
         cost = 0,
-        handling = 4,
-        maxGear = 6,
-        crew = 1,
-        hull = 4,
-        weight = 'Medium',
         vehicleRules = [],
         vehicleType = null,
-        weapons = [],
-        upgrades = [],
-        perks = [],
         weaponObjects = [],
         upgradeObjects = [],
         perkObjects = []
       } = vehicle;
+      const printed = resolvedPrintStats(vehicle);
+      const handling = printed.handling;
+      const maxGear = printed.gear;
+      const crew = printed.crew;
+      const hull = printed.hull;
+      const weight = printed.weight;
       
       // Get the display name for the vehicle type
       const vehicleTypeName = vehicleType?.name || type;
@@ -2440,7 +2381,7 @@ function generateRosterHtml(data: PrintHtmlData): string {
       vehiclesHtml += `
       <div class="vehicle-section">
         <div class="vehicle-header">
-          <h3>${name} <span class="vehicle-type">${vehicleTypeName}</span> <span class="vehicle-cost">${cost} cans</span></h3>
+          <h3><span class="vehicle-title">${escapeHtml(name)}</span> <span class="vehicle-type">${escapeHtml(vehicleTypeName)}</span> <span class="vehicle-cost">${cost} cans</span></h3>
         </div>
         
         <div class="stats-row">
@@ -2470,13 +2411,12 @@ function generateRosterHtml(data: PrintHtmlData): string {
         
         // Parse the rules and look up their human-readable names
         if (rulesText && vehicle.vehicleRules && Array.isArray(vehicle.vehicleRules)) {
-          const ruleIds = rulesText.split(',').map(r => r.trim());
+          const ruleIds = rulesText.split(',').map((r: string) => r.trim());
           for (const ruleId of ruleIds) {
-            const ruleDetails = vehicle.vehicleRules.find((r: any) => r.id === ruleId);
+            const ruleDetails = findVehicleRule(vehicle.vehicleRules, ruleId);
             if (ruleDetails && ruleDetails.ruleName) {
               rulesList.push(ruleDetails.ruleName);
             } else {
-              // Fallback to the ID if no rule found
               rulesList.push(ruleId);
             }
           }
@@ -2502,9 +2442,9 @@ function generateRosterHtml(data: PrintHtmlData): string {
         
         weaponObjects.forEach((weapon: any) => {
           if (weapon) {
-            const facing = vehicle.weaponFacings && vehicle.weaponFacings[weapon.id] 
-              ? vehicle.weaponFacings[weapon.id] 
-              : 'Front';
+            const facing = weapon.facing
+              || (vehicle.weaponFacings && vehicle.weaponFacings[weapon.id])
+              || 'front';
             
             vehiclesHtml += `<li>
               <span class="equipment-name">${weapon.name || 'Unknown'}</span>
@@ -2591,13 +2531,8 @@ function generateRosterHtml(data: PrintHtmlData): string {
         </div>`;
       }
       
-      // Close vehicle section
+      // Close vehicle section. Vehicles share a page until one no longer fits.
       vehiclesHtml += `</div>`;
-      
-      // Add page break after each vehicle except the last one
-      if (index < vehicles.length - 1) {
-        vehiclesHtml += '<div class="page-break"></div>';
-      }
     });
   } else {
     vehiclesHtml = '<p>No vehicles found</p>';
@@ -2658,7 +2593,9 @@ function generateRosterHtml(data: PrintHtmlData): string {
       
       .team-info {
         display: flex;
+        flex-wrap: wrap;
         justify-content: space-between;
+        gap: 6px 16px;
         font-size: 10pt;
       }
       
@@ -2676,9 +2613,18 @@ function generateRosterHtml(data: PrintHtmlData): string {
       }
       
       .vehicle-header h3 {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 6px 10px;
         font-size: 14pt;
         margin: 0;
         font-weight: 600;
+        overflow-wrap: anywhere;
+      }
+
+      .vehicle-title {
+        overflow-wrap: anywhere;
       }
       
       .vehicle-type {
@@ -2689,8 +2635,9 @@ function generateRosterHtml(data: PrintHtmlData): string {
       }
       
       .vehicle-cost {
-        float: right;
+        margin-left: auto;
         font-weight: bold;
+        white-space: nowrap;
       }
       
       /* Stats section */
@@ -2811,9 +2758,9 @@ function generateRosterHtml(data: PrintHtmlData): string {
   </head>
   <body>
     <div class="team-header">
-      <h1>${teamName}</h1>
+      <h1>${escapeHtml(teamName)}</h1>
       <div class="team-info">
-        <div>Sponsor: ${sponsorName}</div>
+        <div>Sponsor: ${escapeHtml(sponsorName)}</div>
         ${editionSponsorNote(rulesVersion, sponsor)}
         <div>Team Cost: ${actualTotalCans} / ${maxCans} cans</div>
       </div>
@@ -2860,9 +2807,11 @@ export async function printTeamDashboard(draft: PrintDraft): Promise<void> {
   console.log("[PrintService] printTeamDashboard called with", draft.vehicles.length, "vehicles");
   
   // Add weaponAndUpgradeSpecialRules to vehicles for access in generateEquipmentDescriptionsHtml
-  draft.vehicles.forEach(vehicle => {
-    vehicle.draft = { weaponAndUpgradeSpecialRules: draft.weaponAndUpgradeSpecialRules };
-  });
+  if (draft.rulesVersion !== 3) {
+    draft.vehicles.forEach(vehicle => {
+      vehicle.draft = { weaponAndUpgradeSpecialRules: draft.weaponAndUpgradeSpecialRules };
+    });
+  }
   console.log("[PrintService] printTeamDashboard called");
   console.log("[PrintService] Draft structure:", Object.keys(draft));
   
@@ -2899,6 +2848,7 @@ export async function printTeamDashboard(draft: PrintDraft): Promise<void> {
       qrCode: draft.qrCode,
       showEquipmentDescriptions: draft.showEquipmentDescriptions ?? true,
       showPerkDescriptions: draft.showPerkDescriptions ?? true,
+      showSpecialRules: draft.showSpecialRules ?? true,
       printStyle: 'dashboard', // Force dashboard style
       rulesVersion: draft.rulesVersion
     };
