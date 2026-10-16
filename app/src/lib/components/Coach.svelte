@@ -1,6 +1,7 @@
 <script lang="ts">
     import { fade } from 'svelte/transition';
     import Tooltip from './Tooltip.svelte';
+    import { EMPTY_NEXT_VEHICLE_MESSAGE, recommendNextVehicles } from '$lib/coach/nextVehicle';
     import type { Perk, Sponsor, Upgrade, Vehicle, VehicleRule, Weapon } from '$lib/rules/types';
     import { countedVehicleTotal, maxCountedVehicles } from '$lib/rules/version';
     import { v3BuildSlots } from '$lib/validate/v3/slots';
@@ -36,6 +37,9 @@
     export let maxCans = 50;
     export let rulesVersion: 2 | 3 = 2;
     export let drivers: { id: string; name: string; perkClass: string }[] = [];
+    export let includeAdvanced = true;
+    export let addingDisabled = false;
+    export let onAddVehicle: (vehicleType: string) => void = () => {};
 
     // Accepted from the builder so the catalog stays in sync; not read by the coach metrics.
     $: void perks;
@@ -512,6 +516,16 @@
     
     // Automatically refresh metrics when props change
     $: refreshTime = Date.now();
+
+    $: nextVehicles = recommendNextVehicles({
+        rulesVersion,
+        sponsorId: currentSponsor?.id ?? 'no_sponsor',
+        catalog: vehicleTypes,
+        team: vehicles.map((vehicle) => ({ type: vehicle.type })),
+        totalCans,
+        maxCans,
+        includeAdvanced
+    });
 </script>
 
 <div class="mt-6 bg-stone-100 dark:bg-gray-700 p-4 rounded-lg" in:fade={{ duration: 200 }}>
@@ -522,6 +536,32 @@
                 {totalCans} / {maxCans} cans ({Math.round((totalCans / maxCans) * 100)}%)
             </div>
         </div>
+    </div>
+
+    <div class="mb-6 bg-amber-50 dark:bg-amber-900/20 p-4 rounded-lg border border-amber-200 dark:border-amber-800" data-testid="coach-next-vehicle">
+        <h4 class="text-sm font-bold text-amber-800 dark:text-amber-300 mb-3">What to add next</h4>
+        {#if nextVehicles.length === 0}
+            <p class="text-sm text-amber-700 dark:text-amber-300" data-testid="coach-next-empty">{EMPTY_NEXT_VEHICLE_MESSAGE}</p>
+        {:else}
+            <ul class="space-y-2">
+                {#each nextVehicles as suggestion (suggestion.id)}
+                    <li class="flex flex-wrap items-center justify-between gap-2 text-sm text-amber-800 dark:text-amber-200">
+                        <div>
+                            <span class="font-semibold">{suggestion.name}</span>
+                            <span class="text-amber-700 dark:text-amber-300"> · {suggestion.cost} cans · {suggestion.reason}</span>
+                        </div>
+                        <button
+                            type="button"
+                            class="px-3 py-1 rounded-md bg-amber-500 text-stone-900 font-semibold hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                            data-testid="coach-add-{suggestion.id}"
+                            aria-label="Add {suggestion.name}"
+                            disabled={addingDisabled}
+                            on:click={() => onAddVehicle(suggestion.id)}
+                        >Add</button>
+                    </li>
+                {/each}
+            </ul>
+        {/if}
     </div>
     
     <!-- Main Metrics Dashboard -->
