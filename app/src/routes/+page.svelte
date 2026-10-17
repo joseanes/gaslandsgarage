@@ -1,10 +1,17 @@
 <script>
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
-  
-  // Auto-redirect to builder
+  import { builderPathForTeamAction, isTeamMenuAction, TEAM_MENU_ACTION_KEY } from '$lib/teamMenu';
+
+  // Auto-redirect to builder. A pending Teams action keeps its open= query.
+  // Playwright sets data-hold-home so it can click the menu on this page first.
   onMount(() => {
-    goto('/builder');
+    if (document.documentElement.hasAttribute('data-hold-home')) return;
+    if (window.location.pathname !== '/') return;
+    const open = new URLSearchParams(window.location.search).get('open');
+    const stored = sessionStorage.getItem(TEAM_MENU_ACTION_KEY);
+    const action = isTeamMenuAction(open) ? open : isTeamMenuAction(stored) ? stored : null;
+    goto(action ? builderPathForTeamAction(action) : '/builder');
   });
 </script>
 

@@ -28,6 +28,13 @@
 	import { v3BuildSlots } from '$lib/validate/v3/slots';
 	import { goto } from '$app/navigation';
 	import { draftToDataURL } from '$lib/draft/qr';
+	import {
+		peekCurrentTeam,
+		rememberCurrentTeam,
+		takeTeamMenuAction,
+		teamActionNeedsTeam,
+		type TeamMenuAction
+	} from '$lib/teamMenu';
 	import Auth from '$lib/components/Auth.svelte';
 import SettingsMenu from '$lib/components/SettingsMenu.svelte';
 	import Tooltip from '$lib/components/Tooltip.svelte';
@@ -122,6 +129,15 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 
 	// Load settings on mount
 	// Load settings directly
+	onMount(() => {
+		const persist = () => rememberCurrentTeam(currentDraft);
+		window.addEventListener('pagehide', persist);
+		return () => {
+			window.removeEventListener('pagehide', persist);
+			persist();
+		};
+	});
+
 	onMount(async () => {
 		console.log("[Builder] IMMEDIATE onMount - Loading settings");
 		await initializeSettings();
@@ -1075,6 +1091,15 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 	let qrDataUrl: string | null = null;
 	let showQRModal = false; // Whether to show the QR code modal
 	let showImportModal = false;
+	let teamActionNotice = '';
+	let pendingTeamAction: TeamMenuAction | null = null;
+	let pendingTeamSnapshot: unknown = null;
+	const teamActionMessages: Record<Extract<TeamMenuAction, 'print' | 'copy' | 'share' | 'qr'>, string> = {
+		print: 'Add a vehicle to this team before printing.',
+		copy: 'Add a vehicle to this team before copying it.',
+		share: 'Add a vehicle to this team before sharing a link.',
+		qr: 'Add a vehicle to this team before generating a QR code.'
+	};
 	let showSharePanel = false;
 	let showPrintRulesPrompt = false;
 	let shareUrl = '';
@@ -2019,6 +2044,8 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 					console.error("Error importing draft:", error);
 				}
 			};
+
+			continueTeamMenuAction();
 		}
 
 		return () => {
@@ -2060,6 +2087,32 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			}
 		};
 	});
+
+	function continueTeamMenuAction() {
+		const action = pendingTeamAction;
+		pendingTeamAction = null;
+		if (!action) return;
+		if (action === 'myteams') {
+			window.dispatchEvent(new CustomEvent('gaslands-open-my-teams'));
+			return;
+		}
+		if (action === 'import') {
+			importBuild();
+			return;
+		}
+		if (!teamActionNeedsTeam(action)) return;
+		if (vehicles.length === 0) {
+			applyImportedDraft(pendingTeamSnapshot);
+		}
+		if (vehicles.length === 0) {
+			teamActionNotice = teamActionMessages[action];
+			return;
+		}
+		if (action === 'print') printWithRulesCheck();
+		else if (action === 'copy') void copyDraft();
+		else if (action === 'share') shareLink();
+		else void generateQRCode();
+	}
 
 	function applyImportedDraft(raw: unknown) {
 		const draft = normalizeIncomingDraft(raw);
@@ -2114,6 +2167,9 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			const imported = decodeDraft(encoded);
 			if (imported) applyImportedDraft(imported);
 		}
+		// Capture before the empty-team reactive write replaces sessionStorage.
+		pendingTeamAction = takeTeamMenuAction();
+		pendingTeamSnapshot = peekCurrentTeam();
 	}
 	
 	/* ---------- setting changes effects ---------- */
@@ -3304,6 +3360,16 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			</div>
 		</div>
 	</header>
+
+	{#if teamActionNotice}
+		<div
+			class="bg-amber-50 border border-amber-300 text-stone-800 p-4 rounded-lg shadow-md mb-6"
+			data-testid="team-action-notice"
+			role="status"
+		>
+			{teamActionNotice}
+		</div>
+	{/if}
 
 	{#if pendingRulesVersion !== null}
 		<div class="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/60 p-4">
