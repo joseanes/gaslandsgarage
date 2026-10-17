@@ -10,11 +10,13 @@
   import "../print-new.js"; /* Print handler */
   import { onMount } from 'svelte';
   import { fade } from 'svelte/transition';
+  import { goto } from '$app/navigation';
   import AdUnit from '$lib/components/AdUnit.svelte';
   import Auth from '$lib/components/Auth.svelte';
   import TeamsModal from '$lib/components/TeamsModal.svelte';
   import { signInWithGoogle, user } from '$lib/firebase';
   import { sendContactMessage } from '$lib/services/messages';
+  import { builderPathForTeamAction, rememberTeamMenuAction, type TeamMenuAction } from '$lib/teamMenu';
   
   // Ad configuration variables
   let showAds = false; // Removed ads for now
@@ -69,7 +71,7 @@
       }
       showTeamsModal = true;
     } else {
-      alert('Team management requires the builder page. Please use on the builder page.');
+      openOnBuilder('myteams');
     }
   }
   
@@ -130,14 +132,29 @@
       showSignInPrompt = true;
     };
 
+    const openMyTeamsFromBuilder = () => {
+      openTeamsModal();
+    };
+
     document.addEventListener('click', handleClickOutside);
     window.addEventListener('gaslands-request-sign-in', onRequestSignIn);
+    window.addEventListener('gaslands-open-my-teams', openMyTeamsFromBuilder);
 
     return () => {
       document.removeEventListener('click', handleClickOutside);
       window.removeEventListener('gaslands-request-sign-in', onRequestSignIn);
+      window.removeEventListener('gaslands-open-my-teams', openMyTeamsFromBuilder);
     };
   });
+
+  function onBuilderPage() {
+    return typeof window !== 'undefined' && window.location.pathname.includes('/builder');
+  }
+
+  function openOnBuilder(action: TeamMenuAction) {
+    rememberTeamMenuAction(action);
+    void goto(builderPathForTeamAction(action));
+  }
 
   async function startGoogleSignIn() {
     showSignInPrompt = false;
@@ -154,7 +171,7 @@
         window.copyDraftFn();
       }
     } else {
-      alert('This feature requires team data. Please use on the builder page.');
+      openOnBuilder('copy');
     }
   }
   
@@ -165,7 +182,7 @@
         window.shareLinkFn();
       }
     } else {
-      alert('This feature requires team data. Please use on the builder page.');
+      openOnBuilder('share');
     }
   }
   
@@ -200,11 +217,9 @@
         return;
       }
       
-      // 4. Last resort - alert user
       console.error('[Layout] All methods to generate QR code failed');
-      alert('QR code generation is not available. Please try refreshing the page.');
     } else {
-      alert('This feature requires team data. Please use on the builder page.');
+      openOnBuilder('qr');
     }
   }
   
@@ -239,11 +254,9 @@
         return;
       }
       
-      // 4. Last resort - alert user
       console.error('[Layout] All methods to trigger import modal failed');
-      alert('Import feature is not available. Please try refreshing the page.');
     } else {
-      alert('This feature requires team data. Please use on the builder page.');
+      openOnBuilder('import');
     }
   }
   
@@ -282,11 +295,9 @@
         return;
       }
       
-      // 4. Last resort - alert user
       console.error('[Layout] All methods to print team failed');
-      alert('Print functionality is not available. Please try refreshing the page.');
     } else {
-      alert('This feature requires team data. Please use on the builder page.');
+      openOnBuilder('print');
     }
   }
   
