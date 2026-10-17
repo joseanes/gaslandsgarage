@@ -15,11 +15,17 @@
   });
 </script>
 
+<svelte:head>
+  <title>Gaslands Garage - Team Builder</title>
+  <meta name="description" content="Free Gaslands team builder: build vehicles, add weapons, upgrades and perks, check cans, and print team cards." />
+  <link rel="canonical" href="https://gaslandsgarage.com/builder" />
+</svelte:head>
+
 <!-- Simple loading/redirecting message -->
 <div class="flex items-center justify-center h-screen">
   <div class="text-center">
     <h1 class="text-xl font-bold mb-4">
-      <span class="text-amber-500">Redirecting to Gaslands Garage...</span>
+      <span class="text-amber-800">Redirecting to Gaslands Garage...</span>
     </h1>
     <div class="inline-block w-8 h-8 border-4 border-t-amber-500 border-r-transparent border-b-transparent border-l-transparent rounded-full animate-spin"></div>
   </div>

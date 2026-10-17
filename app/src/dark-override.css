@@ -90,9 +90,9 @@ input[aria-label="Maximum Cans"],
   color: white !important;
 }
 
-/* Button colors */
+/* Button colors. White on amber-600 is about 3.2:1; amber-700 clears 4.5:1. */
 .amber-button {
-  background-color: #d97706 !important; /* amber-600 */
+  background-color: #b45309 !important; /* amber-700 */
   color: white !important;
   height: 32px !important;
   min-height: 32px !important;
@@ -103,18 +103,26 @@ input[aria-label="Maximum Cans"],
 }
 
 .amber-button:hover {
-  background-color: #b45309 !important; /* amber-700 */
+  background-color: #92400e !important; /* amber-800 */
+}
+
+.amber-button,
+.amber-button span,
+.dark .amber-button,
+.dark .amber-button span,
+.dark-mode .amber-button,
+.dark-mode .amber-button span {
+  color: white !important;
 }
 
 .dark .amber-button,
 .dark-mode .amber-button {
-  background-color: #d97706 !important; /* amber-600 */
-  color: white !important;
+  background-color: #b45309 !important; /* amber-700 */
 }
 
 .dark .amber-button:hover,
 .dark-mode .amber-button:hover {
-  background-color: #b45309 !important; /* amber-700 */
+  background-color: #92400e !important; /* amber-800 */
 }
 
 /* Red button styles */
@@ -131,6 +139,14 @@ input[aria-label="Maximum Cans"],
 
 .red-button:hover {
   background-color: #b91c1c !important; /* red-700 */
+}
+
+.red-button span,
+.dark .red-button,
+.dark .red-button span,
+.dark-mode .red-button,
+.dark-mode .red-button span {
+  color: white !important;
 }
 
 .dark .red-button,

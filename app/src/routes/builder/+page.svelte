@@ -3137,6 +3137,8 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 
 <svelte:head>
 	<title>Gaslands Garage - Team Builder</title>
+	<meta name="description" content="Free Gaslands team builder: build vehicles, add weapons, upgrades and perks, check cans, and print team cards." />
+	<link rel="canonical" href="https://gaslandsgarage.com/builder" />
 	<script>
 		// Ensure modals have proper background in dark mode
 		document.addEventListener('DOMContentLoaded', function() {
@@ -3289,7 +3291,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 				{#if enableSponsorships || rulesVersion === 3}
 				<div class="flex flex-col w-full mt-1">
 					<div class="flex items-center gap-4">
-						<b class="text-base font-bold whitespace-nowrap flex items-center" style="min-width: 95px;">Sponsor:</b>
+						<label for="sponsor-select" class="text-base font-bold whitespace-nowrap flex items-center" style="min-width: 95px;">Sponsor:</label>
 						<div class="relative flex-grow">
 							<select
 								id="sponsor-select"

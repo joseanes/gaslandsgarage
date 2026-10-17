@@ -137,7 +137,7 @@
     text-decoration-style: dotted;
     text-decoration-thickness: 1px;
     text-underline-offset: 2px;
-    color: #d97706; /* amber-600 */
+    color: #92400e; /* amber-800: amber-600 is under 4.5:1 on the stone card */
     font-weight: 500;
   }
   
