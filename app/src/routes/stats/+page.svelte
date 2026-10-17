@@ -83,6 +83,9 @@
 
 <svelte:head>
   <title>Usage Stats - Gaslands Garage</title>
+  <meta name="description" content="Anonymous usage totals for saved Gaslands Garage teams. Individual teams and accounts stay private." />
+  <meta name="robots" content="noindex" />
+  <link rel="canonical" href="https://gaslandsgarage.com/stats" />
 </svelte:head>
 
 <section class="max-w-3xl mx-auto py-8 px-2 text-stone-800 dark:text-gray-100">

@@ -7,6 +7,78 @@
 		<link rel="apple-touch-icon" href="%sveltekit.assets%/apple-touch-icon.png" />
 		<link rel="manifest" href="%sveltekit.assets%/site.webmanifest" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Gaslands Garage - Team Builder</title>
+		<meta name="description" content="Free Gaslands team builder: build vehicles, add weapons, upgrades and perks, check cans, and print team cards." />
+		<link rel="canonical" href="https://gaslandsgarage.com/builder" />
+		<meta property="og:type" content="website" />
+		<meta property="og:site_name" content="Gaslands Garage" />
+		<meta property="og:title" content="Gaslands Garage – Team Builder" />
+		<meta property="og:description" content="Build and print Gaslands teams in your browser." />
+		<meta property="og:url" content="https://gaslandsgarage.com/builder" />
+		<meta property="og:image" content="https://gaslandsgarage.com/icon-512.png" />
+		<meta name="twitter:card" content="summary" />
+		<meta name="twitter:title" content="Gaslands Garage – Team Builder" />
+		<meta name="twitter:description" content="Build and print Gaslands teams in your browser." />
+		<script type="application/ld+json">
+			{
+				"@context": "https://schema.org",
+				"@type": "WebApplication",
+				"name": "Gaslands Garage",
+				"url": "https://gaslandsgarage.com/builder",
+				"applicationCategory": "GameApplication",
+				"operatingSystem": "Web",
+				"offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+				"description": "Free Gaslands team builder: build vehicles, add weapons, upgrades and perks, check cans, and print team cards."
+			}
+		</script>
+		<script>
+			// The static shell is shared by every route. Point title, description,
+			// and canonical at the real page before the app bundle loads.
+			(function () {
+				var path = (location.pathname || '/').replace(/\/+$/, '') || '/';
+				if (path === '/' || path === '/index.html') path = '/builder';
+				var pages = {
+					'/builder': {
+						title: 'Gaslands Garage - Team Builder',
+						description: 'Free Gaslands team builder: build vehicles, add weapons, upgrades and perks, check cans, and print team cards.',
+						canonical: 'https://gaslandsgarage.com/builder'
+					},
+					'/stats': {
+						title: 'Usage Stats - Gaslands Garage',
+						description: 'Anonymous usage totals for saved Gaslands Garage teams. Individual teams and accounts stay private.',
+						canonical: 'https://gaslandsgarage.com/stats',
+						robots: 'noindex'
+					}
+				};
+				var page = pages[path];
+				if (!page) return;
+				document.title = page.title;
+				var description = document.querySelector('meta[name="description"]');
+				if (description) description.setAttribute('content', page.description);
+				var canonical = document.querySelector('link[rel="canonical"]');
+				if (canonical) canonical.setAttribute('href', page.canonical);
+				var ogTitle = document.querySelector('meta[property="og:title"]');
+				if (ogTitle) ogTitle.setAttribute('content', page.title);
+				var ogDescription = document.querySelector('meta[property="og:description"]');
+				if (ogDescription) ogDescription.setAttribute('content', page.description);
+				var ogUrl = document.querySelector('meta[property="og:url"]');
+				if (ogUrl) ogUrl.setAttribute('content', page.canonical);
+				var twitterTitle = document.querySelector('meta[name="twitter:title"]');
+				if (twitterTitle) twitterTitle.setAttribute('content', page.title);
+				var twitterDescription = document.querySelector('meta[name="twitter:description"]');
+				if (twitterDescription) twitterDescription.setAttribute('content', page.description);
+				if (page.robots && !document.querySelector('meta[name="robots"]')) {
+					var robots = document.createElement('meta');
+					robots.name = 'robots';
+					robots.content = page.robots;
+					document.head.appendChild(robots);
+				}
+				if (path !== '/builder') {
+					var structuredData = document.querySelector('script[type="application/ld+json"]');
+					if (structuredData && structuredData.parentNode) structuredData.parentNode.removeChild(structuredData);
+				}
+			})();
+		</script>
 		<!-- Google Analytics tag (gtag.js) -->
 		<script async src="https://www.googletagmanager.com/gtag/js?id=G-EKPMXMY097"></script>
 		<script>
@@ -19,6 +91,10 @@
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">
+		<noscript>
+			<h1>Gaslands Garage – Gaslands Team Builder</h1>
+			<p>Free Gaslands team builder: build vehicles, add weapons, upgrades and perks, check cans, and print team cards.</p>
+		</noscript>
 		<div style="display: contents">%sveltekit.body%</div>
 	</body>
 </html>

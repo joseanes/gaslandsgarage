@@ -39,8 +39,37 @@ describe('CDK v2 infra', () => {
 		const template = Template.fromStack(stack);
 		template.resourceCountIs('AWS::S3::Bucket', 1);
 		template.resourceCountIs('AWS::CloudFront::Distribution', 1);
-		template.hasResourceProperties('AWS::S3::Bucket', {
-			WebsiteConfiguration: { IndexDocument: 'index.html' }
+		template.resourceCountIs('AWS::CloudFront::OriginAccessControl', 1);
+		template.resourceCountIs('AWS::CloudFront::Function', 1);
+
+		const buckets = template.findResources('AWS::S3::Bucket');
+		for (const bucket of Object.values(buckets)) {
+			expect(bucket.Properties.WebsiteConfiguration).toBeUndefined();
+			expect(bucket.Properties.PublicAccessBlockConfiguration).toMatchObject({
+				BlockPublicAcls: true,
+				IgnorePublicAcls: true,
+				BlockPublicPolicy: false,
+				RestrictPublicBuckets: false
+			});
+		}
+
+		const policies = JSON.stringify(template.findResources('AWS::S3::BucketPolicy'));
+		expect(policies).not.toContain('"AWS":"*"');
+		expect(policies).toContain('cloudfront.amazonaws.com');
+
+		template.hasResourceProperties('AWS::CloudFront::Distribution', {
+			DistributionConfig: {
+				DefaultCacheBehavior: { Compress: true },
+				CustomErrorResponses: [
+					{ ErrorCode: 403, ResponseCode: 404, ResponsePagePath: '/404.html' },
+					{ ErrorCode: 404, ResponseCode: 404, ResponsePagePath: '/404.html' }
+				]
+			}
 		});
+
+		const viewerCode = JSON.stringify(template.findResources('AWS::CloudFront::Function'));
+		expect(viewerCode).toContain('www.gaslandsgarage.com');
+		expect(viewerCode).toContain('/builder');
+		expect(viewerCode).not.toContain('/beta');
 	});
 });

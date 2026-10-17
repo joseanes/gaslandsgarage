@@ -8,13 +8,29 @@
 }
 
 .amber-button {
-  @apply bg-amber-600 text-white hover:bg-amber-700;
-  @apply dark:bg-amber-600 dark:text-white dark:hover:bg-amber-700;
+  @apply bg-amber-700 text-white hover:bg-amber-800;
+  @apply dark:bg-amber-700 dark:text-white dark:hover:bg-amber-800;
 }
 
 .red-button {
   @apply bg-red-600 text-white hover:bg-red-700;
   @apply dark:bg-red-600 dark:text-white dark:hover:bg-red-700;
+}
+
+/* Muted text and amber-600 copy sit on stone-100/200 and fail 4.5:1.
+   Dark mode already forces lighter text, so only adjust the light theme. */
+html:not(.dark):not(.dark-mode) .text-stone-500 {
+  color: #57534e;
+}
+
+html:not(.dark):not(.dark-mode) .text-amber-600 {
+  color: #92400e;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #57534e;
+  opacity: 1;
 }
 
 /* Ensure modal padding */
