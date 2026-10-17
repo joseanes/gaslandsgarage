@@ -39,6 +39,8 @@ interface GarageWindow {
 	currentDraftFn?: () => Draft | null;
 	importDraftFn?: (draft: unknown) => void;
 	signInEmulatorUser?: (email: string, password: string) => Promise<void>;
+	signOutEmulatorUser?: () => Promise<void>;
+	emulatorAuthState?: () => { uid: string; email: string | null } | null;
 }
 
 declare global {

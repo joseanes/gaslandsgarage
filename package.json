@@ -17,9 +17,14 @@
     "zod": "^3.24.3"
   },
   "devDependencies": {
-    "sv": "^0.8.3"
+    "@types/node": "^22.15.17",
+    "firebase-admin": "^13.5.0",
+    "sv": "^0.8.3",
+    "tsx": "^4.20.5",
+    "typescript": "~5.6.3"
   },
   "scripts": {
-    "dev": "vite dev"
+    "dev": "vite dev",
+    "set-admin": "tsx scripts/set-admin.ts"
   }
 }
