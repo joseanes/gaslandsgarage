@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { accountSessionReady } from '$lib/admin/session';
 	import { signInWithGoogle, user } from '$lib/firebase';
+	import LocationField from '$lib/components/LocationField.svelte';
 	import { hundredthsToDegrees } from '$lib/players/location';
 	import { emptyForm, type PlayerForm, type StoredProfile } from '$lib/players/profile';
 	import {
@@ -166,18 +167,10 @@
 			</div>
 
 			<div>
-				<label for="player-location" class="mb-1 block text-sm font-medium">General location</label>
-				<input
-					id="player-location"
-					class={fieldClass}
-					maxlength="80"
-					placeholder="City and region, or a 5-digit ZIP"
-					bind:value={form.locationLabel}
-					data-testid="profile-location"
-					autocomplete="off"
-				/>
+				<LocationField bind:value={form.locationLabel} inputClass={fieldClass} />
 				<p class="mt-1 text-sm text-stone-600 dark:text-gray-300">
-					City, region, or US ZIP only — not a street address. A ZIP stays in your browser. A city is looked up once, when you save, through OpenStreetMap.
+					City, region, or US ZIP only — not a street address. City suggestions, when they load, come from Google Places.
+					A ZIP stays in your browser. A city is looked up once, when you save, through OpenStreetMap.
 					The stored pin is shifted a few miles and rounded, so the exact spot cannot be recovered.
 				</p>
 				{#if pin}

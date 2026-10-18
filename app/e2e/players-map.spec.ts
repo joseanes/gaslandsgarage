@@ -15,6 +15,22 @@ async function signIn(page: Page, email: string) {
 	await page.waitForFunction(() => window.emulatorAuthState?.()?.uid);
 }
 
+async function fillLocation(page: Page, text: string) {
+	const status = page.getByTestId('profile-location-status');
+	await expect(status).toBeVisible();
+	await expect(status).not.toHaveAttribute('data-state', 'loading', { timeout: 12_000 });
+	if ((await status.getAttribute('data-state')) === 'places') {
+		const suggest = page.getByTestId('profile-location-suggest');
+		await suggest.click();
+		await page.keyboard.press('Control+A');
+		await page.keyboard.type(text);
+		await page.keyboard.press('Escape');
+		await expect(page.getByTestId('profile-location')).toHaveValue(text);
+		return;
+	}
+	await page.getByTestId('profile-location').fill(text);
+}
+
 async function switchUser(page: Page, email: string) {
 	await page.evaluate(async (address) => {
 		await window.signOutEmulatorUser?.();
@@ -46,7 +62,7 @@ test('saving a profile publishes and removes that player without listing every p
 	await expect(page.getByTestId('profile-form')).toBeVisible({ timeout: 15_000 });
 	await page.getByTestId('profile-player-name').fill(name);
 	await page.getByTestId('profile-bio').fill('Rookie');
-	await page.getByTestId('profile-location').fill('78701');
+	await fillLocation(page, '78701');
 	await page.getByTestId('profile-spots').fill('At home');
 	await page.getByTestId('profile-show-on-map').check();
 	await page.getByTestId('profile-open-to-games').check();
