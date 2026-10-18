@@ -53,18 +53,13 @@
 		</p>
 		<ul class="list-disc pl-6 space-y-2">
 			<li>
-				“Keep me up to date” is opt-in consent for marketing and feature-update email. We do not send
-				that email unless you turn it on. You can turn it off in settings, or email us and ask us to
-				stop.
-			</li>
-			<li>
 				“Allow other players to contact me to setup a game” is a separate choice. It is the only
 				setting that allows a game-request email. Being open to games does not turn it on.
 			</li>
 			<li>
-				The monthly Gaslands Garage email is a separate choice, off until you opt in. It is about once
-				a month and covers game tips, car suggestions, and new site features. Unsubscribe from the link
-				in that email, turn it off in settings, or subscribe and unsubscribe on your player profile.
+				The monthly Gaslands Garage email stays off until you opt in. It is about once a month and
+				covers game tips, car suggestions, and new site features. Unsubscribe from the link in that
+				email, turn it off in settings, or subscribe and unsubscribe on your player profile.
 			</li>
 		</ul>
 
@@ -244,8 +239,8 @@
 		<p>
 			An administrator can list accounts, search by email or display name, view saved teams, and assign
 			a role. An administrator can open a read-only view of another player's major settings: the monthly
-			email choice and when it was given, the other email choices stored on the account, profile city and
-			map visibility, account status, and created and last sign-in times. That view cannot change consent.
+			email choice and when it was given, game-request email, profile city and map visibility, account
+			status, and created and last sign-in times. That view cannot change consent.
 			Analytics and advertising choices stay in the browser. The site does not collect an SMS or text
 			opt-in. An administrator can disable another account. Disabling signs that person out, marks the
 			Firebase Authentication user disabled, and blocks access to their teams and profile. It does not
@@ -284,9 +279,8 @@
 				features you use.
 			</li>
 			<li>
-				Consent: a public or anonymous map pin, the open-to-games listing, game-request email,
-				“Keep me up to date” marketing email, and the monthly Gaslands Garage email. Each one stays off
-				until you turn it on. In the EEA, the
+				Consent: a public or anonymous map pin, the open-to-games listing, game-request email, and the
+				monthly Gaslands Garage email. Each one stays off until you turn it on. In the EEA, the
 				UK, and Switzerland, analytics cookies are also consent: they stay off until you click Accept.
 				You can withdraw consent by turning the control off, by using the Privacy settings link in the
 				footer, or by emailing us. Withdrawal does not undo a message already sent.
@@ -320,8 +314,8 @@
 			<li>provide a copy in a portable form</li>
 			<li>object to processing based on legitimate interests, including analytics</li>
 			<li>
-				object to marketing, which you can also stop by turning “Keep me up to date” off, by turning the
-				monthly email off, or by opening the unsubscribe link in that email and confirming
+				object to marketing, which you can also stop by turning the monthly email off, or by opening the
+				unsubscribe link in that email and confirming
 			</li>
 			<li>withdraw consent, where the processing was based on consent</li>
 		</ul>

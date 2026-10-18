@@ -9,7 +9,6 @@ const DEFAULTS = {
 	showGaslandsMath: true,
 	hasRules: false,
 	showExperimentalFeatures: false,
-	receiveUpdates: false,
 	showOnPlayersMap: false,
 	allowContactFromPlayers: false,
 	location: '',
@@ -33,7 +32,6 @@ export type LayoutSettingsState = {
 	showOnPlayersMap: boolean;
 	allowContactFromPlayers: boolean;
 	location: string;
-	receiveUpdates: boolean;
 };
 
 type StorageLike = { getItem: (key: string) => string | null };
@@ -69,8 +67,7 @@ export function readLayoutSettings(storage: StorageLike | null): LayoutSettingsS
 		showExperimentalFeatures: flag(storage, 'showExperimentalFeatures', DEFAULTS.showExperimentalFeatures),
 		showOnPlayersMap: flag(storage, 'showOnPlayersMap', DEFAULTS.showOnPlayersMap),
 		allowContactFromPlayers: flag(storage, 'allowContactFromPlayers', DEFAULTS.allowContactFromPlayers),
-		location: storage?.getItem('location') ?? DEFAULTS.location,
-		receiveUpdates: flag(storage, 'receiveUpdates', DEFAULTS.receiveUpdates)
+		location: storage?.getItem('location') ?? DEFAULTS.location
 	};
 }
 
@@ -90,7 +87,6 @@ export function settingsFromAccount(current: LayoutSettingsState, remote: Partia
 		showExperimentalFeatures: remote.showExperimentalFeatures ?? current.showExperimentalFeatures,
 		showOnPlayersMap: remote.showOnPlayersMap ?? current.showOnPlayersMap,
 		allowContactFromPlayers: remote.allowContactFromPlayers ?? current.allowContactFromPlayers,
-		location: remote.location ?? current.location,
-		receiveUpdates: remote.receiveUpdates ?? current.receiveUpdates
+		location: remote.location ?? current.location
 	};
 }

@@ -21,15 +21,15 @@ CloudFront does not forward `CloudFront-Viewer-Country` to the browser. `infra/l
 
 The choice is stored in `localStorage` under `gaslands.analyticsConsent.v1` and sent with `gtag('consent', 'update')`. Accept and Reject use the same button style. Global Privacy Control (`navigator.globalPrivacyControl`) denies analytics unless the visitor explicitly accepts while that signal is on.
 
-## Marketing consent
+## Retired marketing checkbox
 
-`userSettings.receiveUpdates` is the "Keep me up to date" checkbox. It does not send mail. When a signed-in player turns it on or off, `saveUserSettings` writes `receiveUpdatesChangedAt` as an ISO timestamp. The first save of the default off state does not write a timestamp. A later save that leaves the checkbox alone keeps the previous timestamp.
+`userSettings.receiveUpdates` was the "Keep me up to date" checkbox. The site no longer shows it, and a save no longer changes it. `saveUserSettings` copies a stored `receiveUpdates` and `receiveUpdatesChangedAt` back onto the document and ignores any new value from the client. A new account does not get the field. There is no migration and no delete.
 
-The player writes their own `userSettings` document. The rules do not whitelist every field. A modified client could set the timestamp. The normal settings screen does not.
+That stored value does not send mail. It does not turn `newsletterOptIn` on. Someone who had only the old box checked stays off the monthly email until they opt in themselves. Game-request mail still requires `allowContactFromPlayers`.
 
 ## Monthly email
 
-`userSettings.newsletterOptIn` is a separate checkbox. The label is: "Send me the monthly Gaslands Garage email: game tips, car suggestions, and new site features. About once a month. Unsubscribe anytime." It is unchecked until the player opts in. It is not "Keep me up to date" (`receiveUpdates`) and it is not "Allow other players to contact me to setup a game" (`allowContactFromPlayers`).
+`userSettings.newsletterOptIn` is the monthly-email checkbox. The label is: "Send me the monthly Gaslands Garage email: game tips, car suggestions, and new site features. About once a month. Unsubscribe anytime." It is unchecked until the player opts in. It is not "Allow other players to contact me to setup a game" (`allowContactFromPlayers`), and a stored `receiveUpdates` value does not count as this opt-in.
 
 | Field | Meaning |
 | --- | --- |
@@ -44,7 +44,7 @@ Firestore rules let only that player write these fields, and only with those typ
 
 A signed-in player who has never answered sees a small prompt on the page. It is not a dialog and it does not block the builder. "No thanks" only writes `newsletterPromptDismissedAt`. "Send me the monthly email" opts in. After either one, or after they save the checkbox, the prompt stays hidden.
 
-The same choice is on the signed-in player profile, under **Monthly Gaslands Garage email**. Subscribe and Unsubscribe call `saveNewsletterChoice` and store `newsletterSource` as `profile`, with consent version `monthly-email-v1`. That control stays in step with the General Settings checkbox. It does not change **Keep me up to date**.
+The same choice is on the signed-in player profile, under **Monthly Gaslands Garage email**. Subscribe and Unsubscribe call `saveNewsletterChoice` and store `newsletterSource` as `profile`, with consent version `monthly-email-v1`. That control stays in step with the General Settings checkbox. It does not change a stored `receiveUpdates` value.
 
 This change does not send the monthly email. Send it later with Twilio Email, and only after the sending domain is verified.
 
@@ -52,7 +52,7 @@ This change does not send the monthly email. Send it later with Twilio Email, an
 
 Use the Admin SDK. A player cannot read another player's settings. An administrator's signed-in session can read `userSettings` for the Users page and cannot write it. The sender should still use the Admin SDK, not the browser.
 
-1. Query `userSettings` where `newsletterOptIn == true`. Do not use `receiveUpdates`. Do not use `allowContactFromPlayers`.
+1. Query `userSettings` where `newsletterOptIn == true`. Do not use a stored `receiveUpdates` value. Do not use `allowContactFromPlayers`.
 2. For each document id (the account uid), read `newsletterTokens/{uid}`. The field `token` is a 43-character random string. If that document is missing, skip the person for this run. Do not generate a token in the sender and do not send without one.
 3. Load the address with `auth.getUser(uid)`. Skip a disabled user and an account with no email.
 4. Send one message per person per month. The body has to include a working unsubscribe link and a postal line. The link is the HTTPS URL of the `unsubscribeNewsletter` function plus `?token=` and the token, URL-encoded. After deploy, copy that URL from the function. Do not guess a Cloud Run hostname.
@@ -109,7 +109,7 @@ A disabled account cannot obtain an ID token, so the callable cannot run until t
 | Data | How long it stays |
 | --- | --- |
 | Profile, teams, settings, player profile, map pin, open-to-games card | Until the person deletes the account, or until a verified request is completed |
-| `receiveUpdatesChangedAt` | With `userSettings`, until the account is deleted |
+| `receiveUpdates`, `receiveUpdatesChangedAt` | Retired. Left on existing `userSettings` documents until the account is deleted. The site no longer shows or changes them |
 | `newsletterOptIn`, `newsletterOptInAt`, `newsletterOptOutAt`, `newsletterConsentText`, `newsletterPromptDismissedAt`, `newsletterSource` | With `userSettings`, until the account is deleted |
 | `newsletterTokens/{uid}` | Until the account is deleted. Opting out does not delete it, so an old unsubscribe link still works |
 | Analytics choice | In `localStorage` on that browser until they change it or clear site data. It is not stored in Firestore |

@@ -79,14 +79,6 @@
 				{/if}
 			</dd>
 
-			<dt class="font-medium">Keep me up to date</dt>
-			<dd data-testid="updates-status">{onOff(settings.receiveUpdates)}</dd>
-
-			<dt class="font-medium">Updates choice given</dt>
-			<dd data-testid="updates-given">
-				{settings.receiveUpdatesChangedAt ? formatWhen(settings.receiveUpdatesChangedAt) : 'Not recorded'}
-			</dd>
-
 			<dt class="font-medium">Game-request email</dt>
 			<dd data-testid="game-request-email">{onOff(settings.allowContactFromPlayers)}</dd>
 

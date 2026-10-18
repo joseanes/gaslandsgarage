@@ -104,7 +104,6 @@ import { saveTeam, getUserTeams } from '$lib/services/team';
 	let printStyle = 'classic';
 	let hasRules = false; // Whether user has acknowledged having the Gaslands Refuelled rules
 		let showExperimentalFeatures = false; // Whether to show experimental features
-		let receiveUpdates = false; // Whether user wants to receive updates and marketing emails
 	let showOnPlayersMap = false; // Whether to show on the Gaslands Players map
 	let allowContactFromPlayers = false; // Whether other players can contact for game setup
 	let location = ''; // User's location for the players map
@@ -1150,10 +1149,8 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 
 						location = result.settings.location ?? DEFAULT_SETTINGS.location ?? '';
 
-						// Initialize experimental features and updates settings
+						// Initialize experimental features
 						showExperimentalFeatures = result.settings.showExperimentalFeatures ?? DEFAULT_SETTINGS.showExperimentalFeatures ?? false;
-
-						receiveUpdates = result.settings.receiveUpdates ?? DEFAULT_SETTINGS.receiveUpdates ?? false;
 					}
 				} catch (error) {
 					console.error("Error loading settings:", error);
@@ -3771,7 +3768,6 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
       bind:showOnPlayersMap
       bind:allowContactFromPlayers
       bind:location
-      bind:receiveUpdates
       saveSettingsToFirebase={saveSettingsToFirebase}
     />
     
@@ -3912,7 +3908,6 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
                   showGaslandsMath,
                   hasRules,
                   showExperimentalFeatures,
-                  receiveUpdates,
                   showOnPlayersMap,
                   allowContactFromPlayers,
                   location,

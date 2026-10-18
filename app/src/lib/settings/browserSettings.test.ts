@@ -15,7 +15,6 @@ describe('readLayoutSettings', () => {
 			darkMode: false,
 			printStyle: 'classic',
 			hasRules: false,
-			receiveUpdates: false,
 			showEquipmentDescriptions: true
 		});
 	});
@@ -45,8 +44,8 @@ describe('readLayoutSettings', () => {
 describe('settingsFromAccount', () => {
 	it('keeps a saved off choice and leaves missing fields alone', () => {
 		const current = readLayoutSettings(memory({ darkMode: 'true', printStyle: 'roster' }));
-		const next = settingsFromAccount(current, { receiveUpdates: false, location: '' });
-		expect(next.receiveUpdates).toBe(false);
+		const next = settingsFromAccount(current, { showTeamSummary: false, location: '' });
+		expect(next.showTeamSummary).toBe(false);
 		expect(next.darkMode).toBe(true);
 		expect(next.printStyle).toBe('roster');
 		expect(next.location).toBe('');

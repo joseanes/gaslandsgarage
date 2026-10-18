@@ -34,7 +34,7 @@ test('the player profile can subscribe, unsubscribe, and re-subscribe to the mon
 	await expect(section).toBeVisible();
 	await expect(section.getByRole('heading', { name: 'Monthly Gaslands Garage email' })).toBeVisible();
 	await expect(section).toContainText(CONSENT);
-	await expect(section.getByText('Keep me up to date', { exact: true })).toHaveCount(0);
+	await expect(section.getByText('Keep me up to date')).toHaveCount(0);
 	await expect(section.getByTestId('profile-newsletter-status')).toHaveText('Not subscribed');
 	await expect(section.getByTestId('profile-newsletter-opt-in')).not.toBeChecked();
 
@@ -55,7 +55,7 @@ test('the player profile can subscribe, unsubscribe, and re-subscribe to the mon
 
 	let dialog = await openGeneralSettings(page);
 	await expect(dialog.getByTestId('newsletter-opt-in')).toBeChecked();
-	await expect(dialog.getByRole('checkbox', { name: 'Keep me up to date' })).not.toBeChecked();
+	await expect(dialog.getByText('Keep me up to date')).toHaveCount(0);
 	await dialog.getByRole('button', { name: 'Close settings modal without saving' }).click();
 
 	await section.getByTestId('profile-newsletter-toggle').click();
@@ -84,5 +84,5 @@ test('the player profile can subscribe, unsubscribe, and re-subscribe to the mon
 
 	dialog = await openGeneralSettings(page);
 	await expect(dialog.getByTestId('newsletter-opt-in')).toBeChecked();
-	await expect(dialog.getByRole('checkbox', { name: 'Keep me up to date' })).not.toBeChecked();
+	await expect(dialog.getByText('Keep me up to date')).toHaveCount(0);
 });
