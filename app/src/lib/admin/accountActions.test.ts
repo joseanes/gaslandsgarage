@@ -82,7 +82,7 @@ describe('planSetDisabled', () => {
 });
 
 describe('planDeleteAuthUser', () => {
-	it('stays unavailable until a Blaze Cloud Function exists', () => {
+	it('stays unavailable and does not delete the Auth user', () => {
 		expect(planDeleteAuthUser({ actorUid: 'admin', targetUid: 'player', now }).ok).toBe(false);
 		expect(planDeleteAuthUser({ actorUid: 'admin', targetUid: 'player', now })).toEqual({
 			ok: false,
