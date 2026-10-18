@@ -1071,9 +1071,7 @@
 {#if showTeamsModal && typeof window !== 'undefined' && window.location.pathname.includes('/builder')}
   <!-- Get the current draft data -->
   {@const draftValue = window.currentDraftFn ? window.currentDraftFn() : null}
-  {@const _ = console.log('Opening Teams Modal with draft:', draftValue)}
-  {@const __ = console.log('importDraftFn exists:', typeof window.importDraftFn === 'function')}
-  
+
   <!-- Get team name from any possible source -->
   {@const teamNameFromInput = (() => {
     try {
@@ -1084,19 +1082,15 @@
       return null;
     }
   })()}
-  
-  {@const ___ = console.log('Team name from sources - window:', window.teamName, 'input:', teamNameFromInput, 'draft:', draftValue?.teamName)}
-  
+
   <!-- Ensure teamName is available for TeamsModal using best available source -->
   {@const ____ = (() => {
     // If window.teamName is missing or empty, try to set it from best available source
     if (!window.teamName || window.teamName.trim() === '') {
       if (teamNameFromInput) {
         window.teamName = teamNameFromInput;
-        console.log('Setting window.teamName from input field:', window.teamName);
       } else if (draftValue && draftValue.teamName) {
         window.teamName = draftValue.teamName;
-        console.log('Setting window.teamName from draftValue:', window.teamName);
       }
     }
     return null;
@@ -1129,23 +1123,18 @@
     currentDraft={{...draftValue, teamName: bestTeamName}}
     teamName={bestTeamName} 
     importDraft={(draft: unknown) => {
-      console.log("importDraft prop called with:", JSON.stringify(draft, null, 2));
-      
       // Try using custom event first (most reliable method)
       if (typeof window !== 'undefined' && draft) {
         try {
-          console.log("Using custom event to import draft");
           window.dispatchEvent(new CustomEvent('gaslands-menu-action', {
             detail: { 
               action: 'importDraft',
               draft: draft
             }
           }));
-          console.log('Draft import event dispatched');
-          
+
           // Also try direct function call as fallback
           if (window.importDraftFn) {
-            console.log("Also trying direct function call");
             window.importDraftFn(draft);
           }
         } catch (error) {

@@ -41,10 +41,9 @@
     // Props
     export let vehicle: TeamVehicle;
 
-    // Initialize weaponFacings if undefined
-    if (!vehicle.weaponFacings) {
-        vehicle.weaponFacings = {};
-    }
+    // A loaded vehicle often has no facings map. Re-check when the prop is replaced,
+    // or the facing <select> reads a missing object and the card fails to render.
+    $: if (vehicle && !vehicle.weaponFacings) vehicle.weaponFacings = {};
     export let vehicleTypes: Vehicle[] = [];
     export let weapons: Weapon[] = [];
     export let upgrades: Upgrade[] = [];
@@ -180,7 +179,8 @@
         let totalCost = vehicleType.baseCost || 0;
 
         // Add weapon costs
-        for (const weaponInstanceId of vehicle.weapons) {
+        for (const weaponInstanceId of vehicle.weapons || []) {
+            if (typeof weaponInstanceId !== 'string') continue;
             // Use a more robust method to find the base weapon ID
             // Try increasingly longer potential base IDs until we find a match
             const parts = weaponInstanceId.split('_');
@@ -240,7 +240,8 @@
         let totalSlots = 0;
 
         // Calculate slots used by weapons
-        for (const weaponInstanceId of vehicle.weapons) {
+        for (const weaponInstanceId of vehicle.weapons || []) {
+            if (typeof weaponInstanceId !== 'string') continue;
             // Use a more robust method to find the base weapon ID
             // Try increasingly longer potential base IDs until we find a match
             const parts = weaponInstanceId.split('_');
@@ -407,7 +408,8 @@
         let totalAttackDice = 0;
 
         // Calculate total attack dice from all weapons
-        for (const weaponInstanceId of vehicle.weapons) {
+        for (const weaponInstanceId of vehicle.weapons || []) {
+            if (typeof weaponInstanceId !== 'string') continue;
             // Use a more robust method to find the base weapon ID
             // Try increasingly longer potential base IDs until we find a match
             const parts = weaponInstanceId.split('_');
@@ -523,7 +525,7 @@
     }
 
     function parseSpecialRules(specialRulesString: string) {
-        if (!specialRulesString) return [];
+        if (typeof specialRulesString !== 'string' || !specialRulesString) return [];
 
         // Handle special cases where text might be "SEE SPECIAL RULES"
         if (specialRulesString.toUpperCase().includes("SEE SPECIAL RULES")) {
@@ -539,7 +541,13 @@
     }
     
     // Helper function to find base weapon ID from instance ID
+    function trackerMarks(count: number) {
+        if (!Number.isFinite(count) || count <= 0) return [];
+        return Array(Math.min(40, Math.floor(count)));
+    }
+
     function findBaseWeaponId(weaponInstanceId: string, parts?: string[]) {
+        if (typeof weaponInstanceId !== 'string') return '';
         if (!parts) {
             parts = weaponInstanceId.split('_');
         }
@@ -569,6 +577,11 @@
 </script>
 
 <div class="vehicle-card bg-stone-200 dark:bg-gray-800 rounded-lg shadow-md overflow-hidden border-2 p-1 mb-1" style="border-color: {vehicleTypes.find(vt => vt.id === vehicle.type)?.color || '#f59e0b'};">
+    {#if !vehicleTypes.some((vt) => vt.id === vehicle.type)}
+        <p class="px-4 py-2 text-sm text-red-800 bg-red-50" data-testid="vehicle-warning">
+            This vehicle isn't in the current rules list ({vehicle.type || 'no type'}). It is still on the team.
+        </p>
+    {/if}
     {#if collapsed}
         {@const typeName = vehicleTypes.find(vt => vt.id === vehicle.type)?.name || vehicle.type}
         {@const driverLabel = drivers.find(driver => driver.id === vehicle.driverArchetype)?.name || 'No driver'}
@@ -751,7 +764,7 @@
                         {/if}
                     </div>
                     <div class="flex flex-wrap gap-1">
-                        {#each Array(calculateMaxHull()) as _, i}
+                        {#each trackerMarks(calculateMaxHull()) as _, i}
                             <div class="hull-checkbox">
                                 <input type="checkbox" id="hull-{vehicle.id}-{i}" class="hull-checkbox-input" />
                                 <label for="hull-{vehicle.id}-{i}" class="hull-checkbox-label"></label>
@@ -771,7 +784,7 @@
                             class="gear-range w-full h-7 appearance-none bg-stone-200 dark:bg-gray-600 rounded-full" 
                         />
                         <div class="gear-markers flex justify-between px-2 mt-1">
-                            {#each Array(calculateMaxGear()) as _, i}
+                            {#each trackerMarks(calculateMaxGear()) as _, i}
                                 <span class="gear-number text-xs font-bold">{i+1}</span>
                             {/each}
                         </div>
@@ -782,7 +795,7 @@
                     <div class="crew-tracker p-3 bg-white dark:bg-gray-800 rounded-lg border border-stone-300 dark:border-gray-600 flex-1">
                         <div class="tracker-label text-sm font-semibold text-stone-600 dark:text-gray-300 uppercase mb-2">Crew: {calculateCrew()}</div>
                         <div class="flex flex-wrap gap-1">
-                            {#each Array(calculateCrew()) as _, i}
+                            {#each trackerMarks(calculateCrew()) as _, i}
                                 <div class="crew-checkbox">
                                     <input type="checkbox" id="crew-{vehicle.id}-{i}" class="crew-checkbox-input" />
                                     <label for="crew-{vehicle.id}-{i}" class="crew-checkbox-label"></label>
@@ -918,7 +931,7 @@
                     <!-- Special rules in Play Mode -->
                     {#if vehicleTypes.find(vt => vt.id === vehicle.type)?.specialRules}
                         {@const vType = vehicleTypes.find(vt => vt.id === vehicle.type)}
-                        {@const specialRulesStr = vType?.specialRules || ''}
+                        {@const specialRulesStr = typeof vType?.specialRules === 'string' ? vType.specialRules : ''}
                         {@const specialRules = specialRulesStr.split(',').map(rule => rule.trim()) || []}
 
                         {#each specialRules as ruleName}
@@ -998,7 +1011,7 @@
                                                 return upgrade && upgrade["360"] === true;
                                             })}
                                             {@const isCrewFired = weaponObj?.crewFired || (weaponObj?.specialRules && (
-                                                weaponObj?.specialRules.toUpperCase().includes("CREW FIRED") || 
+                                                (typeof weaponObj?.specialRules === 'string' && weaponObj.specialRules.toUpperCase().includes("CREW FIRED")) || 
                                                 parseSpecialRules(weaponObj.specialRules).includes("crew_fired")
                                             ))}
                                             {@const isDropped = weaponObj?.dropped || (weaponObj?.range && weaponObj?.range.includes('Dropped'))}
@@ -1437,7 +1450,7 @@
             <!-- Special Rules Section - Only in Edit Mode -->
             {#if vehicleTypes.find(vt => vt.id === vehicle.type)?.specialRules}
                 {@const vType = vehicleTypes.find(vt => vt.id === vehicle.type)}
-                {@const specialRulesStr = vType?.specialRules || ''}
+                {@const specialRulesStr = typeof vType?.specialRules === 'string' ? vType.specialRules : ''}
                 {@const specialRules = specialRulesStr.split(',').map(rule => rule.trim()) || []}
                 <div class="mt-4">
                     <h3 class="text-sm font-bold text-stone-800 dark:text-gray-200 mb-1 flex items-center border-b border-stone-300 dark:border-gray-600 pb-1">
