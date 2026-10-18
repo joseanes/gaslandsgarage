@@ -38,6 +38,8 @@ interface GarageWindow {
 	openTeamsModalFn?: () => void;
 	currentDraftFn?: () => Draft | null;
 	importDraftFn?: (draft: unknown) => void;
+	dataLayer?: unknown[];
+	gtag?: (...args: unknown[]) => void;
 	signInEmulatorUser?: (email: string, password: string) => Promise<void>;
 	signOutEmulatorUser?: () => Promise<void>;
 	emulatorAuthState?: () => { uid: string; email: string | null } | null;
@@ -53,6 +55,10 @@ declare global {
 	}
 
 	interface Window extends GarageWindow {}
+
+	interface Navigator {
+		globalPrivacyControl?: boolean;
+	}
 }
 
 export {};

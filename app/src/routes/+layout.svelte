@@ -13,7 +13,9 @@
   import { goto } from '$app/navigation';
   import AdUnit from '$lib/components/AdUnit.svelte';
   import Auth from '$lib/components/Auth.svelte';
+  import ConsentBanner from '$lib/components/ConsentBanner.svelte';
   import TeamsModal from '$lib/components/TeamsModal.svelte';
+  import { openPrivacySettings } from '$lib/privacy/consent';
   import { signInWithGoogle, user } from '$lib/firebase';
   import { disabledNotice, isAdministrator, startAccountSession } from '$lib/admin/session';
 
@@ -679,9 +681,20 @@
       <a href="/privacy" class="text-amber-600 dark:text-amber-400 hover:underline">Privacy Policy</a>
       <span aria-hidden="true"> · </span>
       <a href="/terms" class="text-amber-600 dark:text-amber-400 hover:underline">Terms and Conditions</a>
+      <span aria-hidden="true"> · </span>
+      <button
+        type="button"
+        class="text-amber-600 underline-offset-2 hover:underline dark:text-amber-400"
+        data-testid="privacy-settings"
+        on:click={openPrivacySettings}
+      >
+        Privacy settings
+      </button>
     </div>
   </footer>
 </div>
+
+<ConsentBanner />
 
 {#if showSignInPrompt}
   <div class="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/60 p-4">

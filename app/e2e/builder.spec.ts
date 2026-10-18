@@ -192,7 +192,7 @@ test('a phone shows the same Teams, Settings, and Help menus', async ({ page }) 
 	await page.goto('/builder');
 	await expect(page.getByRole('button', { name: 'Menu', exact: true })).toHaveCount(0);
 	await expect(page.getByRole('button', { name: 'Teams' })).toBeVisible();
-	await expect(page.getByRole('button', { name: 'Settings' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Settings', exact: true })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Help' })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Play Mode' })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Quick Save' })).toBeVisible();
