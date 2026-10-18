@@ -13,6 +13,20 @@ function builderPageAlerts(messages: string[]) {
 	return messages.filter((message) => /builder page|not available/i.test(message));
 }
 
+async function holdHome(page: Page) {
+	await page.addInitScript(() => {
+		const mark = () => {
+			if (document.documentElement) document.documentElement.setAttribute('data-hold-home', '');
+		};
+		mark();
+		const timer = window.setInterval(mark, 1);
+		window.addEventListener('load', () => {
+			mark();
+			window.setTimeout(() => window.clearInterval(timer), 1000);
+		});
+	});
+}
+
 async function openTeamsItem(page: Page, name: string) {
 	await page.getByRole('button', { name: 'Teams', exact: true }).click();
 	await page.getByRole('button', { name, exact: true }).click();
@@ -38,9 +52,7 @@ test('signed-out Save/Load from Usage Stats opens My Teams on the builder', asyn
 
 test('signed-out Save/Load from the home page opens My Teams on the builder', async ({ page }) => {
 	const messages = watchDialogs(page);
-	await page.addInitScript(() => {
-		document.documentElement.setAttribute('data-hold-home', '');
-	});
+	await holdHome(page);
 	await page.goto('/', { waitUntil: 'domcontentloaded' });
 	await expect(page).toHaveURL(/\/$/);
 	await expect(page.getByText('Redirecting to Gaslands Garage...')).toBeVisible();
@@ -102,9 +114,7 @@ test('a saved team stays available from Usage Stats and the home page', async ({
 	await expect(page).toHaveURL(/\/builder/);
 	await fromStats.getByRole('button', { name: 'Close teams modal' }).click();
 
-	await page.addInitScript(() => {
-		document.documentElement.setAttribute('data-hold-home', '');
-	});
+	await holdHome(page);
 	await page.goto('/', { waitUntil: 'domcontentloaded' });
 	await expect(page).toHaveURL(/\/$/);
 	await openTeamsItem(page, 'Save/Load Team');

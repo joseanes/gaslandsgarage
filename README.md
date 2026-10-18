@@ -109,6 +109,8 @@ cd app && node deploy-firebase-rules.mjs
 firebase deploy --only firestore:rules --project=gaslandsgarage-74ce6
 ```
 
+Administrator accounts, disabling a player, and the one-time bootstrap are documented in [docs/ADMIN.md](docs/ADMIN.md).
+
 ### Infrastructure Deployment (AWS)
 
 ```bash

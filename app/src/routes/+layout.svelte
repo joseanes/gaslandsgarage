@@ -15,6 +15,9 @@
   import Auth from '$lib/components/Auth.svelte';
   import TeamsModal from '$lib/components/TeamsModal.svelte';
   import { signInWithGoogle, user } from '$lib/firebase';
+  import { disabledNotice, isAdministrator, startAccountSession } from '$lib/admin/session';
+
+  startAccountSession();
   import { sendContactMessage } from '$lib/services/messages';
   import { builderPathForTeamAction, rememberTeamMenuAction, type TeamMenuAction } from '$lib/teamMenu';
   
@@ -611,6 +614,9 @@
             </div>
             {/if}
           </div>
+          {#if $isAdministrator}
+            <a href="/admin/users" class="menu-item">Admin</a>
+          {/if}
           <Auth />
         </div>
       </div>
@@ -652,6 +658,30 @@
           on:click={startGoogleSignIn}
         >
           Sign in with Google
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+{#if $disabledNotice}
+  <div class="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/60 p-4">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Account disabled"
+      data-testid="account-disabled"
+      class="bg-white rounded-xl border-2 border-amber-500 p-6 max-w-md w-full shadow-xl"
+    >
+      <h2 class="text-lg font-bold text-stone-800 mb-2">Your account has been disabled</h2>
+      <p class="text-stone-700 mb-4">An administrator turned off access for this account. You have been signed out.</p>
+      <div class="flex justify-end">
+        <button
+          type="button"
+          class="px-4 py-2 rounded-lg bg-amber-500 text-white font-medium"
+          on:click={() => disabledNotice.set(false)}
+        >
+          OK
         </button>
       </div>
     </div>

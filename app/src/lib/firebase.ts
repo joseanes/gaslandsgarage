@@ -71,6 +71,15 @@ const initializeFirebase = async () => {
             await firebaseAuth.signInWithEmailAndPassword(emulatorAuth, email, password);
           }
         };
+        window.signOutEmulatorUser = async () => {
+          const firebaseAuth = await import('firebase/auth');
+          if (auth) await firebaseAuth.signOut(auth);
+        };
+        window.emulatorAuthState = () => {
+          const current = auth?.currentUser;
+          if (!current) return null;
+          return { uid: current.uid, email: current.email };
+        };
       }
       
       // Subscribe to auth state changes

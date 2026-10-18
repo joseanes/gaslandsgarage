@@ -2,6 +2,8 @@
 
 The application uses Firebase for authentication and team storage. To make the "Save Team" functionality work, you need to set up the correct security rules in your Firebase project.
 
+Deploy `app/firestore.rules` (see [docs/ADMIN.md](../docs/ADMIN.md)). The sample later in this file is an older subset from before administrator roles and account disabling. Pasting it over the live rules removes those checks.
+
 ## Setting Up Firebase Security Rules
 
 The "Missing or insufficient permissions" error occurs because Firebase Firestore security rules are restricting write access to the database. Follow these steps to fix it:

@@ -37,3 +37,6 @@ functions/
 # Firebase Admin private keys. Usage stats reads FIREBASE_SERVICE_ACCOUNT from GitHub secrets.
 **/*firebase-adminsdk*.json
 **/service-account*.json
+
+# Emulator logs
+firestore-debug.log
