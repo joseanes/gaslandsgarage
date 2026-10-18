@@ -740,6 +740,29 @@ describe('gaming buddies', () => {
 		await assertFails(getDoc(doc(authed('buddy'), 'buddyBlocks', 'owner~buddy')));
 		await assertFails(setDoc(doc(authed('owner'), 'buddyDirectory', 'owner'), { displayName: 'Spoof', email: 'a@b.c' }));
 	});
+
+	it('hides email invite tokens from clients', async () => {
+		const hash = 'ab'.repeat(32);
+		await seed(async (database) => {
+			await setDoc(doc(database, 'buddyEmailInvites', 'invite1'), {
+				fromUid: 'owner',
+				emailHash: hash,
+				exp: 1,
+				message: '',
+				usedAt: null,
+				createdAt: NOW
+			});
+			await setDoc(doc(database, 'buddyEmailOptOuts', hash), { emailHash: hash, fromUid: 'owner', createdAt: NOW });
+			await setDoc(doc(database, 'buddyEmailRate', hash), { sentAt: 1 });
+			await setDoc(doc(database, 'buddyEmailSuppress', hash), { suppressedAt: NOW });
+		});
+		const owner = authed('owner');
+		for (const name of ['buddyEmailInvites', 'buddyEmailOptOuts', 'buddyEmailRate', 'buddyEmailSuppress']) {
+			await assertFails(getDoc(doc(owner, name, name === 'buddyEmailInvites' ? 'invite1' : hash)));
+			await assertFails(getDocs(collection(owner, name)));
+			await assertFails(setDoc(doc(owner, name, 'planted'), { fromUid: 'owner' }));
+		}
+	});
 });
 
 describe('rules file', () => {

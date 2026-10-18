@@ -81,7 +81,11 @@ export default async function globalSetup() {
 			env: {
 				...process.env,
 				npm_config_engine_strict: 'false',
-				METADATA_SERVER_DETECTION: 'none'
+				METADATA_SERVER_DETECTION: 'none',
+				// Emulator placeholders so the buddies page can show the email form.
+				// These are not Twilio credentials and must not be used outside this process.
+				TWILIO_ACCOUNT_SID: 'AC00000000000000000000000000000000',
+				TWILIO_AUTH_TOKEN: 'emulator-placeholder-token'
 			}
 		}
 	);

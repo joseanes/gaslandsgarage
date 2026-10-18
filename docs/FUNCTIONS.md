@@ -2,7 +2,7 @@
 
 Firebase project `gaslandsgarage-74ce6` is on the Blaze plan. Auth and Firestore stay in Firebase. The website stays on AWS S3 and CloudFront. Nothing in CI deploys functions, rules, or hosting.
 
-The functions are 2nd gen, Node.js 22, TypeScript, in `functions/`. Node.js 20 is retired on 30 October 2026, so the runtime in `functions/package.json` is `22`. They use `firebase-admin` 14 and `firebase-functions` 7 with the default compute runtime identity. No function takes a service account key, a secret, or a pinned runtime account.
+The functions are 2nd gen, Node.js 22, TypeScript, in `functions/`. Node.js 20 is retired on 30 October 2026, so the runtime in `functions/package.json` is `22`. They use `firebase-admin` 14 and `firebase-functions` 7 with the default compute runtime identity. No function takes a service account key or a pinned runtime account. Twilio Email credentials are Secret Manager values (`TWILIO_ACCOUNT_SID` and `TWILIO_AUTH_TOKEN`), not source.
 
 | Function | Trigger | What it does |
 | --- | --- | --- |
@@ -13,7 +13,10 @@ The functions are 2nd gen, Node.js 22, TypeScript, in `functions/`. Node.js 20 i
 | `deleteMyAccount` | Callable, signed-in user | Deletes that account. Requires a fresh sign-in and the confirmation `DELETE`. |
 | `syncNewsletterToken` | `userSettings/{uid}` write | When `newsletterOptIn` is true, stores one random unsubscribe token. Does not send mail. |
 | `unsubscribeNewsletter` | Public HTTPS `GET` or `POST` | GET shows a confirm page and changes nothing. POST with the token sets `newsletterOptIn` to false. An RFC 8058 one-click POST is accepted on the same URL. No sign-in. |
-| `getBuddyInvite` | Callable, signed-in user | Returns or creates that account's invite code. |
+| `getBuddyInvite` | Callable, signed-in user | Returns or creates that account's invite code, and whether email invites are on. |
+| `sendBuddyInvite` | Callable, signed-in user | Sends one transactional buddy invite through Twilio Email. 10 a day per sender. |
+| `acceptBuddyEmailInvite` | Callable, signed-in user | Accepts a signed email-invite token and writes the buddy link. Single use. |
+| `suppressBuddyEmailInvites` | Public HTTPS `GET` or `POST` | GET shows a confirm page and changes nothing. POST stops future buddy-invite mail to that address. No sign-in. |
 | `saveBuddyProfile` | Callable, signed-in user | Stores the display name buddies see, and the opt-in directory card. |
 | `searchBuddyPlayers` | Callable, signed-in user | Prefix search of opted-in display names. No email. 30 searches per hour. |
 | `sendBuddyRequest` | Callable, signed-in user | Sends a request by invite code or by a findable player. 10 requests per hour. |
@@ -22,7 +25,9 @@ The functions are 2nd gen, Node.js 22, TypeScript, in `functions/`. Node.js 20 i
 | `removeBuddy` | Callable, signed-in user | Deletes the accepted link. Access ends immediately. |
 | `unblockBuddy` | Callable, signed-in user | Removes a block the caller created. |
 
-Region is `us-central1`. `publishUsageStats` uses 256MiB, a 300 second timeout, and one instance. `syncAuthDisabled`, `queueGameContactEmail`, and `syncNewsletterToken` retry on failure. `syncAuthDisabled` and `queueGameContactEmail` use the platform defaults. `syncNewsletterToken` uses the platform memory and timeout. `exportMyData`, `deleteMyAccount`, and the gaming-buddy callables use 256MiB, a 60 second timeout, and at most 10 instances. `unsubscribeNewsletter` uses 256MiB, a 30 second timeout, at most 10 instances, and `invoker: public` so the email link works without a Google sign-in. None keep a warm instance.
+Region is `us-central1`. `publishUsageStats` uses 256MiB, a 300 second timeout, and one instance. `syncAuthDisabled`, `queueGameContactEmail`, and `syncNewsletterToken` retry on failure. `syncAuthDisabled` and `queueGameContactEmail` use the platform defaults. `syncNewsletterToken` uses the platform memory and timeout. `exportMyData`, `deleteMyAccount`, and the gaming-buddy callables use 256MiB, a 60 second timeout, and at most 10 instances. `unsubscribeNewsletter` and `suppressBuddyEmailInvites` use 256MiB, a 30 second timeout, at most 10 instances, and `invoker: public` so the email link works without a Google sign-in. None keep a warm instance.
+
+`getBuddyInvite`, `sendBuddyInvite`, `acceptBuddyEmailInvite`, `exportMyData`, and `deleteMyAccount` declare the Twilio secrets. The other buddy callables do not. Email sending stays off until both secrets look like real Twilio credentials (an Account SID starting with `AC`, and an auth token). The placeholder value `disabled` keeps the feature off. The buddies page still shows the copyable invite link and says email invites are coming soon.
 
 ## Usage stats
 
@@ -84,7 +89,7 @@ Point the extension at the `mail` collection. Leave its sender address in the ex
 
 `exportMyData` and `deleteMyAccount` are HTTPS callables in `us-central1`. Both require a signed-in Firebase user and act only on `request.auth.uid`. A uid in the request body is ignored. Each allows 5 calls per rolling hour, stored on `privacyRate/{uid}` (`exportAt` and `deleteAt`). Clients cannot read or write that collection. The default deny rule covers it, so no rules change is required.
 
-`exportMyData` returns JSON for `users`, `users/{uid}/teams`, `teams`, `userSettings` (including the monthly-email fields), `newsletterTokens`, `playerProfiles`, `playerMapOwners`, `playerMapPrivate`, `playerMap`, that account's key on `playerMapBoard/public` and `openToGamesBoard/public`, `openToGames`, game requests sent and received, `messages`, `roles`, `adminUsers`, `mail` (another person's address is left out), `privacyRate`, buddy links, buddy requests sent and received, blocks, the invite code, the findable-name card, and `buddyRate`. `stats/public` is aggregate and is not copied. The callable response has to stay under Cloud Functions' 10 MB limit.
+`exportMyData` returns JSON for `users`, `users/{uid}/teams`, `teams`, `userSettings` (including the monthly-email fields), `newsletterTokens`, `playerProfiles`, `playerMapOwners`, `playerMapPrivate`, `playerMap`, that account's key on `playerMapBoard/public` and `openToGamesBoard/public`, `openToGames`, game requests sent and received, `messages`, `roles`, `adminUsers`, `mail` (another person's address is left out), `privacyRate`, buddy links, buddy requests sent and received, blocks, the invite code, the findable-name card, `buddyRate`, email invites that account sent (a salted hash, not the address), the opt-out tokens it created, and that account's own email-invite rate and opt-out hash when Twilio is configured. `stats/public` is aggregate and is not copied. The callable response has to stay under Cloud Functions' 10 MB limit.
 
 `deleteMyAccount` checks that `confirmation` is exactly `DELETE` and that the ID token `auth_time` is less than five minutes old. It then, in order:
 
@@ -92,7 +97,7 @@ Point the extension at the `mail` collection. Leave its sender address in the ex
 2. Deletes the account's documents, including teams, the legacy `users/{uid}/teams` subcollection, and `newsletterTokens/{uid}`.
 3. Anonymizes this account's side of `gameContacts` and `messages`. The other person's text stays. Names become `Deleted player`. Contact-form messages lose their email and body, and `userId` becomes `deleted`.
 4. Deletes queued `mail` documents for those requests and any mail addressed to this account.
-5. Deletes buddy links, requests, blocks, the invite, the findable-name card, and `buddyRate/{uid}`.
+5. Deletes buddy links, requests, blocks, the invite, the findable-name card, `buddyRate/{uid}`, email invites that account sent, opt-out tokens it created, and, when Twilio is configured, the salted hash of that account's own address (`buddyEmailRate` and `buddyEmailSuppress`). An opt-out hash for someone else stays. A placeholder secret of `disabled` skips only the hash lookup. The invitee's address is not stored.
 6. Deletes `privacyRate/{uid}`.
 7. Deletes the Auth user last. A missing Auth user is success, so a retry can finish leftover documents.
 
@@ -103,6 +108,15 @@ The browser calls these from Settings → General Settings after Google sign-in.
 ## Deploy
 
 From the repository root, with the Firebase CLI logged in as someone who can deploy this project. Do this by hand. Do not add it to the AWS deploy workflow.
+
+Create the Twilio secrets before the first deploy that includes these functions. `firebase deploy --only functions` fails if a declared secret does not exist. Until the sending domain is verified, set both values to the word `disabled`. Email invites stay off. The UI still offers the copyable invite link.
+
+```bash
+firebase functions:secrets:set TWILIO_ACCOUNT_SID --project=gaslandsgarage-74ce6
+firebase functions:secrets:set TWILIO_AUTH_TOKEN --project=gaslandsgarage-74ce6
+```
+
+`MAIL_FROM_ADDRESS` defaults to `noreply@gaslandsgarage.com`. The domain has to be verified in the Twilio Console before a real send succeeds. This branch vendors `functions/src/sendMail.ts` from PR #25 (`cursor/twilio-email-mail-496a`). Do not add a second Twilio client. When that pull request merges, keep one `defineSecret('TWILIO_ACCOUNT_SID')`, one `defineSecret('TWILIO_AUTH_TOKEN')`, and one `MAIL_FROM_ADDRESS` param (`functions/src/twilioConfig.ts`). Buddy invites call `postTwilioEmail` only. They do not append the game-request settings footer, and they do not register `sendQueuedMail`.
 
 ```bash
 pnpm install

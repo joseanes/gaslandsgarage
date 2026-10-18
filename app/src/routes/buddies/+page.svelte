@@ -9,12 +9,14 @@
 		cancelBuddyRequest,
 		loadBuddyBlocks,
 		loadBuddyLinks,
+		acceptBuddyEmailInvite,
 		loadBuddyProfile,
 		loadBuddyRequests,
 		removeBuddy,
 		respondBuddyRequest,
 		saveBuddyProfile,
 		searchBuddyPlayers,
+		sendBuddyEmailInvite,
 		sendBuddyRequest,
 		unblockBuddy,
 		type BuddyBlock,
@@ -33,6 +35,9 @@
 	let code = '';
 	let displayName = '';
 	let discoverable = false;
+	let emailInvites = false;
+	let inviteEmail = '';
+	let inviteMessage = '';
 	let searchText = '';
 	let results: SearchResult[] = [];
 	let buddies: BuddyLink[] = [];
@@ -49,6 +54,7 @@
 		'inline-flex min-h-11 items-center justify-center rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-800 hover:bg-stone-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-800 disabled:opacity-60 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700';
 
 	$: inviteFromLink = ($page.url.searchParams.get('invite') ?? '').trim();
+	$: emailInviteToken = ($page.url.searchParams.get('emailInvite') ?? '').trim();
 	$: inviteLink = code && typeof window !== 'undefined' ? `${window.location.origin}/buddies?invite=${code}` : '';
 
 	function say(message: string, isError = false) {
@@ -66,6 +72,7 @@
 		code = profile.code;
 		displayName = profile.displayName;
 		discoverable = profile.discoverable;
+		emailInvites = profile.emailInvites === true;
 		const [links, requests, blocked, own] = await Promise.all([
 			loadBuddyLinks(),
 			loadBuddyRequests(),
@@ -163,6 +170,22 @@
 		}
 	}
 
+	function sendEmailInvite() {
+		void run(async () => {
+			await sendBuddyEmailInvite(inviteEmail, inviteMessage);
+			inviteEmail = '';
+			inviteMessage = '';
+		}, 'If that address can receive an invite, we sent one.');
+	}
+
+	function acceptEmailInvite() {
+		if (!emailInviteToken) return;
+		void run(async () => {
+			await acceptBuddyEmailInvite(emailInviteToken);
+			await goto('/buddies', { replaceState: true, keepFocus: true });
+		}, 'You are gaming buddies.');
+	}
+
 	function sendInvite() {
 		if (!inviteFromLink) return;
 		void run(async () => {
@@ -201,6 +224,11 @@
 		<div class="rounded-lg border border-stone-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800" data-testid="buddies-signed-out">
 			<p class="font-medium">Sign in to add gaming buddies.</p>
 			<p class="mt-2 text-stone-600 dark:text-gray-300">Buddy requests use your display name, not your email.</p>
+			{#if emailInviteToken}
+				<p class="mt-3 text-sm" data-testid="buddy-email-accept">
+					Sign in with the email address that received this invite. Nothing is accepted until you confirm.
+				</p>
+			{/if}
 			<button type="button" class="{primaryClass} mt-4" on:click={() => signInWithGoogle()}>Sign in with Google</button>
 		</div>
 	{:else if status === 'error'}
@@ -221,6 +249,17 @@
 			</div>
 		{/if}
 
+		{#if emailInviteToken}
+			<div class="mb-6 rounded-lg border border-amber-400 bg-amber-50 p-4 dark:border-amber-700 dark:bg-gray-800" data-testid="buddy-email-accept">
+				<h2 class="text-lg font-bold">Email invite</h2>
+				<p class="mt-1 text-sm text-stone-700 dark:text-gray-200">
+					Accepting makes you gaming buddies with the person who sent this. Nothing changes until you confirm. Use the
+					email address that received the invite.
+				</p>
+				<button type="button" class="{primaryClass} mt-3" disabled={busy} on:click={acceptEmailInvite}>Accept buddy invite</button>
+			</div>
+		{/if}
+
 		<div class="space-y-8">
 			<section class="rounded-lg border border-stone-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800" aria-labelledby="buddy-invite-heading">
 				<h2 id="buddy-invite-heading" class="text-xl font-bold">Your invite link</h2>
@@ -229,6 +268,43 @@
 				<input id="buddy-invite-link" class="{fieldClass} mt-1" readonly value={inviteLink} data-testid="buddy-invite-link" />
 				<p class="mt-2 text-sm text-stone-600 dark:text-gray-300">Code <span class="font-mono" data-testid="buddy-invite-code">{code}</span></p>
 				<button type="button" class="{quietClass} mt-3" on:click={copyLink}>Copy invite link</button>
+				{#if emailInvites}
+					<form class="mt-6 space-y-3 border-t border-stone-200 pt-4 dark:border-gray-600" data-testid="buddy-email-form" on:submit|preventDefault={sendEmailInvite}>
+						<h3 class="text-lg font-bold">Invite by email</h3>
+						<p class="text-sm text-stone-600 dark:text-gray-300">
+							We send one plain message. We do not keep the address, and we do not say whether an account exists.
+						</p>
+						<div>
+							<label for="buddy-email" class="mb-1 block text-sm font-medium">Email address</label>
+							<input
+								id="buddy-email"
+								class={fieldClass}
+								type="email"
+								maxlength="320"
+								autocomplete="off"
+								required
+								bind:value={inviteEmail}
+								data-testid="buddy-email"
+							/>
+						</div>
+						<div>
+							<label for="buddy-email-message" class="mb-1 block text-sm font-medium">Message, optional</label>
+							<textarea
+								id="buddy-email-message"
+								class={fieldClass}
+								maxlength="280"
+								rows="3"
+								bind:value={inviteMessage}
+								data-testid="buddy-email-message"
+							></textarea>
+						</div>
+						<button type="submit" class={primaryClass} disabled={busy} data-testid="buddy-email-send">Send email invite</button>
+					</form>
+				{:else}
+					<p class="mt-4 text-sm text-stone-600 dark:text-gray-300" data-testid="buddy-email-soon">
+						Email invites are coming soon. Share the link above until then.
+					</p>
+				{/if}
 			</section>
 
 			<section class="rounded-lg border border-stone-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800" aria-labelledby="buddy-name-heading">

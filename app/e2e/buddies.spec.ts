@@ -124,6 +124,9 @@ test('a buddy request, accepted copy, and removal stay on the right accounts', a
 	await expect(ada.page.getByTestId('buddies-notice')).toContainText('gaming buddies');
 	await expect(ada.page.getByTestId('buddy-list')).toContainText('Grace');
 	await expect(ada.page.getByTestId('team-hide-from-buddies')).toBeVisible();
+	await expect(ada.page.getByTestId('buddy-email-form')).toBeVisible();
+	await ada.page.getByTestId('buddy-email').fill('friend@example.com');
+	await ada.page.getByTestId('buddy-email-message').fill('See you at the table');
 	await shoot(ada.page, 'buddies');
 
 	await grace.page.reload({ waitUntil: 'domcontentloaded' });

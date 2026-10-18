@@ -97,6 +97,7 @@ Details of the export, the deletion order, the rate limit (5 calls per action pe
    - In one transaction, remove their key from `playerMapBoard/public` `markers` and from `openToGamesBoard/public` `players`.
    - Delete their `teams` (where `userId` is theirs), `users/{uid}` including `users/{uid}/teams`, `userSettings`, `newsletterTokens/{uid}`, `playerProfiles`, `playerMapOwners`, their `playerMap` and `playerMapPrivate` pin, `openToGames`, `roles`, and `adminUsers`.
    - Delete buddy links where `members` contains them, buddy requests where they are `fromUid` or `toUid`, blocks where they are `blockerUid` or `blockedUid`, `buddyInvites/{uid}`, `buddyDirectory/{uid}`, and `buddyRate/{uid}`.
+   - Delete `buddyEmailInvites` and `buddyEmailOptOuts` where `fromUid` is theirs. When the Twilio auth token is a real credential, also delete `buddyEmailRate` and `buddyEmailSuppress` for the salted hash of their own address, plus invite and opt-out docs that store that same hash. Leave other people's suppression hashes. Do not write the address down.
    - Anonymize their side of `gameContacts` and `messages`. Leave the other person's text. Do not delete the other person's account.
    - Delete `mail` documents addressed to them and `mail/gameContact_*` documents for their requests.
    - Delete the Auth user last.
@@ -121,14 +122,15 @@ A disabled account cannot obtain an ID token, so the callable cannot run until t
 | `stats/public` | Aggregate counts. No account id, email, or team name |
 | `privacyRate/{uid}` | Timestamps of export and delete attempts. Removed when the account is deleted |
 | Buddy links, requests, blocks, invite code, findable name | Until either person removes them, or until the account is deleted. Deletion removes the shared link |
+| Buddy email invite | The address is used only to send one transactional message and is not stored. A salted hash is kept for the 7-day recipient limit and for "don't email me again". The accept token expires after 14 days and works once. Account deletion removes invites that person sent and the hash of their own address. Someone else's opt-out hash stays |
 
 Public map pins are approximate. Street addresses are not stored. Game requests do not store an email. The recipient address exists only on the `mail` document, and only when `allowContactFromPlayers` is true.
 
 ## Collections audited
 
-Firestore rules collections: `adminUsers`, `buddies`, `buddyBlocks`, `buddyDirectory`, `buddyInvites`, `buddyRequests`, `gameContacts`, `messages`, `newsletterTokens`, `openToGames`, `openToGamesBoard`, `playerMap`, `playerMapBoard`, `playerMapOwners`, `playerMapPrivate`, `playerProfiles`, `roles`, `stats`, `teams`, `userSettings`, `users`.
+Firestore rules collections: `adminUsers`, `buddies`, `buddyBlocks`, `buddyDirectory`, `buddyEmailInvites`, `buddyEmailOptOuts`, `buddyEmailRate`, `buddyEmailSuppress`, `buddyInvites`, `buddyRequests`, `gameContacts`, `messages`, `newsletterTokens`, `openToGames`, `openToGamesBoard`, `playerMap`, `playerMapBoard`, `playerMapOwners`, `playerMapPrivate`, `playerProfiles`, `roles`, `stats`, `teams`, `userSettings`, `users`.
 
-Also handled, and denied to clients by the default rule: `mail`, `privacyRate`, `buddyRate`, and the legacy subcollection `users/{uid}/teams`. Clients cannot write buddy links, requests, blocks, invites, or the directory. A callable creates those with the Admin SDK.
+Also handled, and denied to clients by the default rule: `mail`, `privacyRate`, `buddyRate`, and the legacy subcollection `users/{uid}/teams`. Clients cannot write buddy links, requests, blocks, invites, or the directory. Clients cannot read email-invite tokens, recipient hashes, or opt-out tokens. A callable creates those with the Admin SDK.
 
 `stats` is not part of a personal download. A test reads `app/firestore.rules` and fails if a rules collection is missing from `functions/src/accountPrivacy.ts`.
 

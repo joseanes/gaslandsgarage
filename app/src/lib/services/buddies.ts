@@ -39,6 +39,7 @@ export type BuddyProfile = {
 	code: string;
 	displayName: string;
 	discoverable: boolean;
+	emailInvites: boolean;
 };
 
 export type SearchResult = {
@@ -50,7 +51,7 @@ export type SearchResult = {
 function callableError(error: unknown): string {
 	const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
 	const message = error && typeof error === 'object' && 'message' in error ? String(error.message) : '';
-	if (code.endsWith('resource-exhausted')) return 'Too many requests. Try again later.';
+	if (code.endsWith('resource-exhausted')) return message || 'Too many requests. Try again later.';
 	if (
 		message &&
 		(code.endsWith('invalid-argument') ||
@@ -78,7 +79,8 @@ async function callBuddy<T>(name: string, data?: object): Promise<T> {
 }
 
 export async function loadBuddyProfile(): Promise<BuddyProfile> {
-	return callBuddy<BuddyProfile>('getBuddyInvite');
+	const profile = await callBuddy<BuddyProfile>('getBuddyInvite');
+	return { ...profile, emailInvites: profile.emailInvites === true };
 }
 
 export async function saveBuddyProfile(input: { displayName: string; discoverable: boolean }): Promise<BuddyProfile> {
@@ -98,6 +100,14 @@ export async function searchBuddyPlayers(query: string): Promise<SearchResult[]>
 
 export async function sendBuddyRequest(input: { code?: string; targetUid?: string }): Promise<void> {
 	await callBuddy('sendBuddyRequest', input);
+}
+
+export async function sendBuddyEmailInvite(email: string, message: string): Promise<void> {
+	await callBuddy('sendBuddyInvite', { email, message });
+}
+
+export async function acceptBuddyEmailInvite(token: string): Promise<void> {
+	await callBuddy('acceptBuddyEmailInvite', { token });
 }
 
 export async function respondBuddyRequest(requestId: string, action: 'accept' | 'decline' | 'block'): Promise<void> {

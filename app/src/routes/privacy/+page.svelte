@@ -94,6 +94,14 @@
 			and it returns a display name, not an email. You can turn search off. Disabled accounts cannot use
 			buddy access.
 		</p>
+		<p>
+			If you type someone's email address to invite them, we send one plain message through Twilio Email.
+			We use that address only to send the invite and to honor a request not to be emailed again. We do
+			not keep the address. We keep a salted hash of it so the same address is not invited again for 7
+			days, and so an opt-out stays in effect. The message has no marketing. The accept link expires
+			after 14 days and works once. The link that says not to email invites again works without an
+			account. Opening that link does not change anything until the person confirms.
+		</p>
 
 		<h2 class="text-xl font-bold mt-8 mb-3">Location, Nominatim, and the approximate point</h2>
 		<p>
@@ -280,8 +288,10 @@
 		<p>
 			The account record is not deleted when you sign out, and it is not deleted when an account is
 			disabled. While you are signed in, you can delete your account from settings. You can also ask by
-			email. Buddy links, requests, blocks, and your invite code stay until you remove them or delete
-			your account. Deleting your account removes those links for both people.
+			email. Buddy links, requests, blocks, your invite code, and buddy-invite records stay until you
+			remove them or delete your account. Deleting your account removes those links for both people.
+			The salted hash of your own address, and the invites you sent, are removed with the account.
+			An opt-out hash for someone else stays so we can still honor their request.
 		</p>
 		<p>
 			Game requests stay until we delete them on request. The profile page does not include a delete
@@ -297,12 +307,12 @@
 		<p>If the GDPR or UK GDPR applies, we rely on these bases:</p>
 		<ul class="list-disc pl-6 space-y-2">
 			<li>
-				Contract: your account, saved teams, settings, in-app game requests, and gaming buddy links, so
-				we can provide the features you use.
+				Contract: your account, saved teams, settings, in-app game requests, gaming buddy links, and the
+				address you type for a buddy invite, so we can provide the features you use.
 			</li>
 			<li>
 				Consent: a public or anonymous map pin, the open-to-games listing, being findable by display
-				name for gaming buddies, game-request email,
+				name for gaming buddies, a buddy invite email when you enter an address, game-request email,
 				“Keep me up to date” marketing email, and the monthly Gaslands Garage email. Each one stays off
 				until you turn it on. In the EEA, the
 				UK, and Switzerland, analytics cookies are also consent: they stay off until you click Accept.
@@ -384,7 +394,7 @@
 			<a class={linkClass} href="mailto:jose.anes@gmail.com">jose.anes@gmail.com</a>, or use
 			Contact Us while signed in, and say what you want removed. We answer email requests within 1
 			month. We can delete the Gaslands Garage records we hold for that account, including the account
-			record, teams, profile, settings, game requests, gaming buddy links, and messages to us. Disabling an account is not
+			record, teams, profile, settings, game requests, gaming buddy links, buddy-invite records, and messages to us. Disabling an account is not
 			the same as deleting it. We cannot delete the Google account itself.
 		</p>
 

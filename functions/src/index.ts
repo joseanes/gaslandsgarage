@@ -3,6 +3,7 @@ import { onDocumentCreated, onDocumentWritten } from 'firebase-functions/v2/fire
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { USAGE_STATS_SCHEDULE, USAGE_STATS_TIME_ZONE, publishUsageStats as runUsageStats } from '../../stats/job.ts';
 import { deleteMyAccount, exportMyData } from './accountPrivacy.ts';
+import { acceptBuddyEmailInvite, sendBuddyInvite, suppressBuddyEmailInvites } from './buddyEmailInvite.ts';
 import {
 	cancelBuddyRequest,
 	getBuddyInvite,
@@ -98,6 +99,14 @@ export {
 	sendBuddyRequest,
 	unblockBuddy
 };
+
+/**
+ * Email buddy invites. `sendBuddyInvite` and `acceptBuddyEmailInvite` require
+ * a signed-in account. `suppressBuddyEmailInvites` is a public HTTPS link.
+ * GET shows a confirm page and changes nothing. POST stops future invite mail
+ * to that address. Tokens are not readable by clients.
+ */
+export { acceptBuddyEmailInvite, sendBuddyInvite, suppressBuddyEmailInvites };
 
 /**
  * Monthly-email unsubscribe. `syncNewsletterToken` stores a random token when

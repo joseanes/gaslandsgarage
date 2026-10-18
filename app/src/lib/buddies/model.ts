@@ -3,6 +3,10 @@
 export const BUDDY_REQUESTS_PER_HOUR = 10;
 export const BUDDY_SEARCHES_PER_HOUR = 30;
 export const BUDDY_RATE_WINDOW_MS = 60 * 60 * 1000;
+export const BUDDY_EMAIL_INVITES_PER_DAY = 10;
+export const BUDDY_EMAIL_INVITE_WINDOW_MS = 24 * 60 * 60 * 1000;
+export const BUDDY_EMAIL_RECIPIENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+export const BUDDY_EMAIL_INVITE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 export const BUDDY_NAME_MAX = 60;
 export const INVITE_CODE_LENGTH = 10;
 export const INVITE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -13,7 +17,11 @@ export const BUDDY_COLLECTIONS = {
 	blocks: 'buddyBlocks',
 	invites: 'buddyInvites',
 	directory: 'buddyDirectory',
-	rate: 'buddyRate'
+	rate: 'buddyRate',
+	emailInvites: 'buddyEmailInvites',
+	emailRate: 'buddyEmailRate',
+	emailSuppress: 'buddyEmailSuppress',
+	emailOptOuts: 'buddyEmailOptOuts'
 } as const;
 
 const UID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;

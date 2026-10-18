@@ -650,6 +650,24 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Email-invite tokens, recipient hashes, and opt-out tokens.
+    // Clients cannot read or write them. Callables use the Admin SDK.
+    match /buddyEmailInvites/{inviteId} {
+      allow read, write: if false;
+    }
+
+    match /buddyEmailOptOuts/{tokenHash} {
+      allow read, write: if false;
+    }
+
+    match /buddyEmailRate/{addressHash} {
+      allow read, write: if false;
+    }
+
+    match /buddyEmailSuppress/{addressHash} {
+      allow read, write: if false;
+    }
+
     // A block is visible to the person who blocked. The blocked player is not told here.
     match /buddyBlocks/{blockId} {
       allow read: if signedIn()

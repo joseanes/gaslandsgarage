@@ -2,6 +2,8 @@ import { createHash, randomInt } from 'node:crypto';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, type DocumentReference, type Transaction } from 'firebase-admin/firestore';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import { twilioAccountSid, twilioAuthToken } from './twilioConfig.ts';
+import { twilioEmailConfigured } from '../../app/src/lib/buddies/emailInvite.ts';
 import {
 	BUDDY_COLLECTIONS,
 	BUDDY_RATE_WINDOW_MS,
@@ -62,7 +64,7 @@ async function callerIsDisabled(uid: string): Promise<boolean> {
 	return adminDoc.exists && adminDoc.get('disabled') === true;
 }
 
-async function assertCaller(uid: string | undefined): Promise<string> {
+export async function assertCaller(uid: string | undefined): Promise<string> {
 	if (!uidOk(uid)) throw new HttpsError('unauthenticated', 'Sign in required.');
 	let record;
 	try {
@@ -77,7 +79,7 @@ async function assertCaller(uid: string | undefined): Promise<string> {
 	return uid;
 }
 
-async function targetIsActive(uid: string): Promise<boolean> {
+export async function targetIsActive(uid: string): Promise<boolean> {
 	try {
 		const record = await getAuth().getUser(uid);
 		if (record.disabled) return false;
@@ -120,10 +122,15 @@ async function freshInviteCode(): Promise<string> {
 	throw new HttpsError('internal', 'Could not create an invite link. Try again.');
 }
 
-export async function handleGetBuddyInvite(uid: string | undefined, nowMs = Date.now()): Promise<{
+export async function handleGetBuddyInvite(
+	uid: string | undefined,
+	nowMs = Date.now(),
+	emailInvites = false
+): Promise<{
 	code: string;
 	displayName: string;
 	discoverable: boolean;
+	emailInvites: boolean;
 }> {
 	const caller = await assertCaller(uid);
 	logBuddy('invite', caller);
@@ -146,7 +153,7 @@ export async function handleGetBuddyInvite(uid: string | undefined, nowMs = Date
 		);
 	}
 	const directory = await db.doc(`${BUDDY_COLLECTIONS.directory}/${caller}`).get();
-	return { code, displayName, discoverable: directory.exists };
+	return { code, displayName, discoverable: directory.exists, emailInvites };
 }
 
 export async function handleSaveBuddyProfile(
@@ -487,9 +494,16 @@ export async function handleUnblockBuddy(
 	return { status: 'unblocked' };
 }
 
-export const getBuddyInvite = onCall(buddyCallableOptions, async (request) => {
-	return handleGetBuddyInvite(request.auth?.uid);
-});
+export const getBuddyInvite = onCall(
+	{ ...buddyCallableOptions, secrets: [twilioAccountSid, twilioAuthToken] },
+	async (request) => {
+		return handleGetBuddyInvite(
+			request.auth?.uid,
+			Date.now(),
+			twilioEmailConfigured(twilioAccountSid.value(), twilioAuthToken.value())
+		);
+	}
+);
 
 export const saveBuddyProfile = onCall(buddyCallableOptions, async (request) => {
 	return handleSaveBuddyProfile(request.auth?.uid, request.data);
