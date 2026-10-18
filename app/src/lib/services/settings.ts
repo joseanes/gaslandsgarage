@@ -65,6 +65,9 @@ export const newsletterView = writable<NewsletterView>({
   dismissed: false
 });
 
+/** Last settings read or saved for the signed-in player. Null when signed out. */
+export const accountSettings = writable<UserSettings | null>(null);
+
 export function newsletterViewFrom(settings: NewsletterConsentFields | null | undefined, loaded: boolean): NewsletterView {
   const dismissedAt = settings?.newsletterPromptDismissedAt;
   return {
@@ -82,6 +85,7 @@ function publishNewsletter(settings: NewsletterConsentFields | null | undefined,
 /** Hide the prompt until the signed-in player's settings have been read. */
 export function resetNewsletterView() {
   newsletterView.set({ loaded: false, optIn: false, answered: false, dismissed: false });
+  accountSettings.set(null);
 }
 
 /**
@@ -107,6 +111,7 @@ export async function saveUserSettings(settings: UserSettings): Promise<{ succes
     );
     await setDoc(settingsRef, stamped);
     publishNewsletter(stamped, true);
+    accountSettings.set(stamped);
     return { success: true };
   } catch (error) {
     console.error('Error saving user settings:', error);
@@ -144,6 +149,7 @@ export async function getUserSettings(): Promise<{ success: boolean; settings?: 
       }
 
       publishNewsletter(data, true);
+      accountSettings.set(data);
       return { success: true, settings: data };
     } else {
       // Create default settings if none exist. A transaction avoids wiping a choice
@@ -157,6 +163,7 @@ export async function getUserSettings(): Promise<{ success: boolean; settings?: 
       const created = await getDoc(settingsRef);
       const data = (created.exists() ? created.data() : DEFAULT_SETTINGS) as UserSettings;
       publishNewsletter(data, true);
+      accountSettings.set(data);
       return { success: true, settings: data };
     }
   } catch (error) {

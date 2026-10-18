@@ -9,7 +9,9 @@
 		type DirectoryUser
 	} from '$lib/admin/api';
 	import { REGULAR_USER_LABEL, roleChoices, userMatchesSearch } from '$lib/admin/accountActions';
+	import AdminAccountSettings from '$lib/components/AdminAccountSettings.svelte';
 	import ReadonlyTeam from '$lib/components/ReadonlyTeam.svelte';
+	import { projectUserSettings, type AdminAccountSettings as AccountSettings, type AdminProfileView } from '$lib/admin/accountSettings';
 
 	let status: 'loading' | 'signed-out' | 'forbidden' | 'ready' | 'error' = 'loading';
 	let loadError = '';
@@ -17,7 +19,10 @@
 	let query = '';
 	let rows: DirectoryUser[] = [];
 	let teamsByUser = new Map<string, DirectoryTeam[]>();
+	let settingsByUser: Map<string, AccountSettings> | null = null;
+	let profilesByUser: Map<string, AdminProfileView> | null = null;
 	let selectedUid = '';
+	let settingsUid = '';
 	let busy = false;
 	let loadedFor = '';
 
@@ -51,6 +56,8 @@
 			const previousRole = roleTarget ? roleLabel(roleTarget.role) : '';
 			rows = directory.users;
 			teamsByUser = directory.teamsByUser;
+			settingsByUser = directory.settingsByUser;
+			profilesByUser = directory.profilesByUser;
 			roleTarget = sameAccount(roleTarget, rows);
 			if (roleTarget && roleChoice === previousRole) roleChoice = roleLabel(roleTarget.role);
 			disableTarget = sameAccount(disableTarget, rows);
@@ -80,6 +87,13 @@
 	$: visible = rows.filter((row) => userMatchesSearch(row, query));
 	$: selected = rows.find((row) => row.uid === selectedUid) ?? null;
 	$: selectedTeams = selected ? teamsByUser.get(selected.uid) ?? [] : [];
+	$: settingsPerson = rows.find((row) => row.uid === settingsUid) ?? null;
+	$: settingsRecord = settingsPerson
+		? settingsByUser
+			? (settingsByUser.get(settingsPerson.uid) ?? projectUserSettings(undefined))
+			: null
+		: null;
+	$: profileRecord = settingsPerson && profilesByUser ? (profilesByUser.get(settingsPerson.uid) ?? null) : null;
 
 	function openRole(row: DirectoryUser) {
 		actionError = '';
@@ -218,6 +232,14 @@
 									<button
 										type="button"
 										class="text-amber-700 underline dark:text-amber-300"
+										aria-label={`${settingsUid === row.uid ? 'Hide' : 'View'} settings for ${row.email || row.uid}`}
+										on:click={() => (settingsUid = settingsUid === row.uid ? '' : row.uid)}
+									>
+										{settingsUid === row.uid ? 'Hide settings' : 'View settings'}
+									</button>
+									<button
+										type="button"
+										class="text-amber-700 underline dark:text-amber-300"
 										aria-label={`${selectedUid === row.uid ? 'Hide' : 'View'} teams for ${row.email || row.uid}`}
 										on:click={() => (selectedUid = selectedUid === row.uid ? '' : row.uid)}
 									>
@@ -262,6 +284,15 @@
 				</tbody>
 			</table>
 		</div>
+
+		{#if settingsPerson}
+			<AdminAccountSettings
+				person={settingsPerson}
+				settings={settingsRecord}
+				profile={profileRecord}
+				profileLoaded={profilesByUser !== null}
+			/>
+		{/if}
 
 		{#if selected}
 			<div class="mt-6 space-y-3" aria-label={`Teams for ${selected.email || selected.uid}`}>

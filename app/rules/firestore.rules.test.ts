@@ -544,13 +544,41 @@ describe('monthly email consent', () => {
 		await seed(async (database) => {
 			await setDoc(doc(database, 'roles', 'admin'), roleDoc());
 		});
-		await assertFails(getDoc(doc(authed('admin'), 'userSettings', 'player')));
-		await assertFails(getDocs(collection(authed('admin'), 'userSettings')));
+		const admin = authed('admin');
+		await assertSucceeds(getDoc(doc(admin, 'userSettings', 'player')));
+		const listed = await assertSucceeds(getDocs(collection(admin, 'userSettings')));
+		expect(listed.docs.map((entry) => entry.id)).toEqual(['player']);
+		await assertFails(
+			updateDoc(doc(admin, 'userSettings', 'player'), {
+				newsletterOptIn: true,
+				newsletterOptInAt: NOW,
+				newsletterConsentText: 'monthly-email-v1'
+			})
+		);
+		await assertFails(setDoc(doc(admin, 'userSettings', 'player'), NEWSLETTER_IN));
+		await assertFails(deleteDoc(doc(admin, 'userSettings', 'player')));
+		expect((await getDoc(doc(admin, 'userSettings', 'player'))).get('newsletterOptIn')).toBe(false);
 
 		await assertFails(getDoc(doc(player, 'newsletterTokens', 'player')));
 		await assertFails(setDoc(doc(player, 'newsletterTokens', 'player'), { token: 'abc', uid: 'player' }));
 		await assertFails(setDoc(doc(guest(), 'newsletterTokens', 'player'), { token: 'abc', uid: 'player' }));
 		await assertFails(getDocs(collection(authed('admin'), 'newsletterTokens')));
+	});
+
+	it('stops a disabled administrator and a regular player from reading another settings document', async () => {
+		await seed(async (database) => {
+			await setDoc(doc(database, 'roles', 'admin'), roleDoc());
+			await setDoc(doc(database, 'adminUsers', 'admin'), disabledBy('bootstrap'));
+			await setDoc(doc(database, 'userSettings', 'player'), {
+				newsletterOptIn: false,
+				newsletterOptOutAt: NOW,
+				receiveUpdates: false
+			});
+		});
+		await assertFails(getDoc(doc(authed('admin'), 'userSettings', 'player')));
+		await assertFails(getDocs(collection(authed('admin'), 'userSettings')));
+		await assertFails(getDoc(doc(authed('other'), 'userSettings', 'player')));
+		await assertFails(getDocs(collection(authed('other'), 'userSettings')));
 	});
 });
 

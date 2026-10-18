@@ -39,7 +39,7 @@ The player writes their own `userSettings` document. The rules do not whitelist 
 | `newsletterConsentText` | `monthly-email-v1`, the version of the sentence above. |
 | `newsletterPromptDismissedAt` | ISO time they closed the one-time prompt without answering. The prompt is not shown again. |
 
-Firestore rules let only that player write these fields, and only with those types. Opt-in requires `newsletterConsentText == monthly-email-v1` and a string `newsletterOptInAt`. No other signed-in player, and no administrator, can read `userSettings`.
+Firestore rules let only that player write these fields, and only with those types. Opt-in requires `newsletterConsentText == monthly-email-v1` and a string `newsletterOptInAt`. Another player cannot read `userSettings`. An administrator can read the document and cannot change it. Firestore returns every field on that read; the Users page shows consent, email choices, and map preferences, and it does not show precise map coordinates. `newsletterTokens` stays unreadable, including to administrators.
 
 A signed-in player who has never answered sees a small prompt on the page. It is not a dialog and it does not block the builder. "No thanks" only writes `newsletterPromptDismissedAt`. "Send me the monthly email" opts in. After either one, or after they save the checkbox, the prompt stays hidden.
 
@@ -47,7 +47,7 @@ This change does not send the monthly email. Send it later with Twilio Email, an
 
 ### How a future sender must select people
 
-Use the Admin SDK. A client query cannot read another player's settings.
+Use the Admin SDK. A player cannot read another player's settings. An administrator's signed-in session can read `userSettings` for the Users page and cannot write it. The sender should still use the Admin SDK, not the browser.
 
 1. Query `userSettings` where `newsletterOptIn == true`. Do not use `receiveUpdates`. Do not use `allowContactFromPlayers`.
 2. For each document id (the account uid), read `newsletterTokens/{uid}`. The field `token` is a 43-character random string. If that document is missing, skip the person for this run. Do not generate a token in the sender and do not send without one.
