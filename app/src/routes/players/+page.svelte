@@ -15,7 +15,7 @@
 	let markers: MapMarker[] = [];
 	let openPlayers: OpenPlayer[] = [];
 	let senderName = '';
-	let seen = '';
+	let seen: string | null = null;
 	let asking = '';
 	let draft = '';
 	let notice = '';

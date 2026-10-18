@@ -118,42 +118,133 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/playerMapOwners/$(request.auth.uid)).data.entryId == entryId;
     }
 
-    function coarsePin() {
-      return hundredth(request.resource.data.latE2, -9000, 9000)
-        && hundredth(request.resource.data.lngE2, -18000, 18000)
-        && request.resource.data.updatedAt is string
-        && request.resource.data.updatedAt.size() < 40;
+    function coarsePoint(pin) {
+      return hundredth(pin.latE2, -9000, 9000)
+        && hundredth(pin.lngE2, -18000, 18000)
+        && pin.updatedAt is string
+        && pin.updatedAt.size() < 40;
     }
 
-    function anonMapEntry() {
-      return request.resource.data.keys().hasOnly(['anonymous', 'latE2', 'lngE2', 'updatedAt'])
-        && request.resource.data.anonymous == true
-        && coarsePin();
+    function anonPin(pin) {
+      return pin is map
+        && pin.keys().hasOnly(['anonymous', 'latE2', 'lngE2', 'updatedAt'])
+        && pin.anonymous == true
+        && coarsePoint(pin);
     }
 
-    function namedMapEntry() {
-      return request.resource.data.keys().hasOnly([
+    function namedPin(pin) {
+      return pin is map
+        && pin.keys().hasOnly([
           'anonymous', 'playerName', 'bio', 'playSpots', 'locationLabel',
           'latE2', 'lngE2', 'openToGames', 'updatedAt'
         ])
-        && request.resource.data.anonymous == false
-        && shortText(request.resource.data.playerName, 60)
-        && request.resource.data.playerName.size() > 0
-        && shortText(request.resource.data.bio, 280)
-        && shortText(request.resource.data.playSpots, 280)
-        && shortText(request.resource.data.locationLabel, 80)
-        && request.resource.data.openToGames is bool
-        && coarsePin();
+        && pin.anonymous == false
+        && shortText(pin.playerName, 60)
+        && pin.playerName.size() > 0
+        && shortText(pin.bio, 280)
+        && shortText(pin.playSpots, 280)
+        && shortText(pin.locationLabel, 80)
+        && pin.openToGames is bool
+        && coarsePoint(pin);
+    }
+
+    function validPublicPin(pin) {
+      return anonPin(pin) || namedPin(pin);
+    }
+
+    function anonMapEntry() {
+      return anonPin(request.resource.data);
+    }
+
+    function namedMapEntry() {
+      return namedPin(request.resource.data);
+    }
+
+    function openCard(card) {
+      return card is map
+        && card.keys().hasOnly(['playerName', 'bio', 'playSpots', 'updatedAt'])
+        && shortText(card.playerName, 60)
+        && card.playerName.size() > 0
+        && shortText(card.bio, 280)
+        && shortText(card.playSpots, 280)
+        && card.updatedAt is string
+        && card.updatedAt.size() < 40;
     }
 
     function validOpenToGames() {
-      return request.resource.data.keys().hasOnly(['playerName', 'bio', 'playSpots', 'updatedAt'])
-        && shortText(request.resource.data.playerName, 60)
-        && request.resource.data.playerName.size() > 0
-        && shortText(request.resource.data.bio, 280)
-        && shortText(request.resource.data.playSpots, 280)
-        && request.resource.data.updatedAt is string
-        && request.resource.data.updatedAt.size() < 40;
+      return openCard(request.resource.data);
+    }
+
+    // Board documents stay under the 1 MiB Firestore limit. A player can add
+    // only their own key, and cannot grow a board that is already full.
+    function boardGrowthOk(after, before) {
+      return after.size() <= 500 || (before != null && after.size() <= before.size());
+    }
+
+    function boardBytesOk() {
+      return request.resource.size() < 800000
+        || (resource != null && request.resource.size() <= resource.size());
+    }
+
+    function onlyOwnMarker(after, before) {
+      let entryId = get(/databases/$(database)/documents/playerMapOwners/$(request.auth.uid)).data.entryId;
+      return ownsMapClaim(entryId)
+        && exists(/databases/$(database)/documents/playerMapPrivate/$(entryId))
+        && get(/databases/$(database)/documents/playerMapPrivate/$(entryId)).data.ownerUid == request.auth.uid
+        && after is map
+        && (before == null || after.diff(before).affectedKeys().hasOnly([entryId]))
+        && (
+          !after.keys().hasAny([entryId])
+          || validPublicPin(after[entryId])
+        )
+        && boardGrowthOk(after, before)
+        && boardBytesOk();
+    }
+
+    function createMapBoard() {
+      let entryId = get(/databases/$(database)/documents/playerMapOwners/$(request.auth.uid)).data.entryId;
+      return request.resource.data.keys().hasOnly(['markers'])
+        && request.resource.data.markers is map
+        && request.resource.data.markers.keys().hasOnly([entryId])
+        && request.resource.data.markers.keys().hasAll([entryId])
+        && onlyOwnMarker(request.resource.data.markers, null);
+    }
+
+    function updateMapBoard() {
+      return resource.data.keys().hasOnly(['markers'])
+        && request.resource.data.keys().hasOnly(['markers'])
+        && resource.data.markers is map
+        && onlyOwnMarker(request.resource.data.markers, resource.data.markers);
+    }
+
+    function onlyOwnOpenCard(after, before) {
+      let uid = request.auth.uid;
+      return uid is string
+        && uid.size() > 0
+        && uid.size() <= 128
+        && after is map
+        && (before == null || after.diff(before).affectedKeys().hasOnly([uid]))
+        && (
+          !after.keys().hasAny([uid])
+          || openCard(after[uid])
+        )
+        && boardGrowthOk(after, before)
+        && boardBytesOk();
+    }
+
+    function createOpenBoard() {
+      return request.resource.data.keys().hasOnly(['players'])
+        && request.resource.data.players is map
+        && request.resource.data.players.keys().hasOnly([request.auth.uid])
+        && request.resource.data.players.keys().hasAll([request.auth.uid])
+        && onlyOwnOpenCard(request.resource.data.players, null);
+    }
+
+    function updateOpenBoard() {
+      return resource.data.keys().hasOnly(['players'])
+        && request.resource.data.keys().hasOnly(['players'])
+        && resource.data.players is map
+        && onlyOwnOpenCard(request.resource.data.players, resource.data.players);
     }
 
     function contactShape() {
@@ -344,8 +435,11 @@ service cloud.firestore {
     }
 
     // Public pins. Anonymous documents have a coarse coordinate and nothing else.
+    // A single document read is allowed. Listing the collection is not: /players
+    // reads playerMapBoard/public so a visit cannot scan every pin.
     match /playerMap/{entryId} {
-      allow read: if true;
+      allow get: if true;
+      allow list: if false;
 
       allow create, update: if ownsMapClaim(entryId)
         && exists(/databases/$(database)/documents/playerMapPrivate/$(entryId))
@@ -357,12 +451,38 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/playerMapPrivate/$(entryId)).data.ownerUid == request.auth.uid;
     }
 
-    // Contact opt-in. No email and no coordinate. Signed-in players can read it.
+    // One public document of map pins. A player may create it or change only the
+    // key claimed in playerMapOwners, and only while playerMapPrivate names them.
+    // They cannot delete the document or rewrite another player's pin.
+    match /playerMapBoard/{docId} {
+      allow get: if docId == 'public';
+      allow list: if false;
+
+      allow create: if docId == 'public' && signedIn() && !isDisabled() && createMapBoard();
+      allow update: if docId == 'public' && signedIn() && !isDisabled() && updateMapBoard();
+      allow delete: if false;
+    }
+
+    // Contact opt-in. No email and no coordinate. A signed-in player may read one
+    // card. Listing the collection is denied; /players reads openToGamesBoard/public.
     match /openToGames/{userId} {
-      allow read: if signedIn() && !isDisabled();
+      allow get: if signedIn() && !isDisabled();
+      allow list: if false;
 
       allow create, update: if signedIn() && !isDisabled() && userId == request.auth.uid && validOpenToGames();
       allow delete: if signedIn() && !isDisabled() && userId == request.auth.uid;
+    }
+
+    // One document of contact cards, readable by any active signed-in player.
+    // The map key has to be the caller's uid, so a write cannot spoof or delete
+    // another player's card. The document itself cannot be deleted.
+    match /openToGamesBoard/{docId} {
+      allow get: if docId == 'public' && signedIn() && !isDisabled();
+      allow list: if false;
+
+      allow create: if docId == 'public' && signedIn() && !isDisabled() && createOpenBoard();
+      allow update: if docId == 'public' && signedIn() && !isDisabled() && updateOpenBoard();
+      allow delete: if false;
     }
 
     // A game request between two signed-in players. The id is fromUid_toUid.
