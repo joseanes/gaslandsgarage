@@ -46,6 +46,14 @@ test.describe('a visitor likely in the EEA', () => {
 	test('sees the banner before choosing', async ({ page }) => {
 		await page.goto('/builder');
 		await expect(page.getByTestId('consent-banner')).toBeVisible();
+		const defaults = await page.evaluate(() =>
+			(window.dataLayer ?? [])
+				.map((entry) => Array.from(entry as ArrayLike<unknown>))
+				.filter((entry) => entry[0] === 'consent' && entry[1] === 'default')
+				.map((entry) => entry[2] as Record<string, unknown>)
+		);
+		const global = defaults.find((entry) => !('region' in entry));
+		expect(global?.analytics_storage).toBe('denied');
 		await page.getByRole('button', { name: 'Accept' }).click();
 		await expect(page.getByTestId('consent-banner')).toHaveCount(0);
 		await expect

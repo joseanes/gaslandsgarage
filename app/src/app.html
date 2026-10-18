@@ -111,8 +111,18 @@
 				region: consentRegions,
 				wait_for_update: 500
 			});
+			// Browser timezone backs up the IP region list: a Europe/* (or listed) zone
+			// starts denied even when Google does not place the IP in the EEA, UK, or CH.
+			var consentTimeZones = ["Africa/Ceuta","America/Cayenne","America/Guadeloupe","America/Marigot","America/Martinique","America/St_Barthelemy","Arctic/Longyearbyen","Asia/Famagusta","Asia/Nicosia","Atlantic/Azores","Atlantic/Canary","Atlantic/Madeira","Atlantic/Reykjavik","Indian/Mayotte","Indian/Reunion"];
+			var viewerTimeZone = '';
+			try {
+				viewerTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+			} catch (e) {
+				viewerTimeZone = '';
+			}
+			var consentTimeZone = viewerTimeZone.indexOf('Europe/') === 0 || consentTimeZones.indexOf(viewerTimeZone) !== -1;
 			gtag('consent', 'default', {
-				analytics_storage: 'granted',
+				analytics_storage: consentTimeZone ? 'denied' : 'granted',
 				ad_storage: 'denied',
 				ad_user_data: 'denied',
 				ad_personalization: 'denied'

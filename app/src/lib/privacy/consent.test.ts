@@ -3,6 +3,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
 	CONSENT_REGION_CODES,
+	EXTRA_CONSENT_TIME_ZONES,
 	CONSENT_STORAGE_KEY,
 	consentUpdatePayload,
 	likelyConsentTimezone,
@@ -106,7 +107,11 @@ describe('app.html Consent Mode', () => {
 		expect(srcAt).toBeGreaterThan(consentAt);
 		expect(html).toContain('wait_for_update: 500');
 		expect(html).toContain("analytics_storage: 'denied'");
-		expect(html).toContain("analytics_storage: 'granted'");
+		expect(html).toContain("analytics_storage: consentTimeZone ? 'denied' : 'granted'");
+		const zones = html.match(/var consentTimeZones = (\[[\s\S]*?\]);/);
+		expect(zones).toBeTruthy();
+		expect(JSON.parse(zones?.[1] ?? '[]')).toEqual([...EXTRA_CONSENT_TIME_ZONES]);
+		expect(html).toContain("viewerTimeZone.indexOf('Europe/') === 0");
 		expect(html.match(/ad_storage: 'denied'/g)?.length).toBeGreaterThanOrEqual(3);
 		expect(html.match(/ad_user_data: 'denied'/g)?.length).toBeGreaterThanOrEqual(3);
 		expect(html.match(/ad_personalization: 'denied'/g)?.length).toBeGreaterThanOrEqual(3);
