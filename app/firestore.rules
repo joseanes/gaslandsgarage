@@ -346,11 +346,43 @@ service cloud.firestore {
                     && resource.data.userId == request.auth.uid;
     }
 
+    function newsletterText(value) {
+      return value is string && value.size() > 10 && value.size() < 40;
+    }
+
+    // Monthly-email fields are optional. When present, the types are fixed.
+    // Opting in requires the current consent version. Nobody else can read the doc.
+    function newsletterSettingsOk() {
+      let data = request.resource.data;
+      return (!('newsletterOptIn' in data) || data.newsletterOptIn is bool)
+        && (!('newsletterOptInAt' in data) || newsletterText(data.newsletterOptInAt))
+        && (!('newsletterOptOutAt' in data) || newsletterText(data.newsletterOptOutAt))
+        && (!('newsletterConsentText' in data) || (data.newsletterConsentText is string && data.newsletterConsentText.size() > 0 && data.newsletterConsentText.size() < 80))
+        && (!('newsletterPromptDismissedAt' in data) || newsletterText(data.newsletterPromptDismissedAt))
+        && (
+          !('newsletterOptIn' in data)
+          || (
+            data.newsletterOptIn == true
+            && newsletterText(data.newsletterOptInAt)
+            && data.newsletterConsentText == 'monthly-email-v1'
+          )
+          || (
+            data.newsletterOptIn == false
+            && newsletterText(data.newsletterOptOutAt)
+          )
+        );
+    }
+
     // User settings collection rules
     match /userSettings/{userId} {
       allow read: if signedIn() && !isDisabled() && userId == request.auth.uid;
-      allow create, update: if signedIn() && !isDisabled() && userId == request.auth.uid;
+      allow create, update: if signedIn() && !isDisabled() && userId == request.auth.uid && newsletterSettingsOk();
       allow delete: if signedIn() && !isDisabled() && userId == request.auth.uid;
+    }
+
+    // Per-user unsubscribe token. Written by the Admin SDK. Clients cannot read or write it.
+    match /newsletterTokens/{userId} {
+      allow read, write: if false;
     }
 
     // Messages collection rules

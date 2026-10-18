@@ -48,7 +48,7 @@
 		</p>
 		<p>
 			Your settings are stored separately and are readable only by you. They include builder and print
-			preferences. Two email choices are off until you turn them on:
+			preferences. Email choices stay off until you turn them on:
 		</p>
 		<ul class="list-disc pl-6 space-y-2">
 			<li>
@@ -59,6 +59,11 @@
 			<li>
 				“Allow other players to contact me to setup a game” is a separate choice. It is the only
 				setting that allows a game-request email. Being open to games does not turn it on.
+			</li>
+			<li>
+				The monthly Gaslands Garage email is a separate choice, off until you opt in. It is about once
+				a month and covers game tips, car suggestions, and new site features. Unsubscribe from the link
+				in that email, or turn it off in settings.
 			</li>
 		</ul>
 
@@ -265,8 +270,9 @@
 				features you use.
 			</li>
 			<li>
-				Consent: a public or anonymous map pin, the open-to-games listing, game-request email, and
-				“Keep me up to date” marketing email. Each one stays off until you turn it on. In the EEA, the
+				Consent: a public or anonymous map pin, the open-to-games listing, game-request email,
+				“Keep me up to date” marketing email, and the monthly Gaslands Garage email. Each one stays off
+				until you turn it on. In the EEA, the
 				UK, and Switzerland, analytics cookies are also consent: they stay off until you click Accept.
 				You can withdraw consent by turning the control off, by using the Privacy settings link in the
 				footer, or by emailing us. Withdrawal does not undo a message already sent.
@@ -299,7 +305,10 @@
 			<li>restrict how we use it</li>
 			<li>provide a copy in a portable form</li>
 			<li>object to processing based on legitimate interests, including analytics</li>
-			<li>object to marketing, which you can also stop by turning “Keep me up to date” off</li>
+			<li>
+				object to marketing, which you can also stop by turning “Keep me up to date” off, by turning the
+				monthly email off, or by using the unsubscribe link in that email
+			</li>
 			<li>withdraw consent, where the processing was based on consent</li>
 		</ul>
 		<p>

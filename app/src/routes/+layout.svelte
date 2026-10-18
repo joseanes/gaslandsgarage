@@ -14,6 +14,7 @@
   import AdUnit from '$lib/components/AdUnit.svelte';
   import Auth from '$lib/components/Auth.svelte';
   import ConsentBanner from '$lib/components/ConsentBanner.svelte';
+  import NewsletterPrompt from '$lib/components/NewsletterPrompt.svelte';
   import TeamsModal from '$lib/components/TeamsModal.svelte';
   import { openPrivacySettings } from '$lib/privacy/consent';
   import { signInWithGoogle, user } from '$lib/firebase';
@@ -672,6 +673,7 @@
   <div class="flex-1">
     <!-- Main content area (full width) -->
     <main class="w-full max-w-7xl mx-auto px-2 sm:px-4 lg:px-8">
+      <NewsletterPrompt />
       <slot />
     </main>
   </div>
