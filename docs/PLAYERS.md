@@ -38,6 +38,15 @@ firebase deploy --only firestore:rules --project=gaslandsgarage-74ce6
 
 A pin that exists only as `playerMap/{entryId}` or `openToGames/{uid}` is not copied automatically. It appears on `/players` the next time that player saves their profile. Saving writes their key into the board and leaves every other key alone.
 
+`scripts/backfill-boards.ts` rebuilds both boards from those collections once, with a user OAuth token and no service account key. It checks each entry against the rules limits and skips a pin that has no `playerMapPrivate` owner:
+
+```bash
+GOOGLE_OAUTH_ACCESS_TOKEN=$(gcloud auth print-access-token) npx tsx scripts/backfill-boards.ts          # dry run
+GOOGLE_OAUTH_ACCESS_TOKEN=$(gcloud auth print-access-token) npx tsx scripts/backfill-boards.ts --write
+```
+
+It was run on 2026-10-18 before the rules deploy. Production had no `playerMap` or `openToGames` documents yet, so both boards started empty.
+
 ## Trigger we did not add
 
 A Cloud Firestore trigger could keep the boards in sync without a client write:
