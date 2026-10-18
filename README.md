@@ -153,7 +153,7 @@ This work is licensed under a [Creative Commons Attribution-NonCommercial 4.0 In
 
 ## 👥 Contributors
 
-- Anes & Rincon LLC, Project creator and [Gaslands Purveyor at FunBoardGames](https://FunBoardGames.Etsy.com)
+- José Anes, Project creator and [Gaslands Purveyor at FunBoardGames](https://FunBoardGames.Etsy.com)
 - Luca Vince Caltabiano from [Gaslands TV](https://www.youtube.com/c/gaslandstv) for video content
 
 ## 🔗 Useful Links

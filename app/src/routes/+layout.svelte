@@ -1010,7 +1010,7 @@
           Gaslands Garage is made possible by the following contributors:
         </p>
         <ul class="px-4 space-y-2">
-          <li>Anes & Rincon LLC, Project creator and <a href="https://FunBoardGames.Etsy.com">Gaslands Purveyor at FunBoardGames.</a></li>
+          <li>Jose Anes, Project creator and <a href="https://FunBoardGames.Etsy.com">Gaslands Purveyor at FunBoardGames.</a></li>
           <li>Luca Vince Caltabiano from <a href="https://www.youtube.com/c/gaslandstv">Gaslands TV</a> for the video content</li>
         </ul>
 
