@@ -77,7 +77,7 @@ export { deleteMyAccount, exportMyData };
 /**
  * Monthly-email unsubscribe. `syncNewsletterToken` stores a random token when
  * a player opts in. `unsubscribeNewsletter` is a public HTTPS link, with no
- * sign-in, that sets `newsletterOptIn` to false for that token. It does not
- * send the monthly email.
+ * sign-in. GET only asks the reader to confirm. POST sets `newsletterOptIn`
+ * to false for that token. It does not send the monthly email.
  */
 export { syncNewsletterToken, unsubscribeNewsletter };

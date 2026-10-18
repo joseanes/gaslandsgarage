@@ -5,6 +5,11 @@ import {
   newUnsubscribeToken,
   readUnsubscribeToken,
   unsubscribeHtml,
+  unsubscribeConfirmHtml,
+  readPostedUnsubscribe,
+  PROFILE_RESUBSCRIBE_URL,
+  ONE_CLICK_FIELD,
+  ONE_CLICK_VALUE,
   UNSUBSCRIBE_TOKEN_PATTERN,
   newsletterHttpsOptions,
   createUnsubscribeLimiter,
@@ -23,16 +28,34 @@ describe('unsubscribe token', () => {
     expect(readUnsubscribeToken({ token: [token] })).toBe('');
     expect(readUnsubscribeToken(null)).toBe('');
     expect(readUnsubscribeToken({ token: 'short' })).toBe('short');
+    expect(readPostedUnsubscribe(`token=${encodeURIComponent(token)}`)).toEqual({ token, oneClick: false });
+    expect(readPostedUnsubscribe(`${ONE_CLICK_FIELD}=${ONE_CLICK_VALUE}`)).toEqual({ token: '', oneClick: true });
+    expect(readPostedUnsubscribe({ token, [ONE_CLICK_FIELD]: ONE_CLICK_VALUE })).toEqual({ token, oneClick: true });
+    expect(readPostedUnsubscribe(null)).toEqual({ token: '', oneClick: false });
   });
 
-  it('renders a page that does not load a remote URL', () => {
+  it('renders a confirm page and a result page without remote assets', () => {
     for (const result of ['unsubscribed', 'invalid'] as const) {
       const html = unsubscribeHtml(result);
-      expect(html).not.toMatch(/https?:/i);
+      expect(html).not.toMatch(/<script|<img|<link/i);
       expect(html).not.toContain(NEWSLETTER_CONSENT_VERSION);
     }
-    expect(unsubscribeHtml('unsubscribed')).toContain('Unsubscribed');
-    expect(unsubscribeHtml('invalid')).toContain('jose.anes@gmail.com');
+    const success = unsubscribeHtml('unsubscribed');
+    expect(success).toContain("You're unsubscribed");
+    expect(success).toContain(PROFILE_RESUBSCRIBE_URL);
+    expect(success.replaceAll(PROFILE_RESUBSCRIBE_URL, '')).not.toMatch(/https?:/i);
+    const invalid = unsubscribeHtml('invalid');
+    expect(invalid).toContain('Link not valid');
+    expect(invalid).toContain('jose.anes@gmail.com');
+    expect(invalid).not.toContain('Confirm unsubscribe');
+    expect(invalid).not.toMatch(/https?:/i);
+    const token = newUnsubscribeToken();
+    const confirm = unsubscribeConfirmHtml(token);
+    expect(confirm).toContain('Confirm unsubscribe');
+    expect(confirm).toContain('method="post"');
+    expect(confirm).toContain(`name="token" value="${token}"`);
+    expect(confirm).not.toContain("You're unsubscribed");
+    expect(confirm).not.toMatch(/https?:/i);
     expect(newsletterHttpsOptions).toMatchObject({
       region: 'us-central1',
       invoker: 'public',

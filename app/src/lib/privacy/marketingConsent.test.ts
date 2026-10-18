@@ -113,6 +113,47 @@ describe('monthly email consent', () => {
 			newsletterOptOutAt: now,
 			newsletterConsentText: NEWSLETTER_CONSENT_VERSION
 		});
+		expect(stampNewsletterConsent(null, { newsletterOptIn: true, newsletterSource: 'profile' }, now)).toEqual({
+			newsletterOptIn: true,
+			newsletterOptInAt: now,
+			newsletterConsentText: NEWSLETTER_CONSENT_VERSION,
+			newsletterSource: 'profile'
+		});
+		expect(
+			stampNewsletterConsent(
+				{
+					newsletterOptIn: true,
+					newsletterOptInAt: '2026-10-01T00:00:00.000Z',
+					newsletterConsentText: NEWSLETTER_CONSENT_VERSION,
+					newsletterSource: 'profile'
+				},
+				{ darkMode: true },
+				now
+			)
+		).toEqual({
+			darkMode: true,
+			newsletterOptIn: true,
+			newsletterOptInAt: '2026-10-01T00:00:00.000Z',
+			newsletterConsentText: NEWSLETTER_CONSENT_VERSION,
+			newsletterSource: 'profile'
+		});
+		expect(
+			stampNewsletterConsent(
+				{
+					newsletterOptIn: true,
+					newsletterOptInAt: '2026-10-01T00:00:00.000Z',
+					newsletterConsentText: NEWSLETTER_CONSENT_VERSION,
+					newsletterSource: 'profile'
+				},
+				{ newsletterOptIn: false },
+				now
+			)
+		).toEqual({
+			newsletterOptIn: false,
+			newsletterOptInAt: '2026-10-01T00:00:00.000Z',
+			newsletterOptOutAt: now,
+			newsletterConsentText: NEWSLETTER_CONSENT_VERSION
+		});
 		expect(
 			stampNewsletterConsent(
 				{ newsletterOptIn: false, newsletterOptOutAt: '2026-10-01T00:00:00.000Z', newsletterConsentText: NEWSLETTER_CONSENT_VERSION },

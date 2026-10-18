@@ -2,6 +2,7 @@
 	import { accountSessionReady } from '$lib/admin/session';
 	import { signInWithGoogle, user } from '$lib/firebase';
 	import LocationField from '$lib/components/LocationField.svelte';
+	import MonthlyEmailChoice from '$lib/components/MonthlyEmailChoice.svelte';
 	import { hundredthsToDegrees } from '$lib/players/location';
 	import { emptyForm, type PlayerForm, type StoredProfile } from '$lib/players/profile';
 	import {
@@ -141,6 +142,10 @@
 		Everything here is optional. It stays private until you opt in to the map or to game requests.
 		<a href="/players" class="text-amber-700 underline dark:text-amber-300">View the players map</a>
 	</p>
+
+	{#if $user}
+		<MonthlyEmailChoice />
+	{/if}
 
 	{#if status === 'loading'}
 		<p data-testid="profile-loading">Loading…</p>

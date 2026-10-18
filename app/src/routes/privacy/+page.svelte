@@ -47,8 +47,9 @@
 			receives totals only.
 		</p>
 		<p>
-			Your settings are stored separately and are readable only by you. They include builder and print
-			preferences. Email choices stay off until you turn them on:
+			Your settings are stored separately. They include builder and print preferences. You can read and
+			change them. An administrator can view that document and cannot change it. Email choices stay off
+			until you turn them on:
 		</p>
 		<ul class="list-disc pl-6 space-y-2">
 			<li>
@@ -63,7 +64,7 @@
 			<li>
 				The monthly Gaslands Garage email is a separate choice, off until you opt in. It is about once
 				a month and covers game tips, car suggestions, and new site features. Unsubscribe from the link
-				in that email, or turn it off in settings.
+				in that email, turn it off in settings, or subscribe and unsubscribe on your player profile.
 			</li>
 		</ul>
 
@@ -242,7 +243,11 @@
 		<h2 class="text-xl font-bold mt-8 mb-3">Administrators</h2>
 		<p>
 			An administrator can list accounts, search by email or display name, view saved teams, and assign
-			a role. An administrator can disable another account. Disabling signs that person out, marks the
+			a role. An administrator can open a read-only view of another player's major settings: the monthly
+			email choice and when it was given, the other email choices stored on the account, profile city and
+			map visibility, account status, and created and last sign-in times. That view cannot change consent.
+			Analytics and advertising choices stay in the browser. The site does not collect an SMS or text
+			opt-in. An administrator can disable another account. Disabling signs that person out, marks the
 			Firebase Authentication user disabled, and blocks access to their teams and profile. It does not
 			delete the account, the teams, or the profile. An administrator cannot disable their own account
 			from the page. An administrator cannot delete an account. You can delete your own account from
@@ -316,7 +321,7 @@
 			<li>object to processing based on legitimate interests, including analytics</li>
 			<li>
 				object to marketing, which you can also stop by turning “Keep me up to date” off, by turning the
-				monthly email off, or by using the unsubscribe link in that email
+				monthly email off, or by opening the unsubscribe link in that email and confirming
 			</li>
 			<li>withdraw consent, where the processing was based on consent</li>
 		</ul>

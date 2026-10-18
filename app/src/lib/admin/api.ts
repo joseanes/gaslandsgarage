@@ -1,3 +1,4 @@
+import { projectPlayerProfile, projectUserSettings, type AdminAccountSettings, type AdminProfileView } from '$lib/admin/accountSettings';
 import { db, initializeFirebase } from '$lib/firebase';
 import {
 	ACCOUNT_CONTROL_COLLECTION,
@@ -36,6 +37,8 @@ export type DirectoryTeam = {
 export type Directory = {
 	users: DirectoryUser[];
 	teamsByUser: Map<string, DirectoryTeam[]>;
+	settingsByUser: Map<string, AdminAccountSettings> | null;
+	profilesByUser: Map<string, AdminProfileView> | null;
 };
 
 type Result = { success: true } | { success: false; error: string };
@@ -125,13 +128,29 @@ function rulesVersionFrom(value: unknown): 2 | 3 | null {
 	return null;
 }
 
+async function readCollection(
+	databaseRef: NonNullable<typeof db>,
+	getDocs: (typeof import('firebase/firestore'))['getDocs'],
+	collection: (typeof import('firebase/firestore'))['collection'],
+	name: string
+) {
+	try {
+		return await getDocs(collection(databaseRef, name));
+	} catch (error) {
+		if (isPermissionDenied(error)) return null;
+		throw error;
+	}
+}
+
 export async function loadDirectory(): Promise<Directory> {
 	const { collection, getDocs, db: databaseRef } = await database();
-	const [usersSnap, rolesSnap, controlsSnap, teamsSnap] = await Promise.all([
+	const [usersSnap, rolesSnap, controlsSnap, teamsSnap, settingsSnap, profilesSnap] = await Promise.all([
 		getDocs(collection(databaseRef, USERS_COLLECTION)),
 		getDocs(collection(databaseRef, ROLES_COLLECTION)),
 		getDocs(collection(databaseRef, ACCOUNT_CONTROL_COLLECTION)),
-		getDocs(collection(databaseRef, 'teams'))
+		getDocs(collection(databaseRef, 'teams')),
+		readCollection(databaseRef, getDocs, collection, 'userSettings'),
+		readCollection(databaseRef, getDocs, collection, 'playerProfiles')
 	]);
 
 	const roles = new Map<string, string | null>();
@@ -169,6 +188,18 @@ export async function loadDirectory(): Promise<Directory> {
 		teamsByUser.set(userId, list);
 	});
 
+	const settingsByUser = settingsSnap
+		? new Map<string, AdminAccountSettings>()
+		: null;
+	settingsSnap?.forEach((entry) => {
+		settingsByUser?.set(entry.id, projectUserSettings(entry.data()));
+	});
+	const profilesByUser = profilesSnap ? new Map<string, AdminProfileView>() : null;
+	profilesSnap?.forEach((entry) => {
+		const profile = projectPlayerProfile(entry.data());
+		if (profile) profilesByUser?.set(entry.id, profile);
+	});
+
 	const users: DirectoryUser[] = [];
 	usersSnap.forEach((entry) => {
 		const data = entry.data();
@@ -188,7 +219,7 @@ export async function loadDirectory(): Promise<Directory> {
 		});
 	});
 	users.sort((a, b) => a.email.localeCompare(b.email) || a.uid.localeCompare(b.uid));
-	return { users, teamsByUser };
+	return { users, teamsByUser, settingsByUser, profilesByUser };
 }
 
 async function applyAccountOperation(operation: AccountOperation): Promise<Result> {

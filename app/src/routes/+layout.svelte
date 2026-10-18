@@ -11,9 +11,11 @@
   import { onMount } from 'svelte';
   import { fade } from 'svelte/transition';
   import { goto } from '$app/navigation';
+  import { page } from '$app/stores';
   import AdUnit from '$lib/components/AdUnit.svelte';
   import Auth from '$lib/components/Auth.svelte';
   import ConsentBanner from '$lib/components/ConsentBanner.svelte';
+  import LayoutSettingsHost from '$lib/components/LayoutSettingsHost.svelte';
   import NewsletterPrompt from '$lib/components/NewsletterPrompt.svelte';
   import TeamsModal from '$lib/components/TeamsModal.svelte';
   import { openPrivacySettings } from '$lib/privacy/consent';
@@ -23,6 +25,7 @@
   startAccountSession();
   import { sendContactMessage } from '$lib/services/messages';
   import { builderPathForTeamAction, rememberTeamMenuAction, type TeamMenuAction } from '$lib/teamMenu';
+  import { openLayoutSettings, type SettingsTab } from '$lib/settings/layoutSettingsControl';
   
   // Ad configuration variables
   let showAds = false; // Removed ads for now
@@ -327,82 +330,41 @@
     }
   }
   
-  function openGeneralSettings() {
-    console.log('[Layout] Opening General Settings');
-    if (typeof window !== 'undefined' && window.location.pathname.includes('/builder')) {
-      // Try all available methods to open general settings
-      // 1. First try using the custom event approach
-      try {
-        console.log('[Layout] Dispatching gaslands-menu-action event for openSettings with general tab');
-        window.dispatchEvent(new CustomEvent('gaslands-menu-action', {
-          detail: { action: 'openSettings', tab: 'general' }
-        }));
-        return;
-      } catch (err) {
-        console.error('[Layout] Error dispatching custom event:', err);
-      }
-      
-      // 2. Try the function approach as fallback
-      if (typeof window.openSettingsFn === 'function') {
-        console.log('[Layout] Calling window.openSettingsFn with "general"');
-        window.openSettingsFn('general');
-        return;
-      } else {
-        console.error('[Layout] window.openSettingsFn is not a function!', typeof window.openSettingsFn);
-      }
-      
-      // 3. Try direct function call as fallback
-      if (typeof window.openSettings === 'function') {
-        console.log('[Layout] Calling window.openSettings directly with "general"');
-        window.openSettings('general');
-        return;
-      }
-      
-      // 4. Last resort - alert user
-      console.error('[Layout] All methods to open general settings failed');
-      alert('Settings functionality is not available. Please try refreshing the page.');
-    } else {
-      alert('This feature requires team data. Please use on the builder page.');
+  function openBuilderSettings(tab: SettingsTab) {
+    if (typeof window === 'undefined') return;
+    try {
+      window.dispatchEvent(new CustomEvent('gaslands-menu-action', {
+        detail: { action: 'openSettings', tab }
+      }));
+      return;
+    } catch {
+      // Fall through when the event cannot be dispatched.
+    }
+    if (typeof window.openSettingsFn === 'function') {
+      window.openSettingsFn(tab);
+      return;
+    }
+    if (typeof window.openSettings === 'function') {
+      window.openSettings(tab);
     }
   }
 
-  function openPrintSettings() {
-    console.log('[Layout] Opening Print Settings');
-    if (typeof window !== 'undefined' && window.location.pathname.includes('/builder')) {
-      // Try all available methods to open print settings
-      // 1. First try using the custom event approach
-      try {
-        console.log('[Layout] Dispatching gaslands-menu-action event for openSettings with print tab');
-        window.dispatchEvent(new CustomEvent('gaslands-menu-action', {
-          detail: { action: 'openSettings', tab: 'print' }
-        }));
-        return;
-      } catch (err) {
-        console.error('[Layout] Error dispatching custom event:', err);
-      }
-      
-      // 2. Try the function approach as fallback
-      if (typeof window.openSettingsFn === 'function') {
-        console.log('[Layout] Calling window.openSettingsFn with "print"');
-        window.openSettingsFn('print');
-        return;
-      } else {
-        console.error('[Layout] window.openSettingsFn is not a function!', typeof window.openSettingsFn);
-      }
-      
-      // 3. Try direct function call as fallback
-      if (typeof window.openSettings === 'function') {
-        console.log('[Layout] Calling window.openSettings directly with "print"');
-        window.openSettings('print');
-        return;
-      }
-      
-      // 4. Last resort - alert user
-      console.error('[Layout] All methods to open print settings failed');
-      alert('Settings functionality is not available. Please try refreshing the page.');
-    } else {
-      alert('This feature requires team data. Please use on the builder page.');
+  // General settings are account preferences, so they open on every page.
+  // Print settings are account preferences too: style and descriptions, not the team.
+  function openGeneralSettings() {
+    if (onBuilderPage()) {
+      openBuilderSettings('general');
+      return;
     }
+    openLayoutSettings('general');
+  }
+
+  function openPrintSettings() {
+    if (onBuilderPage()) {
+      openBuilderSettings('print');
+      return;
+    }
+    openLayoutSettings('print');
   }
   
   // Help menu functions
@@ -697,6 +659,10 @@
 </div>
 
 <ConsentBanner />
+
+{#if !$page.url.pathname.includes('/builder')}
+  <LayoutSettingsHost />
+{/if}
 
 {#if showSignInPrompt}
   <div class="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/60 p-4">

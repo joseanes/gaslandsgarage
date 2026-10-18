@@ -13,7 +13,12 @@ import {
   handleExportMyData,
   privacyLogRef
 } from './accountPrivacy';
-import { ensureUnsubscribeToken, handleNewsletterSettingsWrite, unsubscribeByToken } from './newsletter';
+import {
+  ensureUnsubscribeToken,
+  handleNewsletterSettingsWrite,
+  handleUnsubscribeRequest,
+  unsubscribeByToken
+} from './newsletter';
 import { MAIL_COLLECTION, MAIL_TTL_MS, queueContactEmail } from './contactEmail';
 import { applyAuthDisabled, handleAdminUsersWrite } from './disableUser';
 import { publishUsageStats } from '../../stats/job';
@@ -638,5 +643,95 @@ describe('monthly email unsubscribe', () => {
     expect(await unsubscribeByToken(first, '2026-12-01T00:00:00.000Z')).toBe('unsubscribed');
     expect((await db.doc(`userSettings/${ada}`).get()).get('newsletterOptOutAt')).toBe(now);
     expect((await db.doc(`newsletterTokens/${ada}`).get()).get('token')).toBe(first);
+  });
+
+  it('leaves the subscription alone on GET and unsubscribes on POST', async () => {
+    const db = getFirestore();
+    const uid = 'playerUnsubscribe';
+    await db.doc(`userSettings/${uid}`).set({
+      newsletterOptIn: true,
+      newsletterOptInAt: '2026-10-02T00:00:00.000Z',
+      newsletterConsentText: 'monthly-email-v1',
+      receiveUpdates: true
+    });
+    await handleNewsletterSettingsWrite(uid, { newsletterOptIn: true });
+    const token = await ensureUnsubscribeToken(uid, now);
+
+    const opened = await handleUnsubscribeRequest({
+      method: 'GET',
+      query: { token },
+      headers: { 'x-forwarded-for': '203.0.113.20' }
+    });
+    expect(opened.statusCode).toBe(200);
+    expect(opened.body).toContain('Confirm unsubscribe');
+    expect(opened.body).not.toContain("You're unsubscribed");
+    expect((await db.doc(`userSettings/${uid}`).get()).data()).toMatchObject({
+      newsletterOptIn: true,
+      receiveUpdates: true
+    });
+    expect((await db.doc(`userSettings/${uid}`).get()).get('newsletterOptOutAt')).toBeUndefined();
+
+    const confirmed = await handleUnsubscribeRequest({
+      method: 'POST',
+      query: { token },
+      body: `token=${encodeURIComponent(token)}`,
+      headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-forwarded-for': '203.0.113.21' }
+    });
+    expect(confirmed.statusCode).toBe(200);
+    expect(confirmed.body).toContain("You're unsubscribed");
+    expect(confirmed.body).toContain('https://gaslandsgarage.com/profile');
+    expect((await db.doc(`userSettings/${uid}`).get()).data()).toMatchObject({
+      newsletterOptIn: false,
+      newsletterOptInAt: '2026-10-02T00:00:00.000Z',
+      newsletterConsentText: 'monthly-email-v1',
+      receiveUpdates: true
+    });
+    expect((await db.doc(`userSettings/${uid}`).get()).get('newsletterOptOutAt')).toEqual(expect.any(String));
+    expect((await db.doc(`newsletterTokens/${uid}`).get()).get('token')).toBe(token);
+  });
+
+  it('keeps an invalid token on a generic page for GET and POST', async () => {
+    const db = getFirestore();
+    const uid = 'playerStillIn';
+    await db.doc(`userSettings/${uid}`).set({ newsletterOptIn: true, receiveUpdates: false });
+    const before = (await db.doc(`userSettings/${uid}`).get()).data();
+
+    for (const method of ['GET', 'POST'] as const) {
+      const response = await handleUnsubscribeRequest({
+        method,
+        query: { token: 'not-a-token' },
+        body: 'token=not-a-token',
+        headers: { 'x-forwarded-for': `203.0.113.${method === 'GET' ? 30 : 31}` }
+      });
+      expect(response.statusCode).toBe(400);
+      expect(response.body).toContain('Link not valid');
+      expect(response.body).toContain('jose.anes@gmail.com');
+      expect(response.body).not.toContain('Confirm unsubscribe');
+      expect(response.body).not.toContain("You're unsubscribed");
+      expect(response.body).not.toContain('not-a-token');
+    }
+    expect((await db.doc(`userSettings/${uid}`).get()).data()).toEqual(before);
+  });
+
+  it('accepts an RFC 8058 one-click POST on the same link', async () => {
+    const db = getFirestore();
+    const uid = 'playerOneClick';
+    await db.doc(`userSettings/${uid}`).set({
+      newsletterOptIn: true,
+      newsletterOptInAt: '2026-10-02T00:00:00.000Z',
+      newsletterConsentText: 'monthly-email-v1'
+    });
+    await handleNewsletterSettingsWrite(uid, { newsletterOptIn: true });
+    const token = await ensureUnsubscribeToken(uid, now);
+    const response = await handleUnsubscribeRequest({
+      method: 'POST',
+      query: { token },
+      body: 'List-Unsubscribe=One-Click',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-forwarded-for': '203.0.113.40' }
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toContain("You're unsubscribed");
+    expect((await db.doc(`userSettings/${uid}`).get()).get('newsletterOptIn')).toBe(false);
+    expect((await db.doc(`newsletterTokens/${uid}`).get()).get('token')).toBe(token);
   });
 });

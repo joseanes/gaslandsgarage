@@ -351,7 +351,10 @@ service cloud.firestore {
     }
 
     // Monthly-email fields are optional. When present, the types are fixed.
-    // Opting in requires the current consent version. Nobody else can read the doc.
+    // Opting in requires the current consent version.
+    // Another player cannot read this document. An administrator can read it
+    // and cannot write it. Firestore returns every field; the Users page shows
+    // consent, email choices, and map preferences. newsletterTokens stays closed.
     function newsletterSettingsOk() {
       let data = request.resource.data;
       return (!('newsletterOptIn' in data) || data.newsletterOptIn is bool)
@@ -359,6 +362,7 @@ service cloud.firestore {
         && (!('newsletterOptOutAt' in data) || newsletterText(data.newsletterOptOutAt))
         && (!('newsletterConsentText' in data) || (data.newsletterConsentText is string && data.newsletterConsentText.size() > 0 && data.newsletterConsentText.size() < 80))
         && (!('newsletterPromptDismissedAt' in data) || newsletterText(data.newsletterPromptDismissedAt))
+        && (!('newsletterSource' in data) || (data.newsletterSource is string && data.newsletterSource.size() > 0 && data.newsletterSource.size() < 40))
         && (
           !('newsletterOptIn' in data)
           || (
@@ -373,9 +377,12 @@ service cloud.firestore {
         );
     }
 
-    // User settings collection rules
+    // User settings collection rules.
+    // Administrator read is the whole document because rules cannot return a
+    // field subset. Writes stay with the owner, including consent fields.
     match /userSettings/{userId} {
       allow read: if signedIn() && !isDisabled() && userId == request.auth.uid;
+      allow read: if isAdmin();
       allow create, update: if signedIn() && !isDisabled() && userId == request.auth.uid && newsletterSettingsOk();
       allow delete: if signedIn() && !isDisabled() && userId == request.auth.uid;
     }

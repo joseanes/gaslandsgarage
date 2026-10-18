@@ -24,6 +24,7 @@ export interface UserSettings {
   newsletterOptOutAt?: string; // When newsletterOptIn was last turned off
   newsletterConsentText?: string; // Consent copy version, for example monthly-email-v1
   newsletterPromptDismissedAt?: string; // When the one-time prompt was dismissed without answering
+  newsletterSource?: string; // Where the latest monthly-email choice was recorded, for example profile
   showOnPlayersMap?: boolean; // Whether to show on the Gaslands Players map
   allowContactFromPlayers?: boolean; // Whether other players can contact for game setup
   location?: string; // User's location for the players map
@@ -56,22 +57,29 @@ export interface NewsletterView {
   optIn: boolean;
   answered: boolean;
   dismissed: boolean;
+  optInAt: string | null;
 }
 
 export const newsletterView = writable<NewsletterView>({
   loaded: false,
   optIn: false,
   answered: false,
-  dismissed: false
+  dismissed: false,
+  optInAt: null
 });
+
+/** Last settings read or saved for the signed-in player. Null when signed out. */
+export const accountSettings = writable<UserSettings | null>(null);
 
 export function newsletterViewFrom(settings: NewsletterConsentFields | null | undefined, loaded: boolean): NewsletterView {
   const dismissedAt = settings?.newsletterPromptDismissedAt;
+  const optInAt = settings?.newsletterOptInAt;
   return {
     loaded,
     optIn: settings?.newsletterOptIn === true,
     answered: typeof settings?.newsletterOptIn === 'boolean',
-    dismissed: typeof dismissedAt === 'string' && dismissedAt.length > 0
+    dismissed: typeof dismissedAt === 'string' && dismissedAt.length > 0,
+    optInAt: typeof optInAt === 'string' && optInAt ? optInAt : null
   };
 }
 
@@ -81,7 +89,8 @@ function publishNewsletter(settings: NewsletterConsentFields | null | undefined,
 
 /** Hide the prompt until the signed-in player's settings have been read. */
 export function resetNewsletterView() {
-  newsletterView.set({ loaded: false, optIn: false, answered: false, dismissed: false });
+  newsletterView.set({ loaded: false, optIn: false, answered: false, dismissed: false, optInAt: null });
+  accountSettings.set(null);
 }
 
 /**
@@ -107,6 +116,7 @@ export async function saveUserSettings(settings: UserSettings): Promise<{ succes
     );
     await setDoc(settingsRef, stamped);
     publishNewsletter(stamped, true);
+    accountSettings.set(stamped);
     return { success: true };
   } catch (error) {
     console.error('Error saving user settings:', error);
@@ -144,6 +154,7 @@ export async function getUserSettings(): Promise<{ success: boolean; settings?: 
       }
 
       publishNewsletter(data, true);
+      accountSettings.set(data);
       return { success: true, settings: data };
     } else {
       // Create default settings if none exist. A transaction avoids wiping a choice
@@ -157,6 +168,7 @@ export async function getUserSettings(): Promise<{ success: boolean; settings?: 
       const created = await getDoc(settingsRef);
       const data = (created.exists() ? created.data() : DEFAULT_SETTINGS) as UserSettings;
       publishNewsletter(data, true);
+      accountSettings.set(data);
       return { success: true, settings: data };
     }
   } catch (error) {
@@ -175,11 +187,15 @@ async function writeOwnSettings(next: NewsletterConsentFields): Promise<{ succes
   const settingsRef = doc(database, 'userSettings', currentAuth.currentUser.uid);
   await setDoc(settingsRef, next);
   publishNewsletter(next, true);
+  accountSettings.set(next as unknown as UserSettings);
   return { success: true };
 }
 
 /** Opt in or out of the monthly email without changing the other settings. */
-export async function saveNewsletterChoice(optIn: boolean): Promise<{ success: boolean; error?: unknown }> {
+export async function saveNewsletterChoice(
+  optIn: boolean,
+  source?: 'profile' | 'prompt' | 'settings'
+): Promise<{ success: boolean; error?: unknown }> {
   try {
     const currentAuth = auth;
     const database = db;
@@ -190,9 +206,11 @@ export async function saveNewsletterChoice(optIn: boolean): Promise<{ success: b
     const settingsRef = doc(database, 'userSettings', currentAuth.currentUser.uid);
     const existing = await getDoc(settingsRef);
     const previous = existing.exists() ? (existing.data() as UserSettings) : null;
+    const carried = { ...(previous ?? {}) };
+    delete carried.newsletterSource;
     const stamped = stampNewsletterConsent(
       previous,
-      { ...(previous ?? {}), newsletterOptIn: optIn },
+      source ? { ...carried, newsletterOptIn: optIn, newsletterSource: source } : { ...carried, newsletterOptIn: optIn },
       new Date().toISOString()
     );
     return await writeOwnSettings(stamped);

@@ -38,22 +38,28 @@ The player writes their own `userSettings` document. The rules do not whitelist 
 | `newsletterOptOutAt` | ISO time of the latest opt-out, including the unsubscribe link. |
 | `newsletterConsentText` | `monthly-email-v1`, the version of the sentence above. |
 | `newsletterPromptDismissedAt` | ISO time they closed the one-time prompt without answering. The prompt is not shown again. |
+| `newsletterSource` | Where they last changed the choice. `profile` is the player profile page. Absent when the choice came from settings or the prompt. |
 
-Firestore rules let only that player write these fields, and only with those types. Opt-in requires `newsletterConsentText == monthly-email-v1` and a string `newsletterOptInAt`. No other signed-in player, and no administrator, can read `userSettings`.
+Firestore rules let only that player write these fields, and only with those types. Opt-in requires `newsletterConsentText == monthly-email-v1` and a string `newsletterOptInAt`. Another player cannot read `userSettings`. An administrator can read the document and cannot change it. Firestore returns every field on that read; the Users page shows consent, email choices, and map preferences, and it does not show precise map coordinates. `newsletterTokens` stays unreadable, including to administrators.
 
 A signed-in player who has never answered sees a small prompt on the page. It is not a dialog and it does not block the builder. "No thanks" only writes `newsletterPromptDismissedAt`. "Send me the monthly email" opts in. After either one, or after they save the checkbox, the prompt stays hidden.
+
+The same choice is on the signed-in player profile, under **Monthly Gaslands Garage email**. Subscribe and Unsubscribe call `saveNewsletterChoice` and store `newsletterSource` as `profile`, with consent version `monthly-email-v1`. That control stays in step with the General Settings checkbox. It does not change **Keep me up to date**.
 
 This change does not send the monthly email. Send it later with Twilio Email, and only after the sending domain is verified.
 
 ### How a future sender must select people
 
-Use the Admin SDK. A client query cannot read another player's settings.
+Use the Admin SDK. A player cannot read another player's settings. An administrator's signed-in session can read `userSettings` for the Users page and cannot write it. The sender should still use the Admin SDK, not the browser.
 
 1. Query `userSettings` where `newsletterOptIn == true`. Do not use `receiveUpdates`. Do not use `allowContactFromPlayers`.
 2. For each document id (the account uid), read `newsletterTokens/{uid}`. The field `token` is a 43-character random string. If that document is missing, skip the person for this run. Do not generate a token in the sender and do not send without one.
 3. Load the address with `auth.getUser(uid)`. Skip a disabled user and an account with no email.
 4. Send one message per person per month. The body has to include a working unsubscribe link and a postal line. The link is the HTTPS URL of the `unsubscribeNewsletter` function plus `?token=` and the token, URL-encoded. After deploy, copy that URL from the function. Do not guess a Cloud Run hostname.
-5. The visible text of every message has to include the link. A `List-Unsubscribe` header can be added as well. The link has to keep working after they opt out, which is why the token is not deleted on opt-out.
+5. The visible text of every message has to include the link. Also send both of these headers, using that same URL:
+   `List-Unsubscribe: <the url>`
+   `List-Unsubscribe-Post: List-Unsubscribe=One-Click`
+   A mailbox provider then POSTs `List-Unsubscribe=One-Click` to that URL and the token stays in the query string. That POST unsubscribes without the confirm page. A GET does not. The link has to keep working after they opt out, which is why the token is not deleted on opt-out.
 6. End every message with the operator's name, email, and current postal address:
 
 ```
@@ -64,9 +70,9 @@ jose.anes@gmail.com
 
 The privacy policy does not publish a street address. Do not invent one in the template. Put the real postal address in before the first send. CAN-SPAM and CASL expect that line in a commercial email.
 
-The page served by the unsubscribe link loads no images, fonts, or analytics, so the token in the query string is not sent to another site as a Referer. Do not paste function logs that contain `?token=` into a ticket or a chat.
+Opening the unsubscribe link does not change the subscription. The page shows a Confirm unsubscribe button, and that button POSTs the token. The success page says you're unsubscribed and links to the player profile so they can opt in again. The page loads no images, fonts, or analytics. `Referrer-Policy` is `no-referrer`, so the token is not sent when someone follows the profile link. Do not paste function logs that contain `?token=` into a ticket or a chat.
 
-`unsubscribeNewsletter` is public because the reader is not signed in. The token is the credential. A second click stays unsubscribed and does not change `newsletterOptOutAt`. A bad token changes nothing and does not say whether an account exists.
+`unsubscribeNewsletter` is public because the reader is not signed in. The token is the credential. A second POST stays unsubscribed and does not change `newsletterOptOutAt`. A bad token changes nothing and does not say whether an account exists. The invalid page is the same for a GET and a POST.
 
 `syncNewsletterToken` runs on every `userSettings/{uid}` write. It creates `newsletterTokens/{uid}` only when `newsletterOptIn` is exactly `true`, and it does not rotate an existing token. It retries if the write fails. Clients cannot read or write `newsletterTokens`.
 
@@ -104,7 +110,7 @@ A disabled account cannot obtain an ID token, so the callable cannot run until t
 | --- | --- |
 | Profile, teams, settings, player profile, map pin, open-to-games card | Until the person deletes the account, or until a verified request is completed |
 | `receiveUpdatesChangedAt` | With `userSettings`, until the account is deleted |
-| `newsletterOptIn`, `newsletterOptInAt`, `newsletterOptOutAt`, `newsletterConsentText`, `newsletterPromptDismissedAt` | With `userSettings`, until the account is deleted |
+| `newsletterOptIn`, `newsletterOptInAt`, `newsletterOptOutAt`, `newsletterConsentText`, `newsletterPromptDismissedAt`, `newsletterSource` | With `userSettings`, until the account is deleted |
 | `newsletterTokens/{uid}` | Until the account is deleted. Opting out does not delete it, so an old unsubscribe link still works |
 | Analytics choice | In `localStorage` on that browser until they change it or clear site data. It is not stored in Firestore |
 | `gameContacts` after deletion | The thread stays for the other player. The departing name and text are replaced |
