@@ -140,7 +140,9 @@
 	<h1 class="text-3xl font-bold mb-2">Player profile</h1>
 	<p class="text-stone-600 dark:text-gray-300 mb-6">
 		Everything here is optional. It stays private until you opt in to the map or to game requests.
-		<a href="/players" class="text-amber-700 underline dark:text-amber-300">View the players map</a>
+		<a href="/players" class="text-amber-700 underline dark:text-amber-300">View the players map</a>.
+		<a href="/buddies" class="text-amber-700 underline dark:text-amber-300">Gaming Buddies</a>
+		can open a copy of teams you have not hidden.
 	</p>
 
 	{#if $user}

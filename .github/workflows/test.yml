@@ -15,11 +15,11 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
 
       - name: Install dependencies
-        # functions/ requires Node 22. This job stays on Node 20 for the app.
+        # The UI tests start the Functions emulator, which needs Node 22.
         run: pnpm install --frozen-lockfile --config.engine-strict=false
 
       - name: Typecheck

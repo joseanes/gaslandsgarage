@@ -13,8 +13,16 @@ The functions are 2nd gen, Node.js 22, TypeScript, in `functions/`. Node.js 20 i
 | `deleteMyAccount` | Callable, signed-in user | Deletes that account. Requires a fresh sign-in and the confirmation `DELETE`. |
 | `syncNewsletterToken` | `userSettings/{uid}` write | When `newsletterOptIn` is true, stores one random unsubscribe token. Does not send mail. |
 | `unsubscribeNewsletter` | Public HTTPS `GET` or `POST` | GET shows a confirm page and changes nothing. POST with the token sets `newsletterOptIn` to false. An RFC 8058 one-click POST is accepted on the same URL. No sign-in. |
+| `getBuddyInvite` | Callable, signed-in user | Returns or creates that account's invite code. |
+| `saveBuddyProfile` | Callable, signed-in user | Stores the display name buddies see, and the opt-in directory card. |
+| `searchBuddyPlayers` | Callable, signed-in user | Prefix search of opted-in display names. No email. 30 searches per hour. |
+| `sendBuddyRequest` | Callable, signed-in user | Sends a request by invite code or by a findable player. 10 requests per hour. |
+| `respondBuddyRequest` | Callable, signed-in user | Accept, decline, or block an incoming request. Accept writes `buddies/{pairId}`. |
+| `cancelBuddyRequest` | Callable, signed-in user | Cancels a request the caller sent. |
+| `removeBuddy` | Callable, signed-in user | Deletes the accepted link. Access ends immediately. |
+| `unblockBuddy` | Callable, signed-in user | Removes a block the caller created. |
 
-Region is `us-central1`. `publishUsageStats` uses 256MiB, a 300 second timeout, and one instance. `syncAuthDisabled`, `queueGameContactEmail`, and `syncNewsletterToken` retry on failure. `syncAuthDisabled` and `queueGameContactEmail` use the platform defaults. `syncNewsletterToken` uses the platform memory and timeout. `exportMyData` and `deleteMyAccount` use 256MiB, a 60 second timeout, and at most 10 instances. `unsubscribeNewsletter` uses 256MiB, a 30 second timeout, at most 10 instances, and `invoker: public` so the email link works without a Google sign-in. None keep a warm instance.
+Region is `us-central1`. `publishUsageStats` uses 256MiB, a 300 second timeout, and one instance. `syncAuthDisabled`, `queueGameContactEmail`, and `syncNewsletterToken` retry on failure. `syncAuthDisabled` and `queueGameContactEmail` use the platform defaults. `syncNewsletterToken` uses the platform memory and timeout. `exportMyData`, `deleteMyAccount`, and the gaming-buddy callables use 256MiB, a 60 second timeout, and at most 10 instances. `unsubscribeNewsletter` uses 256MiB, a 30 second timeout, at most 10 instances, and `invoker: public` so the email link works without a Google sign-in. None keep a warm instance.
 
 ## Usage stats
 
@@ -76,7 +84,7 @@ Point the extension at the `mail` collection. Leave its sender address in the ex
 
 `exportMyData` and `deleteMyAccount` are HTTPS callables in `us-central1`. Both require a signed-in Firebase user and act only on `request.auth.uid`. A uid in the request body is ignored. Each allows 5 calls per rolling hour, stored on `privacyRate/{uid}` (`exportAt` and `deleteAt`). Clients cannot read or write that collection. The default deny rule covers it, so no rules change is required.
 
-`exportMyData` returns JSON for `users`, `users/{uid}/teams`, `teams`, `userSettings` (including the monthly-email fields), `newsletterTokens`, `playerProfiles`, `playerMapOwners`, `playerMapPrivate`, `playerMap`, that account's key on `playerMapBoard/public` and `openToGamesBoard/public`, `openToGames`, game requests sent and received, `messages`, `roles`, `adminUsers`, `mail` (another person's address is left out), and `privacyRate`. `stats/public` is aggregate and is not copied. The callable response has to stay under Cloud Functions' 10 MB limit.
+`exportMyData` returns JSON for `users`, `users/{uid}/teams`, `teams`, `userSettings` (including the monthly-email fields), `newsletterTokens`, `playerProfiles`, `playerMapOwners`, `playerMapPrivate`, `playerMap`, that account's key on `playerMapBoard/public` and `openToGamesBoard/public`, `openToGames`, game requests sent and received, `messages`, `roles`, `adminUsers`, `mail` (another person's address is left out), `privacyRate`, buddy links, buddy requests sent and received, blocks, the invite code, the findable-name card, and `buddyRate`. `stats/public` is aggregate and is not copied. The callable response has to stay under Cloud Functions' 10 MB limit.
 
 `deleteMyAccount` checks that `confirmation` is exactly `DELETE` and that the ID token `auth_time` is less than five minutes old. It then, in order:
 
@@ -84,10 +92,11 @@ Point the extension at the `mail` collection. Leave its sender address in the ex
 2. Deletes the account's documents, including teams, the legacy `users/{uid}/teams` subcollection, and `newsletterTokens/{uid}`.
 3. Anonymizes this account's side of `gameContacts` and `messages`. The other person's text stays. Names become `Deleted player`. Contact-form messages lose their email and body, and `userId` becomes `deleted`.
 4. Deletes queued `mail` documents for those requests and any mail addressed to this account.
-5. Deletes `privacyRate/{uid}`.
-6. Deletes the Auth user last. A missing Auth user is success, so a retry can finish leftover documents.
+5. Deletes buddy links, requests, blocks, the invite, the findable-name card, and `buddyRate/{uid}`.
+6. Deletes `privacyRate/{uid}`.
+7. Deletes the Auth user last. A missing Auth user is success, so a retry can finish leftover documents.
 
-Logs are `privacy <event> ref=<sha256 prefix>`. They do not include the uid, email, or display name. Deleting `adminUsers/{uid}` makes `syncAuthDisabled` see a deleted document and leave Auth alone. The Auth delete is only step 6.
+Logs are `privacy <event> ref=<sha256 prefix>`. They do not include the uid, email, or display name. Deleting `adminUsers/{uid}` makes `syncAuthDisabled` see a deleted document and leave Auth alone. The Auth delete is only step 7.
 
 The browser calls these from Settings → General Settings after Google sign-in. Download does not ask for a second sign-in. Delete opens the Google prompt again, then calls the function. See `docs/PRIVACY-OPS.md` for requests, retention, and the breach checklist.
 
@@ -106,11 +115,13 @@ firebase deploy --only functions --force --project=gaslandsgarage-74ce6
 
 The predeploy hook runs `pnpm --dir functions run build`, which bundles `functions/lib/index.js`. `lib/` is gitignored and is not in the functions ignore list, so the bundle is uploaded. Node.js 22 comes from `functions/package.json` `engines.node`.
 
-Rules stay a separate command:
+Rules and indexes stay a separate command. Gaming buddies need both. The team list query uses `userId` and `hiddenFromBuddies`. The buddy list query uses `status` and `members`.
 
 ```bash
-firebase deploy --only firestore:rules --project=gaslandsgarage-74ce6
+firebase deploy --only firestore:rules,firestore:indexes --project=gaslandsgarage-74ce6
 ```
+
+Deploy the functions, rules, and indexes before the site build that contains Gaming Buddies is published. Index builds can take a few minutes. Until they are ready, the buddy list and a buddy's team list fail even though a single-team read still works.
 
 Do not deploy Firebase Hosting. The site ships through the existing AWS workflow when `main` changes.
 
@@ -156,6 +167,8 @@ pnpm test
 ```
 
 `pnpm test` starts the Auth and Firestore emulators with `firebase-tools@13.29.1` and project `demo-gaslands-functions`. It needs Java and Node.js 22, because `firebase-admin` 14 does not run on Node.js 20. The test script sets `METADATA_SERVER_DETECTION=none` so the Admin SDK does not wait on the Compute Engine metadata server. The tests call the same handlers the triggers call. They do not deploy.
+
+The UI tests start Auth, Firestore, and Functions together with `firebase-tools@15.34.0` and project `gaslandsgarage-74ce6`, the same project id as the web app. Tools 13 cannot load these functions: it calls `functions.config()`, which firebase-functions 7 rejects. The Functions emulator only answers that project id.
 
 ## Cost
 

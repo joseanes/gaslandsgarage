@@ -25,7 +25,7 @@
 		<h2 class="text-xl font-bold mt-8 mb-3">Signing in</h2>
 		<p>
 			You can build a team without an account. Saving a team, saving a player profile, sending a game
-			request, and using Contact Us require a sign-in.
+			request, adding a gaming buddy, and using Contact Us require a sign-in.
 		</p>
 		<p>
 			The sign-in button uses Google, through Firebase Authentication. We receive that Google account’s
@@ -72,11 +72,27 @@
 		<p>
 			A saved team is stored under your user id. It includes the team name and the build: vehicles,
 			weapons, upgrades, perks, sponsor, and the other choices you made in the builder. You can open and
-			delete your own teams. Other players cannot read them. An administrator can view them.
+			delete your own teams. Other players cannot read them unless you have both accepted a gaming buddy
+			link and you have not hidden the team. An administrator can view them.
 		</p>
 		<p>
 			A share link or QR code puts the build in the link itself. Anyone you give that link to can open
 			that build. The link is not an account, and it does not include your email.
+		</p>
+
+		<h2 class="text-xl font-bold mt-8 mb-3">Gaming buddies</h2>
+		<p>
+			Gaming buddies are optional and mutual. You send a request with an invite link or by searching a
+			display name. The other person accepts or declines. Either of you can remove the buddy, which ends
+			access immediately. You can block a request. A buddy can read teams you have not hidden and open
+			them as a copy. If they save, the copy is stored on their account under their user id. It does not
+			change your team.
+		</p>
+		<p>
+			A buddy request stores the two account ids, the display names, the status, and the time. It does
+			not store an email address. The invite code is random. Search only includes players who opted in,
+			and it returns a display name, not an email. You can turn search off. Disabled accounts cannot use
+			buddy access.
 		</p>
 
 		<h2 class="text-xl font-bold mt-8 mb-3">Location, Nominatim, and the approximate point</h2>
@@ -264,7 +280,8 @@
 		<p>
 			The account record is not deleted when you sign out, and it is not deleted when an account is
 			disabled. While you are signed in, you can delete your account from settings. You can also ask by
-			email.
+			email. Buddy links, requests, blocks, and your invite code stay until you remove them or delete
+			your account. Deleting your account removes those links for both people.
 		</p>
 		<p>
 			Game requests stay until we delete them on request. The profile page does not include a delete
@@ -280,11 +297,12 @@
 		<p>If the GDPR or UK GDPR applies, we rely on these bases:</p>
 		<ul class="list-disc pl-6 space-y-2">
 			<li>
-				Contract: your account, saved teams, settings, and in-app game requests, so we can provide the
-				features you use.
+				Contract: your account, saved teams, settings, in-app game requests, and gaming buddy links, so
+				we can provide the features you use.
 			</li>
 			<li>
-				Consent: a public or anonymous map pin, the open-to-games listing, game-request email,
+				Consent: a public or anonymous map pin, the open-to-games listing, being findable by display
+				name for gaming buddies, game-request email,
 				“Keep me up to date” marketing email, and the monthly Gaslands Garage email. Each one stays off
 				until you turn it on. In the EEA, the
 				UK, and Switzerland, analytics cookies are also consent: they stay off until you click Accept.
@@ -366,7 +384,7 @@
 			<a class={linkClass} href="mailto:jose.anes@gmail.com">jose.anes@gmail.com</a>, or use
 			Contact Us while signed in, and say what you want removed. We answer email requests within 1
 			month. We can delete the Gaslands Garage records we hold for that account, including the account
-			record, teams, profile, settings, game requests, and messages to us. Disabling an account is not
+			record, teams, profile, settings, game requests, gaming buddy links, and messages to us. Disabling an account is not
 			the same as deleting it. We cannot delete the Google account itself.
 		</p>
 
@@ -374,8 +392,9 @@
 		<p>
 			The site is served over HTTPS. Database access starts from a deny-all rule. Teams, settings, and
 			the private profile are limited to the signed-in owner, with the administrator access described
-			above. The public map and the public usage totals are readable without an account. The mail queue
-			is not readable from the website. No storage method is perfect.
+			above. A buddy can read a team only when the link is accepted both ways and the team is not
+			hidden. Buddies cannot change your teams. The public map and the public usage totals are readable
+			without an account. The mail queue is not readable from the website. No storage method is perfect.
 		</p>
 
 		<h2 class="text-xl font-bold mt-8 mb-3">Changes</h2>

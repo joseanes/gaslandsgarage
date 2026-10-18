@@ -391,8 +391,13 @@ describe('account privacy', () => {
     }
     expect(rulesCollections()).toEqual(
       [
-        'adminUsers',
-        'gameContacts',
+			'adminUsers',
+			'buddies',
+			'buddyBlocks',
+			'buddyDirectory',
+			'buddyInvites',
+			'buddyRequests',
+			'gameContacts',
         'messages',
         'newsletterTokens',
         'openToGames',
@@ -578,7 +583,7 @@ describe('account privacy', () => {
       expect(lines.join('\n')).not.toContain('Grace');
 
       const again = await eraseAccount(ada);
-      expect(again).toEqual(['boards', 'documents', 'anonymize', 'mail', 'rate', 'auth']);
+			expect(again).toEqual(['boards', 'documents', 'anonymize', 'mail', 'buddies', 'rate', 'auth']);
       expect((await auth.getUser(grace)).email).toBe('grace@example.com');
       expect((await db.doc(`gameContacts/${grace}_${ada}`).get()).get('message')).toBe('Rematch?');
     } finally {

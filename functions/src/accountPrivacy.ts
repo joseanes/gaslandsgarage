@@ -35,6 +35,12 @@ const OPEN_TO_GAMES_BOARD = 'openToGamesBoard';
 const GAME_CONTACTS = 'gameContacts';
 const PRIVACY_RATE = 'privacyRate';
 const NEWSLETTER_TOKENS = 'newsletterTokens';
+const BUDDIES = 'buddies';
+const BUDDY_REQUESTS = 'buddyRequests';
+const BUDDY_BLOCKS = 'buddyBlocks';
+const BUDDY_INVITES = 'buddyInvites';
+const BUDDY_DIRECTORY = 'buddyDirectory';
+const BUDDY_RATE = 'buddyRate';
 const STATS = 'stats';
 const BOARD_DOC = 'public';
 const TOMBSTONE = 'deleted';
@@ -223,6 +229,48 @@ async function deleteRefs(refs: DocumentReference[]): Promise<void> {
   }
 }
 
+async function deleteBuddyLinks(uid: string): Promise<void> {
+	const db = getFirestore();
+	const [member, sent, received, blocking, blocked] = await Promise.all([
+		db.collection(BUDDIES).where('members', 'array-contains', uid).get(),
+		db.collection(BUDDY_REQUESTS).where('fromUid', '==', uid).get(),
+		db.collection(BUDDY_REQUESTS).where('toUid', '==', uid).get(),
+		db.collection(BUDDY_BLOCKS).where('blockerUid', '==', uid).get(),
+		db.collection(BUDDY_BLOCKS).where('blockedUid', '==', uid).get()
+	]);
+	const refs = new Map<string, DocumentReference>();
+	for (const item of [...member.docs, ...sent.docs, ...received.docs, ...blocking.docs, ...blocked.docs]) {
+		refs.set(item.ref.path, item.ref);
+	}
+	refs.set(`${BUDDY_INVITES}/${uid}`, db.doc(`${BUDDY_INVITES}/${uid}`));
+	refs.set(`${BUDDY_DIRECTORY}/${uid}`, db.doc(`${BUDDY_DIRECTORY}/${uid}`));
+	refs.set(`${BUDDY_RATE}/${uid}`, db.doc(`${BUDDY_RATE}/${uid}`));
+	await deleteRefs([...refs.values()]);
+}
+
+async function buddyExport(uid: string): Promise<Record<string, unknown>> {
+	const db = getFirestore();
+	const [member, sent, received, blocking, blocked, invite, directory, rate] = await Promise.all([
+		db.collection(BUDDIES).where('members', 'array-contains', uid).get(),
+		db.collection(BUDDY_REQUESTS).where('fromUid', '==', uid).get(),
+		db.collection(BUDDY_REQUESTS).where('toUid', '==', uid).get(),
+		db.collection(BUDDY_BLOCKS).where('blockerUid', '==', uid).get(),
+		db.collection(BUDDY_BLOCKS).where('blockedUid', '==', uid).get(),
+		db.doc(`${BUDDY_INVITES}/${uid}`).get(),
+		db.doc(`${BUDDY_DIRECTORY}/${uid}`).get(),
+		db.doc(`${BUDDY_RATE}/${uid}`).get()
+	]);
+	return {
+		[BUDDIES]: queryJson(member.docs),
+		buddyRequestsSent: queryJson(sent.docs),
+		buddyRequestsReceived: queryJson(received.docs),
+		[BUDDY_BLOCKS]: queryJson([...blocking.docs, ...blocked.docs]),
+		[BUDDY_INVITES]: docJson(invite),
+		[BUDDY_DIRECTORY]: docJson(directory),
+		[BUDDY_RATE]: docJson(rate)
+	};
+}
+
 async function deleteOwnedDocuments(uid: string, entryId: string | null): Promise<void> {
   const db = getFirestore();
   const [teams, legacyTeams] = await Promise.all([
@@ -322,10 +370,12 @@ export async function eraseAccount(uid: string): Promise<string[]> {
   await deleteOwnedDocuments(uid, entryId);
   steps.push('anonymize');
   const contactIds = await anonymizeContactsAndMessages(uid);
-  steps.push('mail');
-  await deleteQueuedMail(email, contactIds);
-  steps.push('rate');
-  await getFirestore().doc(`${PRIVACY_RATE}/${uid}`).delete();
+	steps.push('mail');
+	await deleteQueuedMail(email, contactIds);
+	steps.push('buddies');
+	await deleteBuddyLinks(uid);
+	steps.push('rate');
+	await getFirestore().doc(`${PRIVACY_RATE}/${uid}`).delete();
   steps.push('auth');
   try {
     await getAuth().deleteUser(uid);
@@ -394,7 +444,8 @@ export async function exportAccount(uid: string): Promise<Record<string, unknown
     db.collection(GAME_CONTACTS).where('toUid', '==', uid).get()
   ]);
 
-  const privateDoc = entryId ? await db.doc(`${PLAYER_MAP_PRIVATE}/${entryId}`).get() : null;
+	const buddyData = await buddyExport(uid);
+	const privateDoc = entryId ? await db.doc(`${PLAYER_MAP_PRIVATE}/${entryId}`).get() : null;
   const mapDoc = entryId ? await db.doc(`${PLAYER_MAP}/${entryId}`).get() : null;
   const ownsPin = entryId !== null;
 
@@ -432,10 +483,11 @@ export async function exportAccount(uid: string): Promise<Record<string, unknown
       [MESSAGES]: queryJson(messages.docs),
       [ROLES]: docJson(roleDoc),
       [ADMIN_USERS]: docJson(adminDoc),
-      [MAIL_COLLECTION]: [...mailSnaps.values()].map((item) => mailForSubject(item.id, item.data() ?? {}, email)),
-      [PRIVACY_RATE]: docJson(rateDoc)
-    }
-  };
+			[MAIL_COLLECTION]: [...mailSnaps.values()].map((item) => mailForSubject(item.id, item.data() ?? {}, email)),
+			[PRIVACY_RATE]: docJson(rateDoc),
+			...buddyData
+		}
+	};
 }
 
 export async function consumePrivacyRateLimit(uid: string, action: RateAction, nowMs = Date.now()): Promise<void> {

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { user } from '$lib/firebase';
-  import { getUserTeams, saveTeam, deleteTeam } from '$lib/services/team';
+  import { getUserTeams, saveTeam, deleteTeam, setTeamHiddenFromBuddies } from '$lib/services/team';
   import { onMount } from 'svelte';
   import { fade } from 'svelte/transition';
   import Auth from './Auth.svelte';
@@ -28,6 +28,7 @@
     id: string;
     teamName?: string;
     updatedAt?: string;
+    hiddenFromBuddies?: boolean;
     teamData?: {
       sponsor?: string;
       sponsorId?: string;
@@ -724,6 +725,16 @@
   function closeModal() {
     showModal = false;
   }
+
+  async function toggleBuddyVisibility(team: SavedTeam) {
+    const hidden = team.hiddenFromBuddies !== true;
+    const result = await setTeamHiddenFromBuddies(team.id, hidden);
+    if (!result.success) {
+      alert('Could not update buddy visibility. Please try again.');
+      return;
+    }
+    await loadUserTeams();
+  }
 </script>
 
 {#if showModal}
@@ -824,7 +835,17 @@
                       {new Date(team.updatedAt ?? '').toLocaleDateString()}
                     </div>
                   </div>
-                  <div class="flex space-x-3">
+                  <div class="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      class="px-4 py-1.5 rounded-md border border-stone-300 bg-white text-sm text-stone-800 dark:border-gray-500 dark:bg-gray-800 dark:text-gray-100"
+                      aria-pressed={team.hiddenFromBuddies === true}
+                      aria-label="{team.hiddenFromBuddies ? 'Show' : 'Hide'} {team.teamName || 'team'} from buddies"
+                      data-testid="team-hide-from-buddies"
+                      on:click={() => toggleBuddyVisibility(team)}
+                    >
+                      {team.hiddenFromBuddies ? 'Hidden from buddies' : 'Hide from buddies'}
+                    </button>
                     <button
                       class="px-4 py-1.5 amber-button rounded-md shadow-md transition-colors flex-1 sm:flex-none text-sm"
                       on:click={() => loadTeam(team)}

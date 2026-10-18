@@ -55,13 +55,21 @@ export async function saveTeam(teamData: TeamSavePayload, teamName: string, exis
     // and converting any complex objects to simpler formats
     const safeTeamData = JSON.parse(JSON.stringify(teamData));
     
-    // Create the team document
-    const teamDoc = {
+    // Create the team document. Buddies can read a team only when this is false.
+    const teamDoc: {
+      userId: string;
+      teamName: string;
+      teamData: typeof safeTeamData;
+      createdAt: string;
+      updatedAt: string;
+      hiddenFromBuddies: boolean;
+    } = {
       userId,
       teamName,
       teamData: safeTeamData,
       createdAt: timestamp,
-      updatedAt: timestamp
+      updatedAt: timestamp,
+      hiddenFromBuddies: false
     };
     
     // Dynamically import Firestore functions
@@ -117,6 +125,9 @@ export async function saveTeam(teamData: TeamSavePayload, teamName: string, exis
         const existingTeamDoc = await getDoc(doc(database, TEAMS_COLLECTION, existingTeamId));
         if (existingTeamDoc.exists() && existingTeamDoc.data().createdAt) {
           teamDoc.createdAt = existingTeamDoc.data().createdAt;
+        }
+        if (existingTeamDoc.exists() && existingTeamDoc.data().hiddenFromBuddies === true) {
+          teamDoc.hiddenFromBuddies = true;
         }
       } catch (e) {
         console.warn("Could not get original createdAt time, using current time instead:", e);
@@ -179,7 +190,7 @@ export async function getUserTeams(): Promise<GetTeamsResult> {
     const userId = currentAuth.currentUser.uid;
     
     // Dynamically import Firestore functions
-    const { collection, query, where, getDocs } = await import('firebase/firestore');
+    const { collection, query, where, getDocs, updateDoc } = await import('firebase/firestore');
     
     // Query the teams collection for documents with the user's ID
     const teamsCollectionRef = collection(database, TEAMS_COLLECTION);
@@ -187,14 +198,23 @@ export async function getUserTeams(): Promise<GetTeamsResult> {
     const teamsSnapshot = await getDocs(q);
     
     if (!teamsSnapshot.empty) {
-      const teams = teamsSnapshot.docs.map((teamDoc) => {
-        const data = teamDoc.data() as { updatedAt?: string };
+      const teams = [];
+      for (const teamDoc of teamsSnapshot.docs) {
+        const data = teamDoc.data() as { updatedAt?: string; hiddenFromBuddies?: boolean };
         console.log("Team data from Firestore:", data);
-        return {
+        if (data.hiddenFromBuddies !== true && data.hiddenFromBuddies !== false) {
+          try {
+            await updateDoc(teamDoc.ref, { hiddenFromBuddies: false });
+            data.hiddenFromBuddies = false;
+          } catch (backfillError) {
+            console.warn("Could not mark team visibility for buddies:", backfillError);
+          }
+        }
+        teams.push({
           id: teamDoc.id,
           ...data
-        };
-      });
+        });
+      }
       
       // Sort by updated time, newest first
       teams.sort((a, b) => new Date(b.updatedAt ?? 0).getTime() - new Date(a.updatedAt ?? 0).getTime());
@@ -243,6 +263,31 @@ export async function deleteTeam(teamId: string): Promise<DeleteTeamResult> {
     return { success: true };
   } catch (error) {
     console.error("Error deleting team:", error);
+    return { success: false, error };
+  }
+}
+
+/**
+ * Hide or show one of the signed-in player's teams. Buddies cannot change this.
+ */
+export async function setTeamHiddenFromBuddies(teamId: string, hidden: boolean): Promise<DeleteTeamResult> {
+  if (!browser) return { success: false, error: "Cannot run on server" };
+  const currentAuth = auth;
+  const database = db;
+  if (!currentAuth?.currentUser || !database) return { success: false, error: "User not authenticated" };
+
+  try {
+    const { doc, getDoc, updateDoc } = await import('firebase/firestore');
+    const teamDocRef = doc(database, TEAMS_COLLECTION, teamId);
+    const teamDoc = await getDoc(teamDocRef);
+    if (!teamDoc.exists()) return { success: false, error: "Team not found" };
+    if (teamDoc.data().userId !== currentAuth.currentUser.uid) {
+      return { success: false, error: "Unauthorized access to team" };
+    }
+    await updateDoc(teamDocRef, { hiddenFromBuddies: hidden });
+    return { success: true };
+  } catch (error) {
+    console.error("Error updating buddy visibility:", error);
     return { success: false, error };
   }
 }

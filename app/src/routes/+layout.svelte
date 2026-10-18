@@ -572,6 +572,9 @@
               <a href="/profile" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600 block" on:click={() => showPlayersMenu = false}>
                 My Profile
               </a>
+              <a href="/buddies" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600 block" on:click={() => showPlayersMenu = false}>
+                Gaming Buddies
+              </a>
             </div>
             {/if}
           </div>
