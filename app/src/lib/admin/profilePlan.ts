@@ -1,24 +1,7 @@
 import { USERS_COLLECTION } from '$lib/admin/accountActions';
+import { toIso, type ProfileDocument, type ProfileUpdate } from './profileShape';
 
-export { USERS_COLLECTION };
-
-export type ProfileDocument = {
-	uid: string;
-	email: string;
-	displayName: string;
-	createdAt: string;
-	lastSeenAt: string;
-	lastSignInAt: string;
-};
-
-export type ProfileUpdate = Pick<ProfileDocument, 'email' | 'displayName' | 'lastSeenAt' | 'lastSignInAt'>;
-
-export function toIso(value: string | null | undefined, fallback: string): string {
-	if (!value) return fallback;
-	const parsed = new Date(value);
-	if (Number.isNaN(parsed.getTime())) return fallback;
-	return parsed.toISOString();
-}
+export { USERS_COLLECTION, toIso, type ProfileDocument, type ProfileUpdate };
 
 export function buildProfileWrite(input: {
 	uid: string;

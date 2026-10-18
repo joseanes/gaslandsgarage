@@ -22,6 +22,10 @@ From the top-level `teams` collection (the documents the builder saves):
 
 `totalUsers` is the Firebase Authentication user count, not a guess from team documents. The published document has no user ids, emails, team names, or vehicle lists.
 
+## Admin user directory
+
+After writing `stats/public`, the same job upserts `users/{uid}` for every Firebase Auth user so `/admin/users` lists accounts that have not signed in since the admin page shipped. It uses the profile shape the app writes on sign-in (`app/src/lib/admin/profileShape.ts`): missing documents are created; existing ones only get `email`/`displayName` refreshed, a later `lastSignInAt`, and any missing fields. `lastSeenAt` and `createdAt` are never overwritten. Documents for users no longer in Auth are left alone. The two existing roles cover this (Cloud Datastore User writes `users`, Firebase Authentication Viewer lists accounts). If any `users` write fails, the job exits non-zero after `stats/public` is already written.
+
 ## What José needs to deploy
 
 Do this once. Nothing in CI deploys rules or hosting.
