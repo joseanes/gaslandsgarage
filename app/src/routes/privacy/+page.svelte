@@ -163,23 +163,32 @@
 
 		<h2 class="text-xl font-bold mt-8 mb-3">Analytics, ads, and cookies</h2>
 		<p>
-			Every page loads Google Analytics 4, measurement id G-EKPMXMY097, from the tag in the site HTML.
-			Google Analytics sets first-party cookies whose names start with <span class="font-mono">_ga</span>,
-			including <span class="font-mono">_ga</span> and
-			<span class="font-mono">_ga_EKPMXMY097</span>. Those cookies recognize a browser and measure visits,
-			such as pages viewed and general browser details. We keep Google Analytics data for 2 months. The
-			site does not show a cookie banner. We do not sell personal information.
+			Google Analytics 4, measurement id G-EKPMXMY097, uses Consent Mode. For visitors in the EEA, the
+			UK, and Switzerland, analytics cookies stay off until you click Accept on a banner. You can change
+			that choice later with the Privacy settings link in the footer. Outside those places, analytics
+			cookies may be set without the banner. The same footer link still lets you change the choice.
 		</p>
 		<p>
-			The site does not display advertisements, and it does not load an ad unit. A file named ads.txt is
-			published and names a Google AdSense publisher id. That file does not place an ad on the page.
+			When analytics cookies are allowed, Google Analytics sets first-party cookies whose names start
+			with <span class="font-mono">_ga</span>, including <span class="font-mono">_ga</span> and
+			<span class="font-mono">_ga_EKPMXMY097</span>. Those cookies recognize a browser and measure
+			visits, such as pages viewed and general browser details. We keep Google Analytics data for 2
+			months. We do not sell personal information.
+		</p>
+		<p>
+			The site does not display advertisements, and it does not load an ad unit. Ad-related signals stay
+			denied. Google signals and ad personalization are off. A file named ads.txt is published and names
+			a Google AdSense publisher id. That file does not place an ad on the page.
 		</p>
 
 		<h2 class="text-xl font-bold mt-8 mb-3">Do Not Track and Global Privacy Control</h2>
 		<p>
-			The site does not change its behavior when a browser sends a Do Not Track signal or a Global
-			Privacy Control signal. Those signals do not turn off Google Analytics and do not stop the site
-			from storing the information described on this page. We still do not sell personal information.
+			The site does not respond to a Do Not Track signal. Do Not Track does not turn analytics cookies
+			off and does not stop the site from storing the information described on this page.
+		</p>
+		<p>
+			The site honors Global Privacy Control by keeping ad-related signals denied. There are no ads.
+			Google signals and ad personalization stay off. We still do not sell personal information.
 		</p>
 
 		<h2 class="text-xl font-bold mt-8 mb-3">Map tiles</h2>
@@ -201,6 +210,7 @@
 			<li>print options, including which descriptions to include</li>
 			<li>whether you have said you own the rules</li>
 			<li>sponsorship and advanced-rules switches</li>
+			<li>your analytics cookie choice</li>
 			<li>a temporary copy of a team while you move between pages</li>
 		</ul>
 		<p>sessionStorage, which lasts for this tab, can hold:</p>
@@ -221,7 +231,8 @@
 			a role. An administrator can disable another account. Disabling signs that person out, marks the
 			Firebase Authentication user disabled, and blocks access to their teams and profile. It does not
 			delete the account, the teams, or the profile. An administrator cannot disable their own account
-			from the page. The app does not delete accounts.
+			from the page. An administrator cannot delete an account. You can delete your own account from
+			settings, as described below.
 		</p>
 
 		<h2 class="text-xl font-bold mt-8 mb-3">How long we keep information</h2>
@@ -233,7 +244,8 @@
 		</p>
 		<p>
 			The account record is not deleted when you sign out, and it is not deleted when an account is
-			disabled. There is no delete-account button.
+			disabled. While you are signed in, you can delete your account from settings. You can also ask by
+			email.
 		</p>
 		<p>
 			Game requests stay until we delete them on request. The profile page does not include a delete
@@ -254,13 +266,15 @@
 			</li>
 			<li>
 				Consent: a public or anonymous map pin, the open-to-games listing, game-request email, and
-				“Keep me up to date” marketing email. Each one stays off until you turn it on. You can withdraw
-				consent by turning it off or by emailing us. Withdrawal does not undo a message already sent.
+				“Keep me up to date” marketing email. Each one stays off until you turn it on. In the EEA, the
+				UK, and Switzerland, analytics cookies are also consent: they stay off until you click Accept.
+				You can withdraw consent by turning the control off, by using the Privacy settings link in the
+				footer, or by emailing us. Withdrawal does not undo a message already sent.
 			</li>
 			<li>
-				Legitimate interests: securing the site, limiting abuse, publishing aggregate usage totals, and
-				measuring visits with Google Analytics. Analytics loads on every page without a separate
-				consent prompt. You can object by emailing us.
+				Legitimate interests: securing the site, limiting abuse, publishing aggregate usage totals, and,
+				outside the EEA, the UK, and Switzerland, measuring visits with Google Analytics. You can object
+				by emailing us, and you can turn analytics cookies off from Privacy settings.
 			</li>
 			<li>Legal obligation: when the law requires us to keep or disclose information.</li>
 		</ul>
@@ -272,9 +286,9 @@
 
 		<h2 class="text-xl font-bold mt-8 mb-3">Your rights</h2>
 		<p>
-			Email <a class={linkClass} href="mailto:jose.anes@gmail.com">jose.anes@gmail.com</a> to exercise a
-			right. We answer rights requests by email within 1 month. We may need to confirm that you control
-			the Google account. The app does not have a separate download button.
+			If you are signed in, you can download your data and delete your account from settings. You can
+			also email <a class={linkClass} href="mailto:jose.anes@gmail.com">jose.anes@gmail.com</a>. We
+			answer email requests within 1 month. We may need to confirm that you control the Google account.
 		</p>
 		<p>If the GDPR or UK GDPR applies, you can ask us to:</p>
 		<ul class="list-disc pl-6 space-y-2">
@@ -301,9 +315,10 @@
 		</p>
 		<p>
 			You can ask us to tell you the categories and specific pieces of personal information we hold, to
-			correct it, or to delete it. We will not discriminate against you for asking. Email
-			<a class={linkClass} href="mailto:jose.anes@gmail.com">jose.anes@gmail.com</a>. We answer within 1
-			month.
+			correct it, or to delete it. We will not discriminate against you for asking. If you are signed
+			in, you can download your data and delete your account from settings. You can also email
+			<a class={linkClass} href="mailto:jose.anes@gmail.com">jose.anes@gmail.com</a>. We answer email
+			requests within 1 month.
 		</p>
 		<p>
 			The information we hold can include identifiers (such as email, display name, and account id),
@@ -321,11 +336,12 @@
 
 		<h2 class="text-xl font-bold mt-8 mb-3">Asking us to delete information</h2>
 		<p>
-			Email <a class={linkClass} href="mailto:jose.anes@gmail.com">jose.anes@gmail.com</a>, or use Contact
-			Us while signed in, and say what you want removed. We answer within 1 month. We can delete the
-			Gaslands Garage records we hold for that account, including the account record, teams, profile,
-			settings, game requests, and messages to us. Disabling an account is not the same as deleting it.
-			We cannot delete the Google account itself.
+			If you are signed in, you can download your data and delete your account from settings. You can
+			also email <a class={linkClass} href="mailto:jose.anes@gmail.com">jose.anes@gmail.com</a>, or use
+			Contact Us while signed in, and say what you want removed. We answer email requests within 1
+			month. We can delete the Gaslands Garage records we hold for that account, including the account
+			record, teams, profile, settings, game requests, and messages to us. Disabling an account is not
+			the same as deleting it. We cannot delete the Google account itself.
 		</p>
 
 		<h2 class="text-xl font-bold mt-8 mb-3">Security</h2>

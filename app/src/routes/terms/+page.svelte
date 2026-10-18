@@ -65,8 +65,9 @@
 		<p>
 			An administrator can disable an account that breaks these terms or that is being misused.
 			Disabling signs that person out and blocks access to their teams and profile until an
-			administrator turns the account back on. Disabling does not delete the saved data. The site does
-			not offer account deletion from the page. To ask for deletion, use the contact address below.
+			administrator turns the account back on. Disabling does not delete the saved data. While you are
+			signed in, you can delete your own account from settings. You can also ask for deletion at the
+			contact address below.
 		</p>
 
 		<h2 class="text-xl font-bold mt-8 mb-3">Disclaimers</h2>
