@@ -42,6 +42,7 @@ import SettingsMenu from '$lib/components/SettingsMenu.svelte';
 	import { user, signInWithGoogle } from '$lib/firebase';
 import { getUserSettings, saveUserSettings, DEFAULT_SETTINGS, type UserSettings } from '$lib/services/settings';
 import { saveTeam, getUserTeams } from '$lib/services/team';
+	import { withoutDisallowedGear } from '$lib/builder/stripGear';
 	import { onMount } from 'svelte';
 	import { fade } from 'svelte/transition';
 	import '../../print.css';
@@ -93,22 +94,7 @@ import { saveTeam, getUserTeams } from '$lib/services/team';
 		rulesVersion = normalizeRulesVersion(raw?.rulesVersion);
 		applyCatalog(rulesVersion);
 	}
-  
-	// Log detailed vehicle type information to check sponsor restrictions
-	console.log('LOADED DATA: All vehicle types:', vehicleTypes.map(v => ({
-		id: v.id,
-		name: v.name, 
-		sponsors: v.sponsors || []
-	})));
-	
-	// Special focus on vehicles with sponsor restrictions
-	const restrictedVehicles = vehicleTypes.filter(v => v.sponsors && v.sponsors.length > 0);
-	console.log('RESTRICTED VEHICLES:', restrictedVehicles.map(v => ({
-		id: v.id,
-		name: v.name,
-		sponsors: v.sponsors
-	})));
-  
+
 	/* ---------- settings ---------- */
 	let includeAdvanced = true;
 	let enableSponsorships = true;
@@ -179,13 +165,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		// a) It has no sponsors list, OR
 		// b) The current sponsor matches one in the vehicle's sponsors list
 		if (v.sponsors && v.sponsors.length > 0) {
-			// This vehicle has a sponsors restriction - check if current sponsor is in the list
-			const allowed = v.sponsors.includes(sponsorId);
-			
-			// Log for debugging
-			console.log(`Vehicle ${v.id} with sponsors [${v.sponsors.join(', ')}] - Current sponsor: ${sponsorId} - Allowed: ${allowed}`);
-			
-			return allowed;
+			return v.sponsors.includes(sponsorId);
 		}
 		
 		// No sponsor restriction - vehicle is allowed with any sponsor
@@ -1767,10 +1747,13 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 	onMount(() => {
 		let storageCheckInterval: ReturnType<typeof setInterval> | undefined;
 		let onMenuAction: ((event: Event) => void) | undefined;
+		let onLoadTeam: ((event: Event) => void) | undefined;
+		let onTeamLoaded: ((event: Event) => void) | undefined;
+		let onPrintMessage: ((event: Event) => void) | undefined;
 		if (typeof window !== 'undefined') {
 			// Set up a custom event listener for menu commands
 			// Listen for custom team loading events
-			document.addEventListener('gaslands-load-team-data', (event: Event) => {
+			onLoadTeam = (event: Event) => {
 				if (!(event instanceof CustomEvent)) return;
 				const detail = event.detail as {
 					sponsor?: string;
@@ -1869,10 +1852,11 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 						}
 					}
 				}
-			});
+			};
+			document.addEventListener('gaslands-load-team-data', onLoadTeam);
 			
 			// Also listen on window for backup
-			window.addEventListener('gaslands-team-loaded', (event: Event) => {
+			onTeamLoaded = (event: Event) => {
 				if (!(event instanceof CustomEvent)) return;
 				console.log('[Event] Received gaslands-team-loaded window event:', event.detail);
 				if (event.detail && !window.importDraftFn) {
@@ -1899,7 +1883,8 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 						console.error('[Event] Error storing team data for reload:', error);
 					}
 				}
-			});
+			};
+			window.addEventListener('gaslands-team-loaded', onTeamLoaded);
 			
 			// Normal menu action listener. Removed on destroy: a leftover listener
 			// still sees the previous visit's empty vehicle list and alerts,
@@ -1975,11 +1960,13 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			}
 		
 			// Setup message listener for print window communication
-			window.addEventListener('message', (event) => {
-				if (event.data && event.data.type === 'openPrintSettings') {
+			onPrintMessage = (event: Event) => {
+				const data = (event as MessageEvent).data as { type?: string } | null;
+				if (data && data.type === 'openPrintSettings') {
 					openSettings('print');
 				}
-			});
+			};
+			window.addEventListener('message', onPrintMessage);
 			
 			// Directly assign functions from the component scope to the window
 			window.copyDraftFn = copyDraft;
@@ -2043,11 +2030,10 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			window.currentDraftFn = () => {
 				// Make sure we check for actual content, not just empty arrays
 				if (!sponsorId || !vehicles || vehicles.length === 0) {
-					console.log("currentDraftFn: No valid team data available yet");
 					return null;
 				}
 				// Create a current draft object with the current state
-				const currentState = {
+				return {
 					sponsor: sponsorId,
 					vehicles: vehicles,
 					teamName: teamName || "My Gaslands Team",
@@ -2055,11 +2041,8 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 					darkMode: darkMode,
 					rulesVersion
 				};
-				console.log("currentDraftFn returning:", currentState);
-				return currentState;
 			};
 			window.importDraftFn = (draft) => {
-				console.log("importDraftFn called with:", JSON.stringify(draft, null, 2));
 				try {
 					if (!applyImportedDraft(draft)) {
 						console.error("Could not import draft", draft);
@@ -2077,6 +2060,9 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			// Clean up when component is destroyed
 			if (typeof window !== 'undefined') {
 				if (onMenuAction) window.removeEventListener('gaslands-menu-action', onMenuAction);
+				if (onLoadTeam) document.removeEventListener('gaslands-load-team-data', onLoadTeam);
+				if (onTeamLoaded) window.removeEventListener('gaslands-team-loaded', onTeamLoaded);
+				if (onPrintMessage) window.removeEventListener('message', onPrintMessage);
 				console.log("[onUnmount] Cleaning up global functions");
 				// Clean up function references with Fn suffix
 				window.copyDraftFn = undefined;
@@ -2263,59 +2249,18 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		return false;
 	}
 	
-	// Remove any advanced vehicle types when includeAdvanced is disabled
-	$: if (!includeAdvanced) {
-		vehicles = vehicles.filter(v => {
-			const vehicleType = vehicleTypes.find(vt => vt.id === v.type);
-			return vehicleType && !vehicleType.advanced;
+	// Drop gear the settings no longer allow. Assign only when the list actually
+	// changes: these blocks used to write a fresh array on every pass, and Svelte
+	// re-ran them until the update-depth guard (about 35s of a frozen tab).
+	$: {
+		const nextVehicles = withoutDisallowedGear(vehicles, {
+			includeAdvanced,
+			clearPerks: !enableSponsorships && rulesVersion !== 3,
+			vehicleTypes,
+			weapons,
+			upgrades
 		});
-	}
-	
-	// Remove any advanced weapons when includeAdvanced is disabled
-	$: if (!includeAdvanced) {
-		vehicles = vehicles.map(v => ({
-			...v,
-			weapons: v.weapons.filter(weaponInstanceId => {
-				// Extract the base weapon ID from the instance ID (format: baseId_instanceHash)
-				const lastUnderscoreIndex = weaponInstanceId.lastIndexOf('_');
-				const baseWeaponId = lastUnderscoreIndex !== -1 ? 
-					weaponInstanceId.substring(0, lastUnderscoreIndex) : 
-					weaponInstanceId;
-				const weapon = weapons.find(w => w.id === baseWeaponId);
-				return weapon && !weapon.advanced;
-			}),
-			// Also clean up any facings for removed weapons
-			weaponFacings: v.weaponFacings ? 
-				Object.fromEntries(
-					Object.entries(v.weaponFacings).filter(([weaponInstanceId]) => {
-						const lastUnderscoreIndex = weaponInstanceId.lastIndexOf('_');
-				const baseWeaponId = lastUnderscoreIndex !== -1 ? 
-					weaponInstanceId.substring(0, lastUnderscoreIndex) : 
-					weaponInstanceId;
-						const weapon = weapons.find(w => w.id === baseWeaponId);
-						return weapon && !weapon.advanced;
-					})
-				) : {}
-		}));
-	}
-	
-	// Remove any advanced upgrades when includeAdvanced is disabled
-	$: if (!includeAdvanced) {
-		vehicles = vehicles.map(v => ({
-			...v,
-			upgrades: v.upgrades.filter(upgradeId => {
-				const upgrade = upgrades.find(u => u.id === upgradeId);
-				return upgrade && !upgrade.advanced;
-			})
-		}));
-	}
-	
-	// Remove perks when enableSponsorships is disabled (v2 sponsor perks only)
-	$: if (!enableSponsorships && rulesVersion !== 3) {
-		vehicles = vehicles.map(v => ({
-			...v,
-			perks: []
-		}));
+		if (nextVehicles !== vehicles) vehicles = nextVehicles;
 	}
 	
 	// Save dark mode preference to localStorage when it changes
@@ -2349,6 +2294,8 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		window.darkMode = darkMode;
 		window.rulesVersion = rulesVersion;
 		window.playMode = playMode;
+	}
+	$: if (typeof window !== 'undefined') {
 		window.dispatchEvent(new CustomEvent('gaslands-play-mode', { detail: { playMode } }));
 	}
 	$: vehicleAllowance = maxCountedVehicles(Number(maxCans) || 50);
@@ -3155,44 +3102,36 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		});
 	}
 
+	// Keep modal surfaces in sync with the dark-mode class. This used to live in
+	// <svelte:head> as a DOMContentLoaded listener, which never ran on client
+	// navigations and was never removed, so each visit to /builder leaked one.
+	onMount(() => {
+		const fixModalBackgrounds = () => {
+			const isDarkMode =
+				document.documentElement.classList.contains('dark-mode') ||
+				document.documentElement.classList.contains('dark');
+			document.querySelectorAll('.bg-white.dark\\:bg-gray-800, .settings-modal-content').forEach((modal) => {
+				if (modal instanceof HTMLElement) {
+					modal.style.backgroundColor = isDarkMode ? '#1f2937' : 'white';
+				}
+			});
+		};
+		fixModalBackgrounds();
+		const observer = new MutationObserver((mutations) => {
+			for (const mutation of mutations) {
+				if (mutation.attributeName === 'class') fixModalBackgrounds();
+			}
+		});
+		observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+		return () => observer.disconnect();
+	});
+
 </script>
 
 <svelte:head>
 	<title>Gaslands Garage - Team Builder</title>
 	<meta name="description" content="Free Gaslands team builder: build vehicles, add weapons, upgrades and perks, check cans, and print team cards." />
 	<link rel="canonical" href="https://gaslandsgarage.com/builder" />
-	<script>
-		// Ensure modals have proper background in dark mode
-		document.addEventListener('DOMContentLoaded', function() {
-			function fixModalBackgrounds() {
-				const isDarkMode = document.documentElement.classList.contains('dark-mode') ||
-                                     document.documentElement.classList.contains('dark');
-				const modals = document.querySelectorAll('.bg-white.dark\\:bg-gray-800, .settings-modal-content');
-				modals.forEach(modal => {
-					if (isDarkMode) {
-						modal.style.backgroundColor = '#1f2937';
-					} else {
-						modal.style.backgroundColor = 'white';
-					}
-				});
-			}
-			
-			// Run immediately and when dark mode changes
-			fixModalBackgrounds();
-			
-			// Create a mutation observer to watch for dark mode class changes
-			const observer = new MutationObserver(mutations => {
-				mutations.forEach(mutation => {
-					if (mutation.attributeName === 'class') {
-						fixModalBackgrounds();
-					}
-				});
-			});
-			
-			// Start observing
-			observer.observe(document.documentElement, { attributes: true });
-		});
-	</script>
 </svelte:head>
 
 <!-- Menu removed - now in layout.svelte -->

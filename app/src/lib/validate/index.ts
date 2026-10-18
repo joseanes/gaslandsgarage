@@ -70,15 +70,6 @@ export async function validateDraft(draft: Draft): Promise<Validation> {
   }
 
   /* 3 — hydrate team */
-  // Debug the input draft
-  console.log("Processing draft with vehicles:", draft.vehicles.map(v => ({
-    id: v.id,
-    type: v.type,
-    weapons: v.weapons,
-    upgrades: v.upgrades,
-    perks: v.perks
-  })));
-
   const team: Team = {
     sponsor,
     vehicles: draft.vehicles
@@ -93,11 +84,9 @@ export async function validateDraft(draft: Draft): Promise<Validation> {
           throw new Error(`Vehicle type ${v.type} not found`);
         }
 
-        // Process weapons with careful error handling and logging
+        // Process weapons with careful error handling
         const processedWeapons = v.weapons.map(weaponInstanceId => {
           try {
-            console.log(`Processing weapon: ${weaponInstanceId} for vehicle ${v.id}`);
-
             // Extract base weapon ID from instance ID (format: baseId_instanceHash)
             // For weapons with underscores in their base ID (like combat_laser_oYHC),
             // we need to identify the actual base ID without the nanoid suffix
@@ -170,7 +159,6 @@ export async function validateDraft(draft: Draft): Promise<Validation> {
     // Calculate total cans safely
     const baseCost = vehicleBaseCost(v.class);
 
-    // Calculate weapon costs with detailed logging
     const weaponDetails = v.weapons.map(w => {
       if (!w) return { id: 'unknown', cost: 0 };
       const cost = weaponCost(w);
@@ -178,13 +166,11 @@ export async function validateDraft(draft: Draft): Promise<Validation> {
     });
     const weaponsCost = weaponDetails.reduce((s, w) => s + w.cost, 0);
 
-    // Calculate upgrade costs with detailed logging for trailer-related upgrades
     const upgradeDetails = (v.upgrades || []).map(u => {
       if (!u) return { id: 'unknown', cost: 0, isTrailer: false, isTrailerUpgrade: false };
       const cost = upgradeCost(u);
       const isTrailer = u.trailer === true || u.trailer === "true";
       const isTrailerUpgrade = u.trailerUpgrade === true || u.trailerUpgrade === "true";
-      console.log(`Upgrade cost for ${u.name} (${u.id}): ${cost}, isTrailer: ${isTrailer}, isTrailerUpgrade: ${isTrailerUpgrade}`);
       return { id: u.id, name: u.name, cost, isTrailer, isTrailerUpgrade };
     });
     const upgradesCost = upgradeDetails.reduce((s, u) => s + u.cost, 0);
@@ -192,22 +178,6 @@ export async function validateDraft(draft: Draft): Promise<Validation> {
     // Calculate perk costs
     const perksCost = v.perks.reduce((s, p) => s + (p ? perkCost(p) : 0), 0);
 
-    // Calculate total vehicle cost
-    const totalVehicleCost = baseCost + weaponsCost + upgradesCost + perksCost;
-
-    // Debug vehicle cost breakdown
-    console.log(`Vehicle cost breakdown for ${v.instance.name} (${v.instance.id}):`, {
-      baseCost,
-      weaponsCost,
-      weaponDetails,
-      upgradesCost,
-      upgradeDetails,
-      perksCost,
-      totalCost: totalVehicleCost,
-      weapons: v.instance.weapons,
-      processedWeapons: v.weapons.map(w => w.id)
-    });
-    
     return {
       vehicleId: v.instance.id,
       cans: baseCost + weaponsCost + upgradesCost + perksCost,
@@ -225,15 +195,6 @@ export async function validateDraft(draft: Draft): Promise<Validation> {
   if (totalCans > TEAM_CAP) {
     errors.push(`Team exceeds ${TEAM_CAP} cans (currently ${totalCans})`);
   }
-
-  // Debug info
-  console.log("Validation completed:", {
-    totalCans,
-    vehicleReports: vehicleReports.map(vr => ({
-      vehicleId: vr.vehicleId,
-      cans: vr.cans
-    }))
-  });
 
   return { cans: totalCans, errors, vehicleReports };
 }
