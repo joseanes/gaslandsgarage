@@ -321,7 +321,7 @@
 			<li>object to processing based on legitimate interests, including analytics</li>
 			<li>
 				object to marketing, which you can also stop by turning “Keep me up to date” off, by turning the
-				monthly email off, or by using the unsubscribe link in that email
+				monthly email off, or by opening the unsubscribe link in that email and confirming
 			</li>
 			<li>withdraw consent, where the processing was based on consent</li>
 		</ul>

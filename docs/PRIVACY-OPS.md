@@ -56,7 +56,10 @@ Use the Admin SDK. A player cannot read another player's settings. An administra
 2. For each document id (the account uid), read `newsletterTokens/{uid}`. The field `token` is a 43-character random string. If that document is missing, skip the person for this run. Do not generate a token in the sender and do not send without one.
 3. Load the address with `auth.getUser(uid)`. Skip a disabled user and an account with no email.
 4. Send one message per person per month. The body has to include a working unsubscribe link and a postal line. The link is the HTTPS URL of the `unsubscribeNewsletter` function plus `?token=` and the token, URL-encoded. After deploy, copy that URL from the function. Do not guess a Cloud Run hostname.
-5. The visible text of every message has to include the link. A `List-Unsubscribe` header can be added as well. The link has to keep working after they opt out, which is why the token is not deleted on opt-out.
+5. The visible text of every message has to include the link. Also send both of these headers, using that same URL:
+   `List-Unsubscribe: <the url>`
+   `List-Unsubscribe-Post: List-Unsubscribe=One-Click`
+   A mailbox provider then POSTs `List-Unsubscribe=One-Click` to that URL and the token stays in the query string. That POST unsubscribes without the confirm page. A GET does not. The link has to keep working after they opt out, which is why the token is not deleted on opt-out.
 6. End every message with the operator's name, email, and current postal address:
 
 ```
@@ -67,9 +70,9 @@ jose.anes@gmail.com
 
 The privacy policy does not publish a street address. Do not invent one in the template. Put the real postal address in before the first send. CAN-SPAM and CASL expect that line in a commercial email.
 
-The page served by the unsubscribe link loads no images, fonts, or analytics, so the token in the query string is not sent to another site as a Referer. Do not paste function logs that contain `?token=` into a ticket or a chat.
+Opening the unsubscribe link does not change the subscription. The page shows a Confirm unsubscribe button, and that button POSTs the token. The success page says you're unsubscribed and links to the player profile so they can opt in again. The page loads no images, fonts, or analytics. `Referrer-Policy` is `no-referrer`, so the token is not sent when someone follows the profile link. Do not paste function logs that contain `?token=` into a ticket or a chat.
 
-`unsubscribeNewsletter` is public because the reader is not signed in. The token is the credential. A second click stays unsubscribed and does not change `newsletterOptOutAt`. A bad token changes nothing and does not say whether an account exists.
+`unsubscribeNewsletter` is public because the reader is not signed in. The token is the credential. A second POST stays unsubscribed and does not change `newsletterOptOutAt`. A bad token changes nothing and does not say whether an account exists. The invalid page is the same for a GET and a POST.
 
 `syncNewsletterToken` runs on every `userSettings/{uid}` write. It creates `newsletterTokens/{uid}` only when `newsletterOptIn` is exactly `true`, and it does not rotate an existing token. It retries if the write fails. Clients cannot read or write `newsletterTokens`.
 

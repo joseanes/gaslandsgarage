@@ -12,7 +12,7 @@ The functions are 2nd gen, Node.js 22, TypeScript, in `functions/`. Node.js 20 i
 | `exportMyData` | Callable, signed-in user | JSON of that account's Firestore data. |
 | `deleteMyAccount` | Callable, signed-in user | Deletes that account. Requires a fresh sign-in and the confirmation `DELETE`. |
 | `syncNewsletterToken` | `userSettings/{uid}` write | When `newsletterOptIn` is true, stores one random unsubscribe token. Does not send mail. |
-| `unsubscribeNewsletter` | Public HTTPS `GET` or `POST` | Sets `newsletterOptIn` to false for a valid `?token=`. No sign-in. |
+| `unsubscribeNewsletter` | Public HTTPS `GET` or `POST` | GET shows a confirm page and changes nothing. POST with the token sets `newsletterOptIn` to false. An RFC 8058 one-click POST is accepted on the same URL. No sign-in. |
 
 Region is `us-central1`. `publishUsageStats` uses 256MiB, a 300 second timeout, and one instance. `syncAuthDisabled`, `queueGameContactEmail`, and `syncNewsletterToken` retry on failure. `syncAuthDisabled` and `queueGameContactEmail` use the platform defaults. `syncNewsletterToken` uses the platform memory and timeout. `exportMyData` and `deleteMyAccount` use 256MiB, a 60 second timeout, and at most 10 instances. `unsubscribeNewsletter` uses 256MiB, a 30 second timeout, at most 10 instances, and `invoker: public` so the email link works without a Google sign-in. None keep a warm instance.
 
