@@ -43,6 +43,8 @@ import SettingsMenu from '$lib/components/SettingsMenu.svelte';
 import { getUserSettings, saveUserSettings, DEFAULT_SETTINGS, type UserSettings } from '$lib/services/settings';
 import { saveTeam, getUserTeams } from '$lib/services/team';
 	import { withoutDisallowedGear } from '$lib/builder/stripGear';
+	import { clearStaleChunkReload } from '$lib/staleChunk';
+	import { browser } from '$app/environment';
 	import { onMount } from 'svelte';
 	import { fade } from 'svelte/transition';
 	import '../../print.css';
@@ -1810,6 +1812,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 							
 							// Run validation to ensure everything is properly updated
 							validateSponsorRestrictions();
+							setTimeout(() => updateValidation(), 0);
 						} catch (error) {
 							console.error('[Event] Error setting team data manually:', error);
 						}
@@ -2109,7 +2112,19 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		collapsedVehicles = new Set(vehicles.map((entry) => entry.id));
 		validateSponsorRestrictions();
 		syncWindowTeam();
+		// After this function returns, the draft declaration picks up the new
+		// vehicles. Validating on the next turn keeps the banner on that draft.
+		setTimeout(() => updateValidation(), 0);
 		return true;
+	}
+
+	// The card chunk is loaded on demand. A rejected import used to leave this
+	// branch blank while the cans total still counted every vehicle.
+	let vehicleCardModule = browser ? import('$lib/components/VehicleCard.svelte') : null;
+
+	function retryVehicleCards() {
+		clearStaleChunkReload();
+		if (browser) window.location.reload();
 	}
 
 	function importDraftString() {
@@ -3386,51 +3401,75 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 				<p class="text-stone-600 dark:text-gray-300 text-lg font-bold py-4 px-8">Your team has no vehicles yet. Get started by adding a vehicle to your team.</p>
 			</div>
 		{:else}
-			{#await import('$lib/components/VehicleCard.svelte') then cardModule}
-				{@const VehicleCard = cardModule.default}
-				<div class="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-10">
-					{#each vehicles as vehicle (vehicle.id)}
-						<svelte:boundary>
-						<VehicleCard
-							{vehicle}
-							vehicleTypes={sortedVehicleTypes}
-							{weapons}
-							{upgrades}
-							{perks}
-							{vehicleRules}
-							collapsed={collapsedVehicles.has(vehicle.id)}
-							{playMode}
-							{rulesVersion}
-							{drivers}
-							{perkClasses}
-							filteredWeapons={rulesVersion === 3 ? weaponsFor(vehicle) : filteredWeapons}
-							filteredUpgrades={rulesVersion === 3 ? upgradesFor(vehicle) : filteredUpgrades}
-							filteredTrailerUpgrades={filteredTrailerUpgrades}
-							filteredPerks={rulesVersion === 3 ? perksFor(vehicle) : availablePerks}
-							on:patch={(e) => patchVehicle(e.detail.vehicleId, e.detail.patch)}
-							on:remove={e => removeVehicle(e.detail.id)}
-							on:clone={e => cloneVehicle(e.detail.id)}
-							on:toggleCollapse={e => toggleVehicleCollapse(e.detail.id)}
-							on:addWeapon={e => addWeapon(e.detail.vehicleId, e.detail.weaponId, e.detail.facing)}
-							on:removeWeapon={e => removeWeapon(e.detail.vehicleId, e.detail.weaponIndex)}
-							on:addUpgrade={e => addUpgrade(e.detail.vehicleId, e.detail.upgradeId)}
-							on:removeUpgrade={e => removeUpgrade(e.detail.vehicleId, e.detail.upgradeIndex)}
-							on:addPerk={e => addPerk(e.detail.vehicleId, e.detail.perkId)}
-							on:removePerk={e => removePerk(e.detail.vehicleId, e.detail.perkIndex)}
-							on:incrementHazard={e => incrementHazard(e.detail.vehicleId)}
-							on:decrementHazard={e => decrementHazard(e.detail.vehicleId)}
-							on:vehicleTypeChanged={e => handleVehicleTypeChange(e.detail.id, e.detail.vehicleType)}
-						/>
-						{#snippet failed()}
-							<div class="vehicle-card bg-white border-2 border-red-400 rounded-lg p-4" data-testid="vehicle-warning">
-								<p class="font-medium text-red-800">{vehicle.name || 'Vehicle'} is on this team but could not be drawn.</p>
-								<p class="text-sm text-red-700 mt-1">Type: {vehicle.type || 'unknown'}. It is still counted in the cans total.</p>
-							</div>
-						{/snippet}
-						</svelte:boundary>
-					{/each}
+			{#snippet vehicleListError(message: string)}
+				<div class="bg-white border-2 border-red-400 rounded-lg p-4" data-testid="vehicle-list-error" role="alert">
+					<p class="font-medium text-red-800">The vehicle list did not load.</p>
+					<p class="text-sm text-red-700 mt-1">
+						This team still has {vehicles.length} vehicles and {totalCans} cans. The list stays blank when the vehicle card file fails to download.
+					</p>
+					<p class="text-sm text-red-700 mt-1">{message}</p>
+					<button type="button" class="mt-3 py-2 px-4 rounded-md amber-button" on:click={retryVehicleCards}>
+						Try again
+					</button>
 				</div>
-			{/await}
+			{/snippet}
+			{#if vehicleCardModule}
+				{#await vehicleCardModule}
+					<p class="text-stone-600 dark:text-gray-300 py-4" data-testid="vehicle-list-loading">Loading vehicles...</p>
+				{:then cardModule}
+					{#if cardModule?.default}
+						{@const VehicleCard = cardModule.default}
+						<div class="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-10">
+							{#each vehicles as vehicle (vehicle.id)}
+								<svelte:boundary>
+								<VehicleCard
+									{vehicle}
+									vehicleTypes={sortedVehicleTypes}
+									{weapons}
+									{upgrades}
+									{perks}
+									{vehicleRules}
+									collapsed={collapsedVehicles.has(vehicle.id)}
+									{playMode}
+									{rulesVersion}
+									{drivers}
+									{perkClasses}
+									filteredWeapons={rulesVersion === 3 ? weaponsFor(vehicle) : filteredWeapons}
+									filteredUpgrades={rulesVersion === 3 ? upgradesFor(vehicle) : filteredUpgrades}
+									filteredTrailerUpgrades={filteredTrailerUpgrades}
+									filteredPerks={rulesVersion === 3 ? perksFor(vehicle) : availablePerks}
+									on:patch={(e) => patchVehicle(e.detail.vehicleId, e.detail.patch)}
+									on:remove={e => removeVehicle(e.detail.id)}
+									on:clone={e => cloneVehicle(e.detail.id)}
+									on:toggleCollapse={e => toggleVehicleCollapse(e.detail.id)}
+									on:addWeapon={e => addWeapon(e.detail.vehicleId, e.detail.weaponId, e.detail.facing)}
+									on:removeWeapon={e => removeWeapon(e.detail.vehicleId, e.detail.weaponIndex)}
+									on:addUpgrade={e => addUpgrade(e.detail.vehicleId, e.detail.upgradeId)}
+									on:removeUpgrade={e => removeUpgrade(e.detail.vehicleId, e.detail.upgradeIndex)}
+									on:addPerk={e => addPerk(e.detail.vehicleId, e.detail.perkId)}
+									on:removePerk={e => removePerk(e.detail.vehicleId, e.detail.perkIndex)}
+									on:incrementHazard={e => incrementHazard(e.detail.vehicleId)}
+									on:decrementHazard={e => decrementHazard(e.detail.vehicleId)}
+									on:vehicleTypeChanged={e => handleVehicleTypeChange(e.detail.id, e.detail.vehicleType)}
+								/>
+								{#snippet failed()}
+									<div class="vehicle-card bg-white border-2 border-red-400 rounded-lg p-4" data-testid="vehicle-warning">
+										<p class="font-medium text-red-800">{vehicle.name || 'Vehicle'} is on this team but could not be drawn.</p>
+										<p class="text-sm text-red-700 mt-1">Type: {vehicle.type || 'unknown'}. It is still counted in the cans total.</p>
+									</div>
+								{/snippet}
+								</svelte:boundary>
+							{/each}
+						</div>
+					{:else}
+						{@render vehicleListError('The vehicle card module loaded without a component.')}
+					{/if}
+				{:catch error}
+					{@render vehicleListError(error instanceof Error ? error.message : 'The vehicle card module failed to load.')}
+				{/await}
+			{:else}
+				<p class="text-stone-600 dark:text-gray-300 py-4" data-testid="vehicle-list-loading">Loading vehicles...</p>
+			{/if}
 		{/if}
 	</div>
 

@@ -64,6 +64,82 @@ test('a vehicle the rules list does not know stays on the team with a warning', 
 	await expect(page.getByTestId('vehicle-limit')).toContainText('1/2 toward the limit');
 });
 
+const productionBeverly = {
+	teamName: 'My Gaslands Team 2',
+	sponsor: 'beverly',
+	sponsorId: 'beverly',
+	maxCans: 50,
+	rulesVersion: 3,
+	vehicles: [
+		{
+			id: 'FxwR9U',
+			type: 'tank',
+			name: 'New Vehicle',
+			weapons: ['machine_gun_UZI5', 'machine_gun_lkhF'],
+			weaponFacings: { machine_gun_UZI5: 'front', machine_gun_lkhF: 'front' },
+			upgrades: ['big_tyres'],
+			perks: ['battlehammer'],
+			driverArchetype: 'arsonist',
+			driverName: 'Foo',
+			secondPerkClass: 'aggression'
+		},
+		{
+			id: 'uYK5nm',
+			type: 'bike',
+			name: 'New Vehicle',
+			weapons: [] as string[],
+			weaponFacings: {},
+			upgrades: [] as string[],
+			perks: [] as string[]
+		}
+	]
+};
+
+test('the saved Beverly tank and bike both render', async ({ page }) => {
+	const errors: string[] = [];
+	page.on('pageerror', (error) => errors.push(error.message));
+	await importBuild(page, productionBeverly);
+
+	await expect(page.locator('#rules-version')).toHaveValue('3');
+	await expect(page.locator('#sponsor-select')).toHaveValue('beverly');
+	await expect(page.getByTestId('vehicle-limit')).toContainText('1/2 toward the limit');
+	await expect(page.getByText('Your team has no vehicles yet')).toHaveCount(0);
+	await expect(page.getByTestId('vehicle-list-error')).toHaveCount(0);
+	await expect(page.getByTestId('vehicle-summary')).toHaveCount(2);
+	await expect(page.getByTestId('vehicle-summary').nth(0)).toContainText('Tank');
+	await expect(page.getByTestId('vehicle-summary').nth(0)).toContainText('45 cans');
+	await expect(page.getByTestId('vehicle-summary').nth(0)).toContainText('Arsonist');
+	await expect(page.getByTestId('vehicle-summary').nth(1)).toContainText('Bike');
+	await expect(page.getByTestId('vehicle-summary').nth(1)).toContainText('12 cans');
+	await expect(page.getByText('57/50 cans')).toBeVisible();
+	await expect(page.getByTestId('legal-banner')).toContainText('Team exceeds 50 cans limit');
+
+	await page.getByRole('button', { name: 'Expand vehicle' }).first().click();
+	await expect(page.locator('.vehicle-card').first().getByText('Battlehammer', { exact: true })).toBeVisible();
+	const tank = page.locator('.vehicle-card').first();
+	await expect(tank.locator('select').filter({ has: page.locator('option[value="arsonist"]') })).toHaveValue('arsonist');
+	await expect(tank.getByLabel('Second perk class')).toHaveValue('aggression');
+	expect(errors).toEqual([]);
+});
+
+test('a failed vehicle card download shows an error and can be retried', async ({ page }) => {
+	await page.addInitScript(() => {
+		sessionStorage.setItem('gaslands-chunk-reload', '1');
+	});
+	await page.route('**/*VehicleCard*', (route) => route.abort());
+	await page.goto('/builder');
+	await page.getByRole('button', { name: '+ Add Vehicle' }).click();
+	await expect(page.getByTestId('vehicle-list-error')).toBeVisible();
+	await expect(page.getByTestId('vehicle-summary')).toHaveCount(0);
+	await expect(page.getByText('Your team has no vehicles yet')).toHaveCount(0);
+
+	await page.unroute('**/*VehicleCard*');
+	await page.getByRole('button', { name: 'Try again' }).click();
+	await page.getByRole('button', { name: '+ Add Vehicle' }).click();
+	await expect(page.getByTestId('vehicle-list-error')).toHaveCount(0);
+	await expect(page.getByTestId('vehicle-summary')).toHaveCount(1);
+});
+
 test('two saved vehicles that share an id both render', async ({ page }) => {
 	const shared = beverlyAnchor.vehicles[0];
 	await importBuild(page, {
