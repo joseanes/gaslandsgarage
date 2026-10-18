@@ -794,6 +794,13 @@
             This project is open source! Check out the <a href="https://github.com/joseanes/gaslandsgarage" target="_blank" rel="noopener noreferrer" class="text-amber-600 dark:text-amber-400 hover:underline">GitHub repository</a> to contribute or report issues.
           </p>
 
+          <p class="text-stone-600 dark:text-gray-400 mt-4">
+            <span class="font-semibold text-stone-800 dark:text-white">Legal.</span>
+            <a href="/privacy" class="text-amber-600 dark:text-amber-400 hover:underline" on:click={() => (showAboutModal = false)}>Privacy Policy</a>
+            <span aria-hidden="true"> · </span>
+            <a href="/terms" class="text-amber-600 dark:text-amber-400 hover:underline" on:click={() => (showAboutModal = false)}>Terms and Conditions</a>
+          </p>
+
           <div class="mt-4">
             <h4 class="font-bold text-stone-800 dark:text-white text-lg mb-3">Gaslands Garage</h4>
             <p class="mb-2">The ultimate team builder for Gaslands tabletop game</p>
