@@ -34,6 +34,7 @@ const OPEN_TO_GAMES = 'openToGames';
 const OPEN_TO_GAMES_BOARD = 'openToGamesBoard';
 const GAME_CONTACTS = 'gameContacts';
 const PRIVACY_RATE = 'privacyRate';
+const NEWSLETTER_TOKENS = 'newsletterTokens';
 const STATS = 'stats';
 const BOARD_DOC = 'public';
 const TOMBSTONE = 'deleted';
@@ -232,6 +233,7 @@ async function deleteOwnedDocuments(uid: string, entryId: string | null): Promis
     ...teams.docs.map((item) => item.ref),
     ...legacyTeams.docs.map((item) => item.ref),
     db.doc(`${USER_SETTINGS}/${uid}`),
+    db.doc(`${NEWSLETTER_TOKENS}/${uid}`),
     db.doc(`${PLAYER_PROFILES}/${uid}`),
     db.doc(`${PLAYER_MAP_OWNERS}/${uid}`),
     db.doc(`${OPEN_TO_GAMES}/${uid}`),
@@ -359,6 +361,7 @@ export async function exportAccount(uid: string): Promise<Record<string, unknown
   const [
     userDoc,
     settingsDoc,
+    tokenDoc,
     profileDoc,
     ownerDoc,
     openDoc,
@@ -375,6 +378,7 @@ export async function exportAccount(uid: string): Promise<Record<string, unknown
   ] = await Promise.all([
     db.doc(`${USERS}/${uid}`).get(),
     db.doc(`${USER_SETTINGS}/${uid}`).get(),
+    db.doc(`${NEWSLETTER_TOKENS}/${uid}`).get(),
     db.doc(`${PLAYER_PROFILES}/${uid}`).get(),
     db.doc(`${PLAYER_MAP_OWNERS}/${uid}`).get(),
     db.doc(`${OPEN_TO_GAMES}/${uid}`).get(),
@@ -415,6 +419,7 @@ export async function exportAccount(uid: string): Promise<Record<string, unknown
       [`${USERS}/{uid}/${TEAMS}`]: queryJson(legacyTeams.docs),
       [TEAMS]: queryJson(teams.docs),
       [USER_SETTINGS]: docJson(settingsDoc),
+      [NEWSLETTER_TOKENS]: docJson(tokenDoc),
       [PLAYER_PROFILES]: docJson(profileDoc),
       [PLAYER_MAP_OWNERS]: docJson(ownerDoc),
       [PLAYER_MAP_PRIVATE]: ownsPin && privateDoc ? docJson(privateDoc) : null,

@@ -162,6 +162,7 @@ describe('disabled accounts', () => {
 		await assertFails(getDoc(doc(player, 'teams', 't1')));
 		await assertFails(getDoc(doc(player, 'users', 'player')));
 		await assertFails(getDoc(doc(player, 'userSettings', 'player')));
+		await assertFails(setDoc(doc(player, 'userSettings', 'player'), NEWSLETTER_IN));
 		await assertFails(setDoc(doc(player, 'teams', 't2'), { userId: 'player', teamName: 'New' }));
 		await assertFails(setDoc(doc(player, 'messages', 'm2'), { userId: 'player', subject: 'Hi' }));
 		await assertFails(setDoc(doc(player, 'adminUsers', 'player'), activeAccount()));
@@ -496,9 +497,71 @@ describe('player directory boards', () => {
 	});
 });
 
+const NEWSLETTER_IN = {
+	newsletterOptIn: true,
+	newsletterOptInAt: NOW,
+	newsletterConsentText: 'monthly-email-v1'
+};
+
+describe('monthly email consent', () => {
+	it('lets only the owner write a typed opt-in and keeps everyone else out', async () => {
+		const player = authed('player');
+		await assertSucceeds(setDoc(doc(player, 'userSettings', 'player'), { darkMode: true }));
+		await assertSucceeds(setDoc(doc(player, 'userSettings', 'player'), { ...NEWSLETTER_IN, darkMode: true }));
+		await assertSucceeds(
+			updateDoc(doc(player, 'userSettings', 'player'), {
+				newsletterOptIn: false,
+				newsletterOptOutAt: NOW,
+				newsletterPromptDismissedAt: NOW
+			})
+		);
+		expect((await getDoc(doc(player, 'userSettings', 'player'))).get('newsletterOptIn')).toBe(false);
+
+		await assertFails(setDoc(doc(player, 'userSettings', 'player'), { newsletterOptIn: 'yes' }));
+		await assertFails(setDoc(doc(player, 'userSettings', 'player'), { newsletterOptIn: true }));
+		await assertFails(
+			setDoc(doc(player, 'userSettings', 'player'), {
+				newsletterOptIn: true,
+				newsletterOptInAt: NOW,
+				newsletterConsentText: 'other-version'
+			})
+		);
+		await assertFails(
+			setDoc(doc(player, 'userSettings', 'player'), {
+				newsletterOptIn: true,
+				newsletterOptInAt: 123,
+				newsletterConsentText: 'monthly-email-v1'
+			})
+		);
+		await assertFails(setDoc(doc(player, 'userSettings', 'player'), { newsletterOptIn: false }));
+		await assertFails(setDoc(doc(player, 'userSettings', 'player'), { newsletterPromptDismissedAt: 1 }));
+
+		await assertFails(getDoc(doc(authed('other'), 'userSettings', 'player')));
+		await assertFails(getDoc(doc(guest(), 'userSettings', 'player')));
+		await assertFails(setDoc(doc(authed('other'), 'userSettings', 'player'), NEWSLETTER_IN));
+		await assertFails(getDocs(collection(authed('other'), 'userSettings')));
+
+		await seed(async (database) => {
+			await setDoc(doc(database, 'roles', 'admin'), roleDoc());
+		});
+		await assertFails(getDoc(doc(authed('admin'), 'userSettings', 'player')));
+		await assertFails(getDocs(collection(authed('admin'), 'userSettings')));
+
+		await assertFails(getDoc(doc(player, 'newsletterTokens', 'player')));
+		await assertFails(setDoc(doc(player, 'newsletterTokens', 'player'), { token: 'abc', uid: 'player' }));
+		await assertFails(setDoc(doc(guest(), 'newsletterTokens', 'player'), { token: 'abc', uid: 'player' }));
+		await assertFails(getDocs(collection(authed('admin'), 'newsletterTokens')));
+	});
+});
+
 describe('rules file', () => {
 	it('does not name a person as the administrator', () => {
 		const rules = readFileSync(new URL('../firestore.rules', import.meta.url), 'utf8');
 		expect(rules).not.toContain('@');
+		const consent = readFileSync(new URL('../src/lib/privacy/marketingConsent.ts', import.meta.url), 'utf8');
+		expect(consent).toContain("NEWSLETTER_CONSENT_VERSION = 'monthly-email-v1'");
+		expect(rules).toContain("'monthly-email-v1'");
+		const policy = readFileSync(new URL('../src/routes/privacy/+page.svelte', import.meta.url), 'utf8');
+		expect(policy).toContain('Unsubscribe from the link');
 	});
 });

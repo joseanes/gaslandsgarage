@@ -25,7 +25,52 @@ The choice is stored in `localStorage` under `gaslands.analyticsConsent.v1` and 
 
 `userSettings.receiveUpdates` is the "Keep me up to date" checkbox. It does not send mail. When a signed-in player turns it on or off, `saveUserSettings` writes `receiveUpdatesChangedAt` as an ISO timestamp. The first save of the default off state does not write a timestamp. A later save that leaves the checkbox alone keeps the previous timestamp.
 
-The player writes their own `userSettings` document. The rules do not whitelist fields. A modified client could set the timestamp. The normal settings screen does not.
+The player writes their own `userSettings` document. The rules do not whitelist every field. A modified client could set the timestamp. The normal settings screen does not.
+
+## Monthly email
+
+`userSettings.newsletterOptIn` is a separate checkbox. The label is: "Send me the monthly Gaslands Garage email: game tips, car suggestions, and new site features. About once a month. Unsubscribe anytime." It is unchecked until the player opts in. It is not "Keep me up to date" (`receiveUpdates`) and it is not "Allow other players to contact me to setup a game" (`allowContactFromPlayers`).
+
+| Field | Meaning |
+| --- | --- |
+| `newsletterOptIn` | `true` only after an explicit opt-in. Absent means they have not answered. `false` means they opted out. |
+| `newsletterOptInAt` | ISO time of the latest opt-in. Kept when they later opt out. |
+| `newsletterOptOutAt` | ISO time of the latest opt-out, including the unsubscribe link. |
+| `newsletterConsentText` | `monthly-email-v1`, the version of the sentence above. |
+| `newsletterPromptDismissedAt` | ISO time they closed the one-time prompt without answering. The prompt is not shown again. |
+
+Firestore rules let only that player write these fields, and only with those types. Opt-in requires `newsletterConsentText == monthly-email-v1` and a string `newsletterOptInAt`. No other signed-in player, and no administrator, can read `userSettings`.
+
+A signed-in player who has never answered sees a small prompt on the page. It is not a dialog and it does not block the builder. "No thanks" only writes `newsletterPromptDismissedAt`. "Send me the monthly email" opts in. After either one, or after they save the checkbox, the prompt stays hidden.
+
+This change does not send the monthly email. Send it later with Twilio Email, and only after the sending domain is verified.
+
+### How a future sender must select people
+
+Use the Admin SDK. A client query cannot read another player's settings.
+
+1. Query `userSettings` where `newsletterOptIn == true`. Do not use `receiveUpdates`. Do not use `allowContactFromPlayers`.
+2. For each document id (the account uid), read `newsletterTokens/{uid}`. The field `token` is a 43-character random string. If that document is missing, skip the person for this run. Do not generate a token in the sender and do not send without one.
+3. Load the address with `auth.getUser(uid)`. Skip a disabled user and an account with no email.
+4. Send one message per person per month. The body has to include a working unsubscribe link and a postal line. The link is the HTTPS URL of the `unsubscribeNewsletter` function plus `?token=` and the token, URL-encoded. After deploy, copy that URL from the function. Do not guess a Cloud Run hostname.
+5. The visible text of every message has to include the link. A `List-Unsubscribe` header can be added as well. The link has to keep working after they opt out, which is why the token is not deleted on opt-out.
+6. End every message with the operator's name, email, and current postal address:
+
+```
+José Anés
+jose.anes@gmail.com
+[current postal address]
+```
+
+The privacy policy does not publish a street address. Do not invent one in the template. Put the real postal address in before the first send. CAN-SPAM and CASL expect that line in a commercial email.
+
+The page served by the unsubscribe link loads no images, fonts, or analytics, so the token in the query string is not sent to another site as a Referer. Do not paste function logs that contain `?token=` into a ticket or a chat.
+
+`unsubscribeNewsletter` is public because the reader is not signed in. The token is the credential. A second click stays unsubscribed and does not change `newsletterOptOutAt`. A bad token changes nothing and does not say whether an account exists.
+
+`syncNewsletterToken` runs on every `userSettings/{uid}` write. It creates `newsletterTokens/{uid}` only when `newsletterOptIn` is exactly `true`, and it does not rotate an existing token. It retries if the write fails. Clients cannot read or write `newsletterTokens`.
+
+`exportMyData` copies the newsletter fields on `userSettings` and the token document. `deleteMyAccount` deletes both. After deletion the old link says it is not valid.
 
 ## Access and erasure
 
@@ -44,7 +89,7 @@ Details of the export, the deletion order, the rate limit (5 calls per action pe
 2. If the account is disabled, an administrator can re-enable it. That still does not delete anything. After they sign in, they delete it themselves.
 3. If they cannot sign in at all, do the same erasure the function does, in the Firebase console, for that one uid:
    - In one transaction, remove their key from `playerMapBoard/public` `markers` and from `openToGamesBoard/public` `players`.
-   - Delete their `teams` (where `userId` is theirs), `users/{uid}` including `users/{uid}/teams`, `userSettings`, `playerProfiles`, `playerMapOwners`, their `playerMap` and `playerMapPrivate` pin, `openToGames`, `roles`, and `adminUsers`.
+   - Delete their `teams` (where `userId` is theirs), `users/{uid}` including `users/{uid}/teams`, `userSettings`, `newsletterTokens/{uid}`, `playerProfiles`, `playerMapOwners`, their `playerMap` and `playerMapPrivate` pin, `openToGames`, `roles`, and `adminUsers`.
    - Anonymize their side of `gameContacts` and `messages`. Leave the other person's text. Do not delete the other person's account.
    - Delete `mail` documents addressed to them and `mail/gameContact_*` documents for their requests.
    - Delete the Auth user last.
@@ -59,6 +104,8 @@ A disabled account cannot obtain an ID token, so the callable cannot run until t
 | --- | --- |
 | Profile, teams, settings, player profile, map pin, open-to-games card | Until the person deletes the account, or until a verified request is completed |
 | `receiveUpdatesChangedAt` | With `userSettings`, until the account is deleted |
+| `newsletterOptIn`, `newsletterOptInAt`, `newsletterOptOutAt`, `newsletterConsentText`, `newsletterPromptDismissedAt` | With `userSettings`, until the account is deleted |
+| `newsletterTokens/{uid}` | Until the account is deleted. Opting out does not delete it, so an old unsubscribe link still works |
 | Analytics choice | In `localStorage` on that browser until they change it or clear site data. It is not stored in Firestore |
 | `gameContacts` after deletion | The thread stays for the other player. The departing name and text are replaced |
 | Contact-form `messages` after deletion | Email, subject, and body removed. `userId` set to `deleted` |
@@ -71,7 +118,7 @@ Public map pins are approximate. Street addresses are not stored. Game requests 
 
 ## Collections audited
 
-Firestore rules collections: `adminUsers`, `gameContacts`, `messages`, `openToGames`, `openToGamesBoard`, `playerMap`, `playerMapBoard`, `playerMapOwners`, `playerMapPrivate`, `playerProfiles`, `roles`, `stats`, `teams`, `userSettings`, `users`.
+Firestore rules collections: `adminUsers`, `gameContacts`, `messages`, `newsletterTokens`, `openToGames`, `openToGamesBoard`, `playerMap`, `playerMapBoard`, `playerMapOwners`, `playerMapPrivate`, `playerProfiles`, `roles`, `stats`, `teams`, `userSettings`, `users`.
 
 Also handled, and denied to clients by the default rule: `mail`, `privacyRate`, and the legacy subcollection `users/{uid}/teams`.
 
@@ -112,15 +159,13 @@ pnpm install
 firebase deploy --only functions --force --project=gaslandsgarage-74ce6
 ```
 
-`--force` is required because `syncAuthDisabled` and `queueGameContactEmail` retry. The new callables deploy with the same command. The predeploy hook builds `functions/lib/index.js`. Node.js 22 comes from `functions/package.json`.
+`--force` is required because `syncAuthDisabled`, `queueGameContactEmail`, and `syncNewsletterToken` retry. `unsubscribeNewsletter` deploys with the same command. The predeploy hook builds `functions/lib/index.js`. Node.js 22 comes from `functions/package.json`.
 
-No Firestore rules change is required for this work. `privacyRate` and `mail` stay denied to clients. `receiveUpdatesChangedAt` is written by the signed-in player on their existing `userSettings` document. Skip:
+`privacyRate` and `mail` stay denied to clients, with no allow rule. The monthly-email change does edit `app/firestore.rules`: `userSettings` writes must pass the newsletter field types, and `newsletterTokens` is an explicit deny. Deploy the rules by hand with the functions. Do not add either deploy to the AWS workflow.
 
 ```bash
 firebase deploy --only firestore:rules --project=gaslandsgarage-74ce6
 ```
-
-unless a later change edits `app/firestore.rules`.
 
 The website updates through the existing AWS workflow when `main` changes. Merging this pull request is what publishes the banner, the footer, and the settings buttons. Do not run `cdk deploy` from this branch.
 

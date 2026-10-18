@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import { user } from '$lib/firebase';
   import AccountPrivacy from '$lib/components/AccountPrivacy.svelte';
+  import { NEWSLETTER_CONSENT_COPY } from '$lib/privacy/marketingConsent';
+  import { newsletterView } from '$lib/services/settings';
 
   // Props
   export let showSettingsModal = false;
@@ -21,6 +22,33 @@
   export let location = '';
   export let receiveUpdates = false;
   export let saveSettingsToFirebase: (settings: Record<string, unknown>) => void | Promise<void> = async () => {};
+
+  let newsletterOptIn = false;
+  let newsletterTouched = false;
+  let newsletterAnswered = false;
+  let settingsWereOpen = false;
+
+  function onNewsletterChange(event: Event) {
+    const input = event.currentTarget;
+    if (!(input instanceof HTMLInputElement)) return;
+    newsletterOptIn = input.checked;
+    newsletterTouched = true;
+  }
+
+  $: if ($newsletterView.loaded && !newsletterTouched) {
+    newsletterOptIn = $newsletterView.optIn;
+    newsletterAnswered = $newsletterView.answered;
+  }
+
+  $: if (showSettingsModal && !settingsWereOpen) {
+    settingsWereOpen = true;
+    newsletterTouched = false;
+    newsletterOptIn = $newsletterView.optIn;
+    newsletterAnswered = $newsletterView.answered;
+  } else if (!showSettingsModal && settingsWereOpen) {
+    settingsWereOpen = false;
+    newsletterTouched = false;
+  }
   
   // Local state - either 'general' or 'print'
   export let activeSettingsTab = 'general';
@@ -132,7 +160,8 @@
                     showOnPlayersMap,
                     allowContactFromPlayers,
                     location,
-                    receiveUpdates
+                    receiveUpdates,
+                    ...(newsletterTouched || newsletterAnswered ? { newsletterOptIn } : {})
                   };
                   
                   await saveSettingsToFirebase(settings);
@@ -309,6 +338,22 @@
               <p class="text-stone-600 dark:text-gray-200 text-sm ml-8">
                 Receive emails with Gaslands and Gaslands Garage feature updates and marketing materials.
               </p>
+            </div>
+
+            <div class="p-4 rounded-lg bg-amber-50 dark:bg-amber-900/30 space-y-3" data-testid="newsletter-setting">
+              <div class="flex items-start">
+                <input
+                  type="checkbox"
+                  id="newsletter-opt-in"
+                  checked={newsletterOptIn}
+                  on:change={onNewsletterChange}
+                  data-testid="newsletter-opt-in"
+                  class="mt-1 w-5 h-5 shrink-0 text-amber-600 bg-stone-100 dark:bg-gray-700 border-stone-300 dark:border-gray-600 rounded focus:ring-amber-500"
+                />
+                <label for="newsletter-opt-in" class="ml-3 text-stone-800 dark:text-white font-medium">
+                  {NEWSLETTER_CONSENT_COPY}
+                </label>
+              </div>
             </div>
 
             <AccountPrivacy />

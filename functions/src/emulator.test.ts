@@ -13,6 +13,7 @@ import {
   handleExportMyData,
   privacyLogRef
 } from './accountPrivacy';
+import { ensureUnsubscribeToken, handleNewsletterSettingsWrite, unsubscribeByToken } from './newsletter';
 import { MAIL_COLLECTION, MAIL_TTL_MS, queueContactEmail } from './contactEmail';
 import { applyAuthDisabled, handleAdminUsersWrite } from './disableUser';
 import { publishUsageStats } from '../../stats/job';
@@ -295,7 +296,20 @@ describe('account privacy', () => {
     await db.doc(`userSettings/${ada}`).set({
       receiveUpdates: true,
       receiveUpdatesChangedAt: '2026-10-01T00:00:00.000Z',
-      darkMode: true
+      darkMode: true,
+      newsletterOptIn: true,
+      newsletterOptInAt: '2026-10-02T00:00:00.000Z',
+      newsletterConsentText: 'monthly-email-v1'
+    });
+    await db.doc(`newsletterTokens/${ada}`).set({
+      uid: ada,
+      token: 'a'.repeat(43),
+      createdAt: '2026-10-02T00:00:00.000Z'
+    });
+    await db.doc(`newsletterTokens/${grace}`).set({
+      uid: grace,
+      token: 'b'.repeat(43),
+      createdAt: '2026-10-02T00:00:00.000Z'
     });
     await db.doc(`playerProfiles/${ada}`).set({ playerName: 'Ada', mapEntryId: pin, showOnMap: true });
     await db.doc(`playerMapOwners/${ada}`).set({ entryId: pin });
@@ -375,6 +389,7 @@ describe('account privacy', () => {
         'adminUsers',
         'gameContacts',
         'messages',
+        'newsletterTokens',
         'openToGames',
         'openToGamesBoard',
         'playerMap',
@@ -409,8 +424,19 @@ describe('account privacy', () => {
       expect(data.teams).toEqual([{ id: 'ada-team', data: { userId: ada, teamName: 'Racers' } }]);
       expect(data['users/{uid}/teams']).toEqual([{ id: 'legacy', data: { teamName: 'Legacy' } }]);
       expect(data.userSettings).toMatchObject({
-        data: { receiveUpdates: true, receiveUpdatesChangedAt: '2026-10-01T00:00:00.000Z' }
+        data: {
+          receiveUpdates: true,
+          receiveUpdatesChangedAt: '2026-10-01T00:00:00.000Z',
+          newsletterOptIn: true,
+          newsletterOptInAt: '2026-10-02T00:00:00.000Z',
+          newsletterConsentText: 'monthly-email-v1'
+        }
       });
+      expect(data.newsletterTokens).toEqual({
+        id: ada,
+        data: { uid: ada, token: 'a'.repeat(43), createdAt: '2026-10-02T00:00:00.000Z' }
+      });
+      expect(JSON.stringify(exported)).not.toContain('b'.repeat(43));
       expect(data.playerMapBoard).toEqual({ key: pin, value: { playerName: 'Ada' } });
       expect(data.openToGamesBoard).toEqual({ key: ada, value: { playerName: 'Ada' } });
       expect(data.adminUsers).toMatchObject({ data: { disabled: false, disabledAt: null, disabledBy: null } });
@@ -498,6 +524,8 @@ describe('account privacy', () => {
       expect((await db.doc('teams/grace-team').get()).get('teamName')).toBe('Keepers');
       expect((await db.doc(`users/${ada}/teams/legacy`).get()).exists).toBe(false);
       expect((await db.doc(`userSettings/${ada}`).get()).exists).toBe(false);
+      expect((await db.doc(`newsletterTokens/${ada}`).get()).exists).toBe(false);
+      expect((await db.doc(`newsletterTokens/${grace}`).get()).exists).toBe(true);
       expect((await db.doc(`playerProfiles/${ada}`).get()).exists).toBe(false);
       expect((await db.doc(`playerMapOwners/${ada}`).get()).exists).toBe(false);
       expect((await db.doc(`playerMapPrivate/${pin}`).get()).exists).toBe(false);
@@ -569,5 +597,46 @@ describe('account privacy', () => {
         nowMs: now
       })
     ).resolves.toEqual({ status: 'deleted' });
+  });
+});
+
+describe('monthly email unsubscribe', () => {
+  const ada = 'playerAda123';
+  const now = '2026-10-18T12:00:00.000Z';
+
+  it('stores one token when someone opts in and the link turns the flag off', async () => {
+    const db = getFirestore();
+    await db.doc(`userSettings/${ada}`).set({
+      darkMode: true,
+      receiveUpdates: true,
+      newsletterOptIn: true,
+      newsletterOptInAt: '2026-10-02T00:00:00.000Z',
+      newsletterConsentText: 'monthly-email-v1'
+    });
+    await handleNewsletterSettingsWrite(ada, { newsletterOptIn: true });
+    const first = await ensureUnsubscribeToken(ada, now);
+    const second = await ensureUnsubscribeToken(ada, '2026-11-01T00:00:00.000Z');
+    expect(second).toBe(first);
+    expect(first).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect((await db.doc(`newsletterTokens/${ada}`).get()).data()).toMatchObject({ uid: ada, token: first });
+
+    await handleNewsletterSettingsWrite(ada, { newsletterOptIn: false });
+    expect((await db.doc(`newsletterTokens/${ada}`).get()).get('token')).toBe(first);
+
+    expect(await unsubscribeByToken('not-a-token', now)).toBe('invalid');
+    expect((await db.doc(`userSettings/${ada}`).get()).get('newsletterOptIn')).toBe(true);
+
+    expect(await unsubscribeByToken(first, now)).toBe('unsubscribed');
+    expect((await db.doc(`userSettings/${ada}`).get()).data()).toMatchObject({
+      darkMode: true,
+      receiveUpdates: true,
+      newsletterOptIn: false,
+      newsletterOptInAt: '2026-10-02T00:00:00.000Z',
+      newsletterConsentText: 'monthly-email-v1',
+      newsletterOptOutAt: now
+    });
+    expect(await unsubscribeByToken(first, '2026-12-01T00:00:00.000Z')).toBe('unsubscribed');
+    expect((await db.doc(`userSettings/${ada}`).get()).get('newsletterOptOutAt')).toBe(now);
+    expect((await db.doc(`newsletterTokens/${ada}`).get()).get('token')).toBe(first);
   });
 });

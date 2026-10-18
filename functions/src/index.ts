@@ -3,6 +3,7 @@ import { onDocumentCreated, onDocumentWritten } from 'firebase-functions/v2/fire
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { USAGE_STATS_SCHEDULE, USAGE_STATS_TIME_ZONE, publishUsageStats as runUsageStats } from '../../stats/job.ts';
 import { deleteMyAccount, exportMyData } from './accountPrivacy.ts';
+import { syncNewsletterToken, unsubscribeNewsletter } from './newsletter.ts';
 import { queueContactEmail } from './contactEmail.ts';
 import { handleAdminUsersWrite } from './disableUser.ts';
 
@@ -72,3 +73,11 @@ export const queueGameContactEmail = onDocumentCreated(
  * that caller's user. Admin disable does not delete anyone.
  */
 export { deleteMyAccount, exportMyData };
+
+/**
+ * Monthly-email unsubscribe. `syncNewsletterToken` stores a random token when
+ * a player opts in. `unsubscribeNewsletter` is a public HTTPS link, with no
+ * sign-in, that sets `newsletterOptIn` to false for that token. It does not
+ * send the monthly email.
+ */
+export { syncNewsletterToken, unsubscribeNewsletter };
