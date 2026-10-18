@@ -1,8 +1,18 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 import { Timestamp } from 'firebase-admin/firestore';
+import {
+  DELETE_CONFIRMATION,
+  OMITTED_NOTE,
+  RATE_LIMIT_MAX,
+  eraseAccount,
+  handleDeleteMyAccount,
+  handleExportMyData,
+  privacyLogRef
+} from './accountPrivacy';
 import { MAIL_COLLECTION, MAIL_TTL_MS, queueContactEmail } from './contactEmail';
 import { applyAuthDisabled, handleAdminUsersWrite } from './disableUser';
 import { publishUsageStats } from '../../stats/job';
@@ -238,5 +248,326 @@ describe('game contact email', () => {
       queueContactEmail('ada_noemail', { ...contact, toUid: 'noemail' })
     ).resolves.toEqual({ status: 'skipped', reason: 'no-email' });
     expect((await getFirestore().collection(MAIL_COLLECTION).get()).empty).toBe(true);
+  });
+});
+
+describe('account privacy', () => {
+  const ada = 'playerAda123';
+  const grace = 'playerGrace456';
+  const pin = 'abc123abc123abc123abc1';
+  const gracePin = 'gracepingracepingrace1';
+
+  function rulesCollections(): string[] {
+    const rules = readFileSync(new URL('../../app/firestore.rules', import.meta.url), 'utf8');
+    return [
+      ...new Set(
+        [...rules.matchAll(/match \/([A-Za-z][A-Za-z0-9]*)\/\{/g)]
+          .map((match) => match[1])
+          .filter((name) => name !== 'databases')
+      )
+    ].sort();
+  }
+
+  async function seed(): Promise<void> {
+    const auth = getAuth();
+    const db = getFirestore();
+    await auth.createUser({ uid: ada, email: 'ada@example.com', displayName: 'Ada Lovelace' });
+    await auth.createUser({ uid: grace, email: 'grace@example.com', displayName: 'Grace Hopper' });
+    await db.doc(`users/${ada}`).set({
+      uid: ada,
+      email: 'ada@example.com',
+      displayName: 'Ada',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      lastSeenAt: '2026-02-01T00:00:00.000Z',
+      lastSignInAt: '2026-02-01T00:00:00.000Z'
+    });
+    await db.doc(`users/${grace}`).set({
+      uid: grace,
+      email: 'grace@example.com',
+      displayName: 'Grace',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      lastSeenAt: '2026-02-01T00:00:00.000Z',
+      lastSignInAt: '2026-02-01T00:00:00.000Z'
+    });
+    await db.doc(`users/${ada}/teams/legacy`).set({ teamName: 'Legacy' });
+    await db.doc('teams/ada-team').set({ userId: ada, teamName: 'Racers' });
+    await db.doc('teams/grace-team').set({ userId: grace, teamName: 'Keepers' });
+    await db.doc(`userSettings/${ada}`).set({
+      receiveUpdates: true,
+      receiveUpdatesChangedAt: '2026-10-01T00:00:00.000Z',
+      darkMode: true
+    });
+    await db.doc(`playerProfiles/${ada}`).set({ playerName: 'Ada', mapEntryId: pin, showOnMap: true });
+    await db.doc(`playerMapOwners/${ada}`).set({ entryId: pin });
+    await db.doc(`playerMapPrivate/${pin}`).set({ ownerUid: ada });
+    await db.doc(`playerMap/${pin}`).set({ anonymous: false, playerName: 'Ada' });
+    await db.doc(`playerMapPrivate/${gracePin}`).set({ ownerUid: grace });
+    await db.doc(`playerMap/${gracePin}`).set({ anonymous: false, playerName: 'Grace' });
+    await db.doc('playerMapBoard/public').set({
+      markers: {
+        [pin]: { playerName: 'Ada' },
+        [gracePin]: { playerName: 'Grace' }
+      }
+    });
+    await db.doc(`openToGames/${ada}`).set({ playerName: 'Ada', bio: 'Warsaw', playSpots: 'Weekends', updatedAt: '2026-10-01T00:00:00.000Z' });
+    await db.doc(`openToGames/${grace}`).set({ playerName: 'Grace', bio: '', playSpots: '', updatedAt: '2026-10-01T00:00:00.000Z' });
+    await db.doc('openToGamesBoard/public').set({
+      players: {
+        [ada]: { playerName: 'Ada' },
+        [grace]: { playerName: 'Grace' }
+      }
+    });
+    await db.doc(`gameContacts/${ada}_${grace}`).set({
+      fromUid: ada,
+      toUid: grace,
+      fromName: 'Ada',
+      toName: 'Grace',
+      message: 'Sunday?',
+      createdAt: '2026-10-18T00:00:00.000Z',
+      read: false,
+      reply: 'Yes',
+      repliedAt: '2026-10-18T01:00:00.000Z'
+    });
+    await db.doc(`gameContacts/${grace}_${ada}`).set({
+      fromUid: grace,
+      toUid: ada,
+      fromName: 'Grace',
+      toName: 'Ada',
+      message: 'Rematch?',
+      createdAt: '2026-10-18T02:00:00.000Z',
+      read: true,
+      reply: 'Tomorrow',
+      repliedAt: '2026-10-18T03:00:00.000Z'
+    });
+    await db.doc('messages/from-ada').set({
+      userId: ada,
+      email: 'ada@example.com',
+      subject: 'Help',
+      message: 'Secret',
+      recipient: 'jose.anes@gmail.com'
+    });
+    await db.doc('messages/from-grace').set({
+      userId: grace,
+      email: 'grace@example.com',
+      subject: 'Keep',
+      message: 'Stay'
+    });
+    await db.doc(`roles/${ada}`).set({ role: 'Player', updatedAt: '2026-01-01T00:00:00.000Z', updatedBy: 'bootstrap' });
+    await db.doc(`adminUsers/${ada}`).set({ disabled: false, disabledAt: null, disabledBy: null });
+    await db.doc(`mail/gameContact_${ada}_${grace}`).set({
+      to: ['grace@example.com'],
+      message: { subject: 'Ada sent a request', text: 'Sunday?' }
+    });
+    await db.doc('mail/to-ada').set({
+      to: ['ada@example.com'],
+      message: { subject: 'Hello Ada', text: 'Queued for you' }
+    });
+    await db.doc('stats/public').set({ totalUsers: 2 });
+  }
+
+  it('audits every rules collection and leaves aggregate stats out of the download', () => {
+    const source = readFileSync(new URL('./accountPrivacy.ts', import.meta.url), 'utf8');
+    for (const name of rulesCollections()) {
+      expect(source, name).toContain(`'${name}'`);
+    }
+    expect(rulesCollections()).toEqual(
+      [
+        'adminUsers',
+        'gameContacts',
+        'messages',
+        'openToGames',
+        'openToGamesBoard',
+        'playerMap',
+        'playerMapBoard',
+        'playerMapOwners',
+        'playerMapPrivate',
+        'playerProfiles',
+        'roles',
+        'stats',
+        'teams',
+        'userSettings',
+        'users'
+      ].sort()
+    );
+  });
+
+  it('exports only the signed-in account and strips the other player email from queued mail', async () => {
+    await seed();
+    const lines: string[] = [];
+    const spy = vi.spyOn(console, 'info').mockImplementation((message?: unknown) => {
+      lines.push(String(message));
+    });
+    try {
+      const exported = await handleExportMyData(ada, Date.parse('2026-10-18T12:00:00.000Z'));
+      const data = exported.data as Record<string, unknown>;
+      expect(exported.uid).toBe(ada);
+      expect(exported.auth).toMatchObject({ email: 'ada@example.com', displayName: 'Ada Lovelace', disabled: false });
+      expect(exported.omitted).toEqual({ 'stats/public': OMITTED_NOTE });
+      expect(JSON.stringify(exported)).not.toContain('Keepers');
+      expect(JSON.stringify(exported)).not.toContain('grace@example.com');
+      expect(JSON.stringify(exported)).not.toContain('Stay');
+      expect(data.teams).toEqual([{ id: 'ada-team', data: { userId: ada, teamName: 'Racers' } }]);
+      expect(data['users/{uid}/teams']).toEqual([{ id: 'legacy', data: { teamName: 'Legacy' } }]);
+      expect(data.userSettings).toMatchObject({
+        data: { receiveUpdates: true, receiveUpdatesChangedAt: '2026-10-01T00:00:00.000Z' }
+      });
+      expect(data.playerMapBoard).toEqual({ key: pin, value: { playerName: 'Ada' } });
+      expect(data.openToGamesBoard).toEqual({ key: ada, value: { playerName: 'Ada' } });
+      expect(data.adminUsers).toMatchObject({ data: { disabled: false, disabledAt: null, disabledBy: null } });
+      expect(data.gameContactsSent).toHaveLength(1);
+      expect(data.gameContactsReceived).toHaveLength(1);
+      expect(data.messages).toEqual([
+        {
+          id: 'from-ada',
+          data: {
+            userId: ada,
+            email: 'ada@example.com',
+            subject: 'Help',
+            message: 'Secret',
+            recipient: 'jose.anes@gmail.com'
+          }
+        }
+      ]);
+      const mail = data.mail as { id: string; to?: string[]; message: { text: string } }[];
+      const queuedToAda = mail.find((item) => item.id === 'to-ada');
+      const queuedToGrace = mail.find((item) => item.id === `gameContact_${ada}_${grace}`);
+      expect(queuedToAda?.to).toEqual(['ada@example.com']);
+      expect(queuedToGrace).not.toHaveProperty('to');
+      expect(queuedToGrace?.message.text).toBe('Sunday?');
+      expect(lines.join('\n')).not.toContain(ada);
+      expect(lines.join('\n')).not.toContain('ada@example.com');
+      expect(lines.join('\n')).toContain(`ref=${privacyLogRef(ada)}`);
+      expect((await getFirestore().doc('stats/public').get()).data()).toEqual({ totalUsers: 2 });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('refuses deletion without a fresh sign-in and the typed confirmation', async () => {
+    await seed();
+    const now = Date.parse('2026-10-18T12:00:00.000Z');
+    await expect(
+      handleDeleteMyAccount({ uid: ada, confirmation: 'delete', authTimeSeconds: Math.floor(now / 1000), nowMs: now })
+    ).rejects.toMatchObject({ code: 'failed-precondition' });
+    await expect(
+      handleDeleteMyAccount({
+        uid: ada,
+        confirmation: DELETE_CONFIRMATION,
+        authTimeSeconds: Math.floor(now / 1000) - 10 * 60,
+        nowMs: now
+      })
+    ).rejects.toMatchObject({ code: 'failed-precondition' });
+    expect((await getAuth().getUser(ada)).email).toBe('ada@example.com');
+    expect((await getFirestore().doc('teams/ada-team').get()).exists).toBe(true);
+    expect((await getFirestore().doc(`users/${grace}`).get()).exists).toBe(true);
+  });
+
+  it('deletes the account last, anonymizes only that side, and can run again', async () => {
+    await seed();
+    const now = Date.parse('2026-10-18T12:00:00.000Z');
+    const lines: string[] = [];
+    const logSpy = vi.spyOn(console, 'info').mockImplementation((message?: unknown) => {
+      lines.push(String(message));
+    });
+    const auth = getAuth();
+    const original = auth.deleteUser.bind(auth);
+    const deleteSpy = vi.spyOn(auth, 'deleteUser').mockImplementation(async (uid: string) => {
+      const db = getFirestore();
+      expect((await db.doc('playerMapBoard/public').get()).get('markers')).not.toHaveProperty(pin);
+      expect((await db.doc('openToGamesBoard/public').get()).get('players')).not.toHaveProperty(ada);
+      expect((await db.doc(`users/${uid}`).get()).exists).toBe(false);
+      expect((await db.doc('teams/ada-team').get()).exists).toBe(false);
+      expect((await db.doc('messages/from-ada').get()).get('email')).toBe('');
+      return original(uid);
+    });
+    try {
+      const result = await handleDeleteMyAccount({
+        uid: ada,
+        confirmation: DELETE_CONFIRMATION,
+        authTimeSeconds: Math.floor(now / 1000),
+        nowMs: now
+      });
+      expect(result).toEqual({ status: 'deleted' });
+      expect(deleteSpy).toHaveBeenCalledWith(ada);
+      await expect(auth.getUser(ada)).rejects.toMatchObject({ code: 'auth/user-not-found' });
+      expect((await auth.getUser(grace)).email).toBe('grace@example.com');
+
+      const db = getFirestore();
+      expect((await db.doc(`users/${ada}`).get()).exists).toBe(false);
+      expect((await db.doc(`users/${grace}`).get()).exists).toBe(true);
+      expect((await db.doc('teams/grace-team').get()).get('teamName')).toBe('Keepers');
+      expect((await db.doc(`users/${ada}/teams/legacy`).get()).exists).toBe(false);
+      expect((await db.doc(`userSettings/${ada}`).get()).exists).toBe(false);
+      expect((await db.doc(`playerProfiles/${ada}`).get()).exists).toBe(false);
+      expect((await db.doc(`playerMapOwners/${ada}`).get()).exists).toBe(false);
+      expect((await db.doc(`playerMapPrivate/${pin}`).get()).exists).toBe(false);
+      expect((await db.doc(`playerMap/${pin}`).get()).exists).toBe(false);
+      expect((await db.doc(`playerMap/${gracePin}`).get()).exists).toBe(true);
+      expect((await db.doc(`openToGames/${ada}`).get()).exists).toBe(false);
+      expect((await db.doc(`openToGames/${grace}`).get()).exists).toBe(true);
+      expect((await db.doc(`roles/${ada}`).get()).exists).toBe(false);
+      expect((await db.doc(`adminUsers/${ada}`).get()).exists).toBe(false);
+      expect((await db.doc('playerMapBoard/public').get()).get('markers')).toEqual({
+        [gracePin]: { playerName: 'Grace' }
+      });
+      expect((await db.doc('openToGamesBoard/public').get()).get('players')).toEqual({
+        [grace]: { playerName: 'Grace' }
+      });
+      expect((await db.doc(`gameContacts/${ada}_${grace}`).get()).data()).toMatchObject({
+        fromUid: ada,
+        toUid: grace,
+        fromName: 'Deleted player',
+        toName: 'Grace',
+        message: '[deleted]',
+        reply: 'Yes'
+      });
+      expect((await db.doc(`gameContacts/${grace}_${ada}`).get()).data()).toMatchObject({
+        fromUid: grace,
+        toUid: ada,
+        fromName: 'Grace',
+        toName: 'Deleted player',
+        message: 'Rematch?',
+        reply: '',
+        repliedAt: ''
+      });
+      expect((await db.doc('messages/from-ada').get()).data()).toMatchObject({
+        userId: 'deleted',
+        email: '',
+        subject: '[deleted]',
+        message: '[deleted]'
+      });
+      expect((await db.doc('messages/from-grace').get()).get('message')).toBe('Stay');
+      expect((await db.doc(`mail/gameContact_${ada}_${grace}`).get()).exists).toBe(false);
+      expect((await db.doc('mail/to-ada').get()).exists).toBe(false);
+      expect((await db.doc('stats/public').get()).data()).toEqual({ totalUsers: 2 });
+      expect(lines.join('\n')).not.toContain(ada);
+      expect(lines.join('\n')).not.toContain('ada@example.com');
+      expect(lines.join('\n')).not.toContain('Grace');
+
+      const again = await eraseAccount(ada);
+      expect(again).toEqual(['boards', 'documents', 'anonymize', 'mail', 'rate', 'auth']);
+      expect((await auth.getUser(grace)).email).toBe('grace@example.com');
+      expect((await db.doc(`gameContacts/${grace}_${ada}`).get()).get('message')).toBe('Rematch?');
+    } finally {
+      deleteSpy.mockRestore();
+      logSpy.mockRestore();
+    }
+  });
+
+  it('rate limits export separately from deletion', async () => {
+    await seed();
+    const now = Date.parse('2026-10-18T12:00:00.000Z');
+    for (let attempt = 0; attempt < RATE_LIMIT_MAX; attempt += 1) {
+      await handleExportMyData(ada, now + attempt);
+    }
+    await expect(handleExportMyData(ada, now + RATE_LIMIT_MAX)).rejects.toMatchObject({ code: 'resource-exhausted' });
+    await expect(
+      handleDeleteMyAccount({
+        uid: ada,
+        confirmation: DELETE_CONFIRMATION,
+        authTimeSeconds: Math.floor(now / 1000),
+        nowMs: now
+      })
+    ).resolves.toEqual({ status: 'deleted' });
   });
 });

@@ -2,6 +2,7 @@ import { getApps, initializeApp } from 'firebase-admin/app';
 import { onDocumentCreated, onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { USAGE_STATS_SCHEDULE, USAGE_STATS_TIME_ZONE, publishUsageStats as runUsageStats } from '../../stats/job.ts';
+import { deleteMyAccount, exportMyData } from './accountPrivacy.ts';
 import { queueContactEmail } from './contactEmail.ts';
 import { handleAdminUsersWrite } from './disableUser.ts';
 
@@ -64,3 +65,10 @@ export const queueGameContactEmail = onDocumentCreated(
     await queueContactEmail(event.params.contactId, snap.data() as Record<string, unknown>);
   }
 );
+
+/**
+ * Self-service download and deletion for the signed-in account.
+ * `deleteMyAccount` is the only function that deletes an Auth user, and only
+ * that caller's user. Admin disable does not delete anyone.
+ */
+export { deleteMyAccount, exportMyData };

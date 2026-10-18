@@ -13,7 +13,9 @@
   import { goto } from '$app/navigation';
   import AdUnit from '$lib/components/AdUnit.svelte';
   import Auth from '$lib/components/Auth.svelte';
+  import ConsentBanner from '$lib/components/ConsentBanner.svelte';
   import TeamsModal from '$lib/components/TeamsModal.svelte';
+  import { openPrivacySettings } from '$lib/privacy/consent';
   import { signInWithGoogle, user } from '$lib/firebase';
   import { disabledNotice, isAdministrator, startAccountSession } from '$lib/admin/session';
 
@@ -673,7 +675,20 @@
       <slot />
     </main>
   </div>
+
+  <footer class="print:hidden border-t border-stone-200 bg-white text-center text-sm dark:border-gray-700 dark:bg-gray-900">
+    <button
+      type="button"
+      class="px-3 py-3 text-stone-600 underline underline-offset-2 hover:text-amber-700 dark:text-gray-300 dark:hover:text-amber-400"
+      data-testid="privacy-settings"
+      on:click={openPrivacySettings}
+    >
+      Privacy settings
+    </button>
+  </footer>
 </div>
+
+<ConsentBanner />
 
 {#if showSignInPrompt}
   <div class="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/60 p-4">

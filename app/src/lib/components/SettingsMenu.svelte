@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { user } from '$lib/firebase';
+  import AccountPrivacy from '$lib/components/AccountPrivacy.svelte';
 
   // Props
   export let showSettingsModal = false;
@@ -309,6 +310,8 @@
                 Receive emails with Gaslands and Gaslands Garage feature updates and marketing materials.
               </p>
             </div>
+
+            <AccountPrivacy />
           {/if}
         {/if}
         

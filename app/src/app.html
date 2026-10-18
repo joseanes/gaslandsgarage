@@ -97,14 +97,53 @@
 				}
 			})();
 		</script>
-		<!-- Google Analytics tag (gtag.js) -->
-		<script async src="https://www.googletagmanager.com/gtag/js?id=G-EKPMXMY097"></script>
+		<!-- Consent Mode v2 defaults run before gtag.js. Advertising storage stays denied. -->
 		<script>
 			window.dataLayer = window.dataLayer || [];
 			function gtag(){dataLayer.push(arguments);}
+			window.gtag = gtag;
+			var consentRegions = ["AT","BE","BG","CH","CY","CZ","DE","DK","EE","ES","FI","FR","GB","GR","HR","HU","IE","IS","IT","LI","LT","LU","LV","MT","NL","NO","PL","PT","RO","SE","SI","SK"];
+			gtag('consent', 'default', {
+				analytics_storage: 'denied',
+				ad_storage: 'denied',
+				ad_user_data: 'denied',
+				ad_personalization: 'denied',
+				region: consentRegions,
+				wait_for_update: 500
+			});
+			gtag('consent', 'default', {
+				analytics_storage: 'granted',
+				ad_storage: 'denied',
+				ad_user_data: 'denied',
+				ad_personalization: 'denied'
+			});
+			var analyticsChoice = null;
+			try {
+				var gpc = navigator.globalPrivacyControl === true;
+				var storedConsent = JSON.parse(localStorage.getItem('gaslands.analyticsConsent.v1') || 'null');
+				var storedChoice = storedConsent && (storedConsent.choice === 'accepted' || storedConsent.choice === 'rejected') ? storedConsent.choice : null;
+				if (gpc && !(storedChoice === 'accepted' && storedConsent.gpc === true)) analyticsChoice = 'denied';
+				else if (storedChoice === 'accepted') analyticsChoice = 'granted';
+				else if (storedChoice === 'rejected') analyticsChoice = 'denied';
+			} catch (e) {
+				analyticsChoice = null;
+			}
+			if (analyticsChoice) {
+				gtag('consent', 'update', {
+					analytics_storage: analyticsChoice,
+					ad_storage: 'denied',
+					ad_user_data: 'denied',
+					ad_personalization: 'denied'
+				});
+			}
+		</script>
+		<script async src="https://www.googletagmanager.com/gtag/js?id=G-EKPMXMY097"></script>
+		<script>
 			gtag('js', new Date());
-
-			gtag('config', 'G-EKPMXMY097');
+			gtag('config', 'G-EKPMXMY097', {
+				allow_google_signals: false,
+				allow_ad_personalization_signals: false
+			});
 		</script>
 		%sveltekit.head%
 	</head>

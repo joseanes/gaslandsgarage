@@ -1,5 +1,6 @@
 import { auth, db } from '../firebase';
 import { browser } from '$app/environment';
+import { stampReceiveUpdatesConsent } from '../privacy/marketingConsent';
 
 // Interface for user settings
 export interface UserSettings {
@@ -12,6 +13,7 @@ export interface UserSettings {
   hasRules?: boolean; // Indicates if the user has acknowledged owning the rules
   showExperimentalFeatures?: boolean; // Whether to show experimental features
   receiveUpdates?: boolean; // Whether user wants to receive updates and marketing emails
+  receiveUpdatesChangedAt?: string; // When receiveUpdates was last turned on or off
   showOnPlayersMap?: boolean; // Whether to show on the Gaslands Players map
   allowContactFromPlayers?: boolean; // Whether other players can contact for game setup
   location?: string; // User's location for the players map
@@ -49,9 +51,16 @@ export async function saveUserSettings(settings: UserSettings): Promise<{ succes
     if (!browser) return { success: false, error: 'Not in browser environment' };
     if (!currentAuth?.currentUser || !database) return { success: false, error: 'User not authenticated' };
 
-    const { doc, setDoc } = await import('firebase/firestore');
+    const { doc, getDoc, setDoc } = await import('firebase/firestore');
     const userId = currentAuth.currentUser.uid;
-    await setDoc(doc(database, 'userSettings', userId), settings);
+    const settingsRef = doc(database, 'userSettings', userId);
+    const existing = await getDoc(settingsRef);
+    const stamped = stampReceiveUpdatesConsent(
+      existing.exists() ? (existing.data() as UserSettings) : null,
+      settings,
+      new Date().toISOString()
+    );
+    await setDoc(settingsRef, stamped);
     return { success: true };
   } catch (error) {
     console.error('Error saving user settings:', error);

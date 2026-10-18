@@ -9,8 +9,10 @@ The functions are 2nd gen, Node.js 22, TypeScript, in `functions/`. Node.js 20 i
 | `publishUsageStats` | Cloud Scheduler `15 6 * * *` in `America/New_York` | Writes `stats/public` and upserts `users/{uid}`. Same job as `stats/job.ts`. |
 | `syncAuthDisabled` | `adminUsers/{uid}` write | Sets Firebase Auth `disabled` to match the document. On disable, revokes refresh tokens. Does not delete the user. |
 | `queueGameContactEmail` | `gameContacts/{contactId}` create | Queues one Trigger Email document when the recipient opted in. |
+| `exportMyData` | Callable, signed-in user | JSON of that account's Firestore data. |
+| `deleteMyAccount` | Callable, signed-in user | Deletes that account. Requires a fresh sign-in and the confirmation `DELETE`. |
 
-Region is `us-central1`. `publishUsageStats` uses 256MiB, a 300 second timeout, and one instance. The other two use the platform defaults and retry on failure. None keep a warm instance.
+Region is `us-central1`. `publishUsageStats` uses 256MiB, a 300 second timeout, and one instance. `syncAuthDisabled` and `queueGameContactEmail` use the platform defaults and retry on failure. `exportMyData` and `deleteMyAccount` use 256MiB, a 60 second timeout, and at most 10 instances. None keep a warm instance.
 
 ## Usage stats
 
@@ -29,7 +31,7 @@ This repository does not delete them. Deleting the secret makes **Run workflow**
 
 The admin page writes `adminUsers/{uid}` (`app/src/lib/admin/api.ts`). The function calls `auth.updateUser(uid, { disabled })`. A change to `disabled: true` also calls `auth.revokeRefreshTokens(uid)`. A change to `disabled: false` re-enables the Auth user and does not revoke tokens. A repeated write of the same flag does nothing. Removing the document does nothing to Auth.
 
-The function never calls `deleteUser`. Teams, profiles, and the Auth user stay.
+`syncAuthDisabled` never calls `deleteUser`. Teams, profiles, and the Auth user stay. Self-service deletion is a separate callable, `deleteMyAccount`, and it only deletes the signed-in account. An administrator still cannot delete someone else.
 
 ## Game-request email
 
@@ -67,6 +69,25 @@ firebase ext:install firebase/firestore-send-email --project=gaslandsgarage-74ce
 ```
 
 Point the extension at the `mail` collection. Leave its sender address in the extension config. Do not put a recipient address in source.
+
+## Export and delete
+
+`exportMyData` and `deleteMyAccount` are HTTPS callables in `us-central1`. Both require a signed-in Firebase user and act only on `request.auth.uid`. A uid in the request body is ignored. Each allows 5 calls per rolling hour, stored on `privacyRate/{uid}` (`exportAt` and `deleteAt`). Clients cannot read or write that collection. The default deny rule covers it, so no rules change is required.
+
+`exportMyData` returns JSON for `users`, `users/{uid}/teams`, `teams`, `userSettings`, `playerProfiles`, `playerMapOwners`, `playerMapPrivate`, `playerMap`, that account's key on `playerMapBoard/public` and `openToGamesBoard/public`, `openToGames`, game requests sent and received, `messages`, `roles`, `adminUsers`, `mail` (another person's address is left out), and `privacyRate`. `stats/public` is aggregate and is not copied. The callable response has to stay under Cloud Functions' 10 MB limit.
+
+`deleteMyAccount` checks that `confirmation` is exactly `DELETE` and that the ID token `auth_time` is less than five minutes old. It then, in order:
+
+1. Removes this account's key from `playerMapBoard/public` and `openToGamesBoard/public` in one transaction.
+2. Deletes the account's documents, including teams and the legacy `users/{uid}/teams` subcollection.
+3. Anonymizes this account's side of `gameContacts` and `messages`. The other person's text stays. Names become `Deleted player`. Contact-form messages lose their email and body, and `userId` becomes `deleted`.
+4. Deletes queued `mail` documents for those requests and any mail addressed to this account.
+5. Deletes `privacyRate/{uid}`.
+6. Deletes the Auth user last. A missing Auth user is success, so a retry can finish leftover documents.
+
+Logs are `privacy <event> ref=<sha256 prefix>`. They do not include the uid, email, or display name. Deleting `adminUsers/{uid}` makes `syncAuthDisabled` see a deleted document and leave Auth alone. The Auth delete is only step 6.
+
+The browser calls these from Settings → General Settings after Google sign-in. Download does not ask for a second sign-in. Delete opens the Google prompt again, then calls the function. See `docs/PRIVACY-OPS.md` for requests, retention, and the breach checklist.
 
 ## Deploy
 
@@ -119,7 +140,7 @@ gcloud projects add-iam-policy-binding gaslandsgarage-74ce6 \
   --role="roles/firebaseauth.admin"
 ```
 
-`roles/firebaseauth.admin` is broader than the calls in this code: it can also delete users. The functions do not. Do not download a key for this account.
+`roles/firebaseauth.admin` is broader than a disable. `deleteMyAccount` uses it to delete the signed-in Auth user, and only that user. `syncAuthDisabled` still does not delete anyone. Do not download a key for this account.
 
 ## Tests
 
@@ -143,6 +164,7 @@ This project does not set a minimum instance count, so there is no idle charge.
 | `publishUsageStats` | 1 run per day. Budget about 20 seconds at 1 vCPU and 256MiB: about 600 vCPU-seconds and 150 GiB-seconds a month. | $0 inside the Cloud Run free tier (240,000 vCPU-seconds and 450,000 GiB-seconds per month). List price past that is about $0.000018 per vCPU-second and $0.000002 per GiB-second, so this job is about $0.01 a month even with no free tier. |
 | Cloud Scheduler | 1 job. | $0 while the billing account is under 3 jobs. Otherwise $0.10 per job per month. A paused job still counts. |
 | Disable and contact triggers | A handful of Eventarc deliveries. | Covered by the Eventarc and Cloud Run free tiers at this size. |
+| `exportMyData` and `deleteMyAccount` | Occasional callable requests at 256MiB. | Covered by the Cloud Run free tier at this size. Firestore reads and writes for one account stay inside the Firestore free tier. |
 | Firestore | The daily job reads `teams` and `users` and writes `stats/public` plus changed user profiles. Each opted-in contact adds one settings read and one `mail` write. | $0 while under the Firestore free tier (50,000 reads and 20,000 writes per day). Past that, reads are $0.06 and writes are $0.18 per 100,000. |
 | Auth | `listUsers`, `getUser`, `updateUser`, `revokeRefreshTokens`. | No Firebase Auth charge for these calls. |
 | Artifact Registry and Cloud Build | Image storage and the deploy build. | $0 inside the Artifact Registry 0.5 GB free tier and the Cloud Build 120 minutes per day free tier. |

@@ -100,8 +100,13 @@ jobs:
         run: |
           pnpm check
           pnpm build
-          if grep -E 'FIREBASE_SERVICE_ACCOUNT|deleteUser|private_key' lib/index.js; then
-            echo "Built functions bundle still mentions a service account key or user deletion"
+          if grep -E 'FIREBASE_SERVICE_ACCOUNT|private_key' lib/index.js; then
+            echo "Built functions bundle mentions a service account key"
+            exit 1
+          fi
+          # Self-service account deletion is the only Auth delete. Admin disable must not delete users.
+          if grep -n 'deleteUser' src/disableUser.ts src/contactEmail.ts src/index.ts; then
+            echo "Admin and contact functions must not delete Auth users"
             exit 1
           fi
           pnpm test
