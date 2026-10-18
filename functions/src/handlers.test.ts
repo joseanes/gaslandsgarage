@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { contactMailDocument, mailDocId, recipientWantsContactEmail } from './contactEmail';
+import { Timestamp } from 'firebase-admin/firestore';
+import { MAIL_TTL_MS, contactMailDocument, mailDocId, mailExpiresAt, recipientWantsContactEmail } from './contactEmail';
 import { USAGE_STATS_SCHEDULE, USAGE_STATS_TIME_ZONE } from '../../stats/job';
 import { FUNCTIONS_REGION, publishUsageStatsOptions } from './index';
 
@@ -44,6 +45,13 @@ describe('contact mail document', () => {
     expect(mail.message.text).toContain('Sunday at the warehouse?');
     expect(mail.message.text).not.toContain('ada@example.com');
     expect(mailDocId('ada_grace')).toBe('gameContact_ada_grace');
+  });
+
+  it('sets expireAt 30 days after the queue time', () => {
+    const now = new Date('2026-10-18T12:00:00.000Z');
+    const expireAt = mailExpiresAt(now);
+    expect(expireAt).toBeInstanceOf(Timestamp);
+    expect(expireAt.toMillis() - now.getTime()).toBe(MAIL_TTL_MS);
   });
 });
 

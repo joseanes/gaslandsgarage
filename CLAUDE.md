@@ -69,7 +69,7 @@ cd app && node deploy-firebase-rules.mjs
 firebase deploy --only firestore:rules --project=gaslandsgarage-74ce6
 
 # Deploy Cloud Functions by hand. CI does not deploy them. Hosting stays on AWS.
-firebase deploy --only functions --project=gaslandsgarage-74ce6
+firebase deploy --only functions --force --project=gaslandsgarage-74ce6
 
 # Build the infrastructure
 cd infra && pnpm build

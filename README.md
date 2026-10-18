@@ -110,7 +110,7 @@ cd app && node deploy-firebase-rules.mjs
 firebase deploy --only firestore:rules --project=gaslandsgarage-74ce6
 
 # Deploy Cloud Functions (Auth and Firestore only; the site stays on AWS)
-firebase deploy --only functions --project=gaslandsgarage-74ce6
+firebase deploy --only functions --force --project=gaslandsgarage-74ce6
 ```
 
 Administrator accounts, disabling a player, and the one-time bootstrap are documented in [docs/ADMIN.md](docs/ADMIN.md). Cloud Functions, the runtime identity, and cost are documented in [docs/FUNCTIONS.md](docs/FUNCTIONS.md).

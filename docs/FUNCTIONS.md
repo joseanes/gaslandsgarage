@@ -2,7 +2,7 @@
 
 Firebase project `gaslandsgarage-74ce6` is on the Blaze plan. Auth and Firestore stay in Firebase. The website stays on AWS S3 and CloudFront. Nothing in CI deploys functions, rules, or hosting.
 
-The functions are 2nd gen, Node.js 20, TypeScript, in `functions/`. They use the Admin SDK with the default compute runtime identity. No function takes a service account key, a secret, or a pinned runtime account.
+The functions are 2nd gen, Node.js 22, TypeScript, in `functions/`. Node.js 20 is retired on 30 October 2026, so the runtime in `functions/package.json` is `22`. They use `firebase-admin` 14 and `firebase-functions` 7 with the default compute runtime identity. No function takes a service account key, a secret, or a pinned runtime account.
 
 | Function | Trigger | What it does |
 | --- | --- | --- |
@@ -43,9 +43,18 @@ The recipient address is loaded with `auth.getUser(toUid)`. It is written only a
   "message": {
     "subject": "Ada sent a Gaslands game request",
     "text": "..."
-  }
+  },
+  "expireAt": "Firestore timestamp, 30 days after the write"
 }
 ```
+
+`expireAt` is a Firestore timestamp 30 days after the queue write. It is not an email address. A TTL policy on that field deletes the `mail` document, which is the only stored copy of the recipient address. The policy is not created by `firebase deploy`. Turn it on once:
+
+```bash
+gcloud firestore fields ttls update expireAt --collection-group=mail --enable-ttl --project=gaslandsgarage-74ce6
+```
+
+Firestore does not delete the document at the exact timestamp. Expect the purge within about a day after `expireAt`. Until the policy is enabled, `expireAt` is only a field.
 
 The address is not written onto `gameContacts`, `users`, `playerProfiles`, or `userSettings`. The message body does not include it. A second delivery for the same contact id is ignored. Updates and replies do not queue another message. A disabled Auth user, or an account with no email, is skipped.
 
@@ -65,10 +74,12 @@ From the repository root, with the Firebase CLI logged in as someone who can dep
 
 ```bash
 pnpm install
-firebase deploy --only functions --project=gaslandsgarage-74ce6
+firebase deploy --only functions --force --project=gaslandsgarage-74ce6
 ```
 
-The predeploy hook runs `pnpm --dir functions run build`, which bundles `functions/lib/index.js`. `lib/` is gitignored and is not in the functions ignore list, so the bundle is uploaded. Node 20 comes from `functions/package.json` `engines.node`.
+`syncAuthDisabled` and `queueGameContactEmail` set `retry: true`, so failed events are retried. The Firebase CLI stops and asks before deploying a function that retries. Those retrying functions require `firebase deploy --only functions --force`. `--force` accepts that prompt, including in a non-interactive shell. Without it, a deploy that includes either function does not finish. `publishUsageStats` is on the same deploy.
+
+The predeploy hook runs `pnpm --dir functions run build`, which bundles `functions/lib/index.js`. `lib/` is gitignored and is not in the functions ignore list, so the bundle is uploaded. Node.js 22 comes from `functions/package.json` `engines.node`.
 
 Rules stay a separate command:
 
@@ -119,7 +130,7 @@ pnpm build
 pnpm test
 ```
 
-`pnpm test` starts the Auth and Firestore emulators with `firebase-tools@13.29.1` and project `demo-gaslands-functions`. It needs Java. The tests call the same handlers the triggers call. They do not deploy.
+`pnpm test` starts the Auth and Firestore emulators with `firebase-tools@13.29.1` and project `demo-gaslands-functions`. It needs Java and Node.js 22, because `firebase-admin` 14 does not run on Node.js 20. The test script sets `METADATA_SERVER_DETECTION=none` so the Admin SDK does not wait on the Compute Engine metadata server. The tests call the same handlers the triggers call. They do not deploy.
 
 ## Cost
 

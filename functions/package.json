@@ -3,16 +3,16 @@
   "private": true,
   "main": "lib/index.js",
   "engines": {
-    "node": "20"
+    "node": "22"
   },
   "scripts": {
-    "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=cjs --outfile=lib/index.js --packages=external --sourcemap",
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node22 --format=cjs --outfile=lib/index.js --packages=external --sourcemap",
     "check": "tsc --noEmit",
-    "test": "pnpm --config.engine-strict=false dlx firebase-tools@13.29.1 emulators:exec --only auth,firestore --project demo-gaslands-functions --config ../firebase.json \"pnpm exec vitest run\""
+    "test": "METADATA_SERVER_DETECTION=none pnpm --config.engine-strict=false dlx firebase-tools@13.29.1 emulators:exec --only auth,firestore --project demo-gaslands-functions --config ../firebase.json \"pnpm exec vitest run\""
   },
   "dependencies": {
-    "firebase-admin": "13.10.0",
-    "firebase-functions": "6.6.0"
+    "firebase-admin": "14.5.0",
+    "firebase-functions": "7.4.0"
   },
   "devDependencies": {
     "@types/node": "^22.15.17",
