@@ -25,7 +25,7 @@ A player cannot grant themselves a role. Security rules allow a role write only 
 
 No `roles` document means a regular user. `disabled: true` on `adminUsers/{uid}` means the account is disabled. The Auth user is left in place.
 
-The browser cannot list Auth accounts. The users list is the `users` collection, which the app writes the first time someone signs in with this version. Players who have not signed in since then do not appear until they do. The bootstrap script below also writes a `users` document for the account you name, so that administrator shows up after the rules are live.
+The browser cannot list Auth accounts. The users list is the `users` collection. The app writes a player's document when they sign in, and the daily **Usage stats** job (`stats/usersSync.ts`) upserts one for every Firebase Auth user, so players who have not signed in since this version appear after the next run. The job creates missing documents and, on existing ones, refreshes `email` and `displayName`, moves `lastSignInAt` forward, and fills `uid`, `createdAt`, or `lastSeenAt` only when they are missing. It never changes `lastSeenAt` or `createdAt` once set, and it never writes `roles` or `adminUsers`. Both writers share `app/src/lib/admin/profileShape.ts`. The bootstrap script below also writes a `users` document for the account you name, so that administrator shows up after the rules are live.
 
 ## What disable does
 
