@@ -618,6 +618,23 @@ describe('monthly email unsubscribe', () => {
   const ada = 'playerAda123';
   const now = '2026-10-18T12:00:00.000Z';
 
+  it('does not mint a token or opt in when only the retired receiveUpdates flag is set', async () => {
+    const db = getFirestore();
+    const uid = 'playerOldBoxOnly';
+    await db.doc(`userSettings/${uid}`).set({
+      receiveUpdates: true,
+      receiveUpdatesChangedAt: '2026-01-01T00:00:00.000Z'
+    });
+    await handleNewsletterSettingsWrite(uid, {
+      receiveUpdates: true,
+      receiveUpdatesChangedAt: '2026-01-01T00:00:00.000Z'
+    });
+    expect((await db.doc(`newsletterTokens/${uid}`).get()).exists).toBe(false);
+    const stored = (await db.doc(`userSettings/${uid}`).get()).data();
+    expect(stored?.newsletterOptIn).toBeUndefined();
+    expect(stored?.receiveUpdates).toBe(true);
+  });
+
   it('stores one token when someone opts in and the link turns the flag off', async () => {
     const db = getFirestore();
     await db.doc(`userSettings/${ada}`).set({

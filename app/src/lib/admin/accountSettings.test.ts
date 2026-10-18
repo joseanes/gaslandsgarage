@@ -7,7 +7,7 @@ describe('projectUserSettings', () => {
 			newsletterOptIn: true,
 			newsletterOptInAt: '2026-10-01T15:04:00.000Z',
 			newsletterConsentText: 'monthly-email-v1',
-			receiveUpdates: false,
+			receiveUpdates: true,
 			receiveUpdatesChangedAt: '2026-09-01T12:00:00.000Z',
 			allowContactFromPlayers: true,
 			showOnPlayersMap: false,
@@ -22,8 +22,6 @@ describe('projectUserSettings', () => {
 		expect(view.newsletterOptIn).toBe(true);
 		expect(view.newsletterOptInAt).toBe('2026-10-01T15:04:00.000Z');
 		expect(view.newsletterConsentText).toBe('monthly-email-v1');
-		expect(view.receiveUpdates).toBe(false);
-		expect(view.receiveUpdatesChangedAt).toBe('2026-09-01T12:00:00.000Z');
 		expect(view.allowContactFromPlayers).toBe(true);
 		expect(view.location).toBe('Austin, TX');
 		expect(view.analytics).toEqual({
@@ -39,12 +37,14 @@ describe('projectUserSettings', () => {
 		expect(serialized).not.toContain('dashboard');
 		expect(serialized).not.toContain('person@example.com');
 		expect(serialized).not.toContain('darkMode');
+		expect(serialized).not.toContain('receiveUpdates');
+		expect(serialized).not.toContain('2026-09-01');
 	});
 
 	it('treats a missing document as unanswered and not stored', () => {
 		const view = projectUserSettings(undefined);
 		expect(view.newsletterOptIn).toBeNull();
-		expect(view.receiveUpdates).toBe(false);
+		expect(view).not.toHaveProperty('receiveUpdates');
 		expect(view.analytics).toEqual({ stored: false });
 		expect(view.ads).toEqual({ stored: false });
 		expect(view.gpc).toBeNull();

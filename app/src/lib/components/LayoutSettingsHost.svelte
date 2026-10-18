@@ -21,7 +21,6 @@
 	let showOnPlayersMap = initial.showOnPlayersMap;
 	let allowContactFromPlayers = initial.allowContactFromPlayers;
 	let location = initial.location;
-	let receiveUpdates = initial.receiveUpdates;
 	let showSettingsModal = false;
 	let activeSettingsTab: SettingsTab = 'general';
 	let appliedAccount: UserSettings | null = null;
@@ -41,8 +40,7 @@
 			showExperimentalFeatures,
 			showOnPlayersMap,
 			allowContactFromPlayers,
-			location,
-			receiveUpdates
+			location
 		};
 	}
 
@@ -61,7 +59,6 @@
 		showOnPlayersMap = next.showOnPlayersMap;
 		allowContactFromPlayers = next.allowContactFromPlayers;
 		location = next.location;
-		receiveUpdates = next.receiveUpdates;
 	}
 
 	// Apply the saved account once. Skip while the dialog is open so Cancel keeps
@@ -109,7 +106,6 @@
 		bind:showOnPlayersMap
 		bind:allowContactFromPlayers
 		bind:location
-		bind:receiveUpdates
 		saveSettingsToFirebase={saveSettings}
 	/>
 {/if}

@@ -128,6 +128,25 @@ function rulesVersionFrom(value: unknown): 2 | 3 | null {
 	return null;
 }
 
+function teamFromData(id: string, data: Record<string, unknown>): DirectoryTeam {
+	const teamData = (data.teamData ?? {}) as Record<string, unknown>;
+	const maxCans = typeof teamData.maxCans === 'number' ? teamData.maxCans : null;
+	return {
+		id,
+		teamName: asString(data.teamName) || asString(teamData.teamName) || 'Untitled team',
+		sponsorId: asString(teamData.sponsor) || asString(teamData.sponsorId),
+		rulesVersion: rulesVersionFrom(teamData.rulesVersion),
+		maxCans,
+		vehicles: vehiclesFrom(teamData.vehicles)
+	};
+}
+
+function detailError(error: unknown, fallback: string): Error {
+	if (isPermissionDenied(error)) return new Error(fallback);
+	const message = permissionMessage(error);
+	return new Error(message.startsWith(fallback) ? message : `${fallback} ${message}`);
+}
+
 async function readCollection(
 	databaseRef: NonNullable<typeof db>,
 	getDocs: (typeof import('firebase/firestore'))['getDocs'],
@@ -173,18 +192,8 @@ export async function loadDirectory(): Promise<Directory> {
 		const data = entry.data();
 		const userId = asString(data.userId);
 		if (!userId) return;
-		const teamData = (data.teamData ?? {}) as Record<string, unknown>;
-		const maxCans = typeof teamData.maxCans === 'number' ? teamData.maxCans : null;
-		const team: DirectoryTeam = {
-			id: entry.id,
-			teamName: asString(data.teamName) || asString(teamData.teamName) || 'Untitled team',
-			sponsorId: asString(teamData.sponsor) || asString(teamData.sponsorId),
-			rulesVersion: rulesVersionFrom(teamData.rulesVersion),
-			maxCans,
-			vehicles: vehiclesFrom(teamData.vehicles)
-		};
 		const list = teamsByUser.get(userId) ?? [];
-		list.push(team);
+		list.push(teamFromData(entry.id, data));
 		teamsByUser.set(userId, list);
 	});
 
@@ -220,6 +229,59 @@ export async function loadDirectory(): Promise<Directory> {
 	});
 	users.sort((a, b) => a.email.localeCompare(b.email) || a.uid.localeCompare(b.uid));
 	return { users, teamsByUser, settingsByUser, profilesByUser };
+}
+
+/** Read one player's settings and profile. Active administrators are allowed to read `userSettings`. */
+export async function loadUserAccount(uid: string): Promise<{
+	settings: AdminAccountSettings;
+	profile: AdminProfileView | null;
+	profileLoaded: boolean;
+}> {
+	const { doc, getDoc, db: databaseRef } = await database();
+	const [settingsResult, profileResult] = await Promise.all([
+		getDoc(doc(databaseRef, 'userSettings', uid)).then(
+			(snap) => snap,
+			(error: unknown) => error
+		),
+		getDoc(doc(databaseRef, 'playerProfiles', uid)).then(
+			(snap) => snap,
+			(error: unknown) => error
+		)
+	]);
+
+	if (!isSnapshot(settingsResult)) {
+		throw detailError(settingsResult, 'Account settings could not be loaded.');
+	}
+
+	let profile: AdminProfileView | null = null;
+	let profileLoaded = true;
+	if (!isSnapshot(profileResult)) {
+		if (!isPermissionDenied(profileResult)) throw detailError(profileResult, 'Player profile could not be loaded.');
+		profileLoaded = false;
+	} else if (profileResult.exists()) {
+		profile = projectPlayerProfile(profileResult.data());
+	}
+
+	return {
+		settings: projectUserSettings(settingsResult.exists() ? settingsResult.data() : undefined),
+		profile,
+		profileLoaded
+	};
+}
+
+/** Teams saved by one player. An empty list means they have none. */
+export async function loadUserTeams(uid: string): Promise<DirectoryTeam[]> {
+	const { collection, getDocs, query, where, db: databaseRef } = await database();
+	try {
+		const snap = await getDocs(query(collection(databaseRef, 'teams'), where('userId', '==', uid)));
+		const teams: DirectoryTeam[] = [];
+		snap.forEach((entry) => {
+			teams.push(teamFromData(entry.id, entry.data()));
+		});
+		return teams;
+	} catch (error) {
+		throw detailError(error, 'Teams could not be loaded.');
+	}
 }
 
 async function applyAccountOperation(operation: AccountOperation): Promise<Result> {

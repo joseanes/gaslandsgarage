@@ -66,7 +66,25 @@ jobs:
       run: |
         echo "Uploading files to S3 bucket: $BUCKET_NAME"
         ls -la app/build/
-        aws s3 sync app/build/ s3://$BUCKET_NAME/ --delete
+        # Keep previous /_app/immutable hashes. sync --delete would remove the
+        # chunks an older cached index.html still names, and the vehicle list
+        # then renders nothing. Replaced hashes are pruned after 14 days.
+        aws s3 sync app/build/ s3://$BUCKET_NAME/ --delete \
+          --exclude "_app/immutable/*" \
+          --exclude "_app/immutable/*/*" \
+          --exclude "_app/immutable/*/*/*"
+        aws s3 sync app/build/_app/immutable/ s3://$BUCKET_NAME/_app/immutable/ \
+          --cache-control "public, max-age=31536000, immutable" \
+          --size-only
+        # Object metadata as well as the CloudFront default behavior. index.html
+        # must not be stored as immutable or a browser keeps asking for deleted chunks.
+        while IFS= read -r -d '' html; do
+          key="${html#app/build/}"
+          aws s3 cp "$html" "s3://$BUCKET_NAME/$key" \
+            --cache-control "no-cache" \
+            --content-type "text/html; charset=utf-8"
+        done < <(find app/build -name '*.html' -print0)
+        node scripts/prune-immutable.mjs "$BUCKET_NAME" app/build 14
         # The icon responses need image types. A generic binary type makes the tab fall back to the default globe.
         aws s3 cp app/build/favicon.ico s3://$BUCKET_NAME/favicon.ico --content-type image/x-icon --cache-control max-age=86400
         aws s3 cp app/build/favicon.svg s3://$BUCKET_NAME/favicon.svg --content-type image/svg+xml --cache-control max-age=86400
