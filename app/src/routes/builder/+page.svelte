@@ -3259,20 +3259,21 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 					</select>
 					{/key}
 				</div>
-				<div class="flex items-center justify-between w-full gap-4">
-					<div class="flex items-center gap-4">
+				<div class="flex flex-wrap items-center w-full gap-x-4 gap-y-2">
+					<div class="flex items-center gap-4 w-full min-w-0 sm:w-auto">
 						<b class="text-base font-bold whitespace-nowrap" style="min-width: 50px;">Name:</b>
 						<input
 							type="text"
 							bind:value={teamName}
-							class="bg-transparent border-2 border-amber-500 rounded-lg px-3 py-0.25 font-bold text-amber-700 dark:text-white focus:outline-none focus:border-amber-600 min-w-[127px] w-auto max-w-[150px] text-base dark-text-input"
+							placeholder="Team Name"
+							class="bg-transparent border-2 border-amber-500 rounded-lg px-3 py-0.25 font-bold text-amber-700 dark:text-white focus:outline-none focus:border-amber-600 min-w-0 w-full flex-1 text-base dark-text-input sm:w-64 sm:flex-none"
 							style="height: 32px !important; min-height: 32px !important; max-height: 32px !important;"
 							aria-label="Team Name"
 						/>
 					</div>
 					<!-- Edit/Play Mode Toggle Button -->
 					<button
-						class="py-2 px-4 w-32 flex items-center justify-center rounded-md transition-colors amber-button"
+						class="py-2 px-4 w-32 ml-auto flex items-center justify-center rounded-md transition-colors amber-button"
 						on:click={togglePlayMode}
 					>
 						<span class="w-3 h-3 rounded-full {playMode ? 'bg-green-500' : 'bg-amber-500'} transition-colors mr-2"></span>
