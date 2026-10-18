@@ -9,7 +9,9 @@ import {
   type Transaction
 } from 'firebase-admin/firestore';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import { emailAddressHash, normalizeInviteEmail, twilioEmailConfigured } from '../../app/src/lib/buddies/emailInvite.ts';
 import { MAIL_COLLECTION, mailDocId } from './contactEmail.ts';
+import { twilioAccountSid, twilioAuthToken } from './twilioConfig.ts';
 
 /** Same region as the other functions. Kept local to avoid an import cycle with index.ts. */
 export const PRIVACY_REGION = 'us-central1';
@@ -35,6 +37,16 @@ const OPEN_TO_GAMES_BOARD = 'openToGamesBoard';
 const GAME_CONTACTS = 'gameContacts';
 const PRIVACY_RATE = 'privacyRate';
 const NEWSLETTER_TOKENS = 'newsletterTokens';
+const BUDDIES = 'buddies';
+const BUDDY_REQUESTS = 'buddyRequests';
+const BUDDY_BLOCKS = 'buddyBlocks';
+const BUDDY_INVITES = 'buddyInvites';
+const BUDDY_DIRECTORY = 'buddyDirectory';
+const BUDDY_RATE = 'buddyRate';
+const BUDDY_EMAIL_INVITES = 'buddyEmailInvites';
+const BUDDY_EMAIL_OPT_OUTS = 'buddyEmailOptOuts';
+const BUDDY_EMAIL_RATE = 'buddyEmailRate';
+const BUDDY_EMAIL_SUPPRESS = 'buddyEmailSuppress';
 const STATS = 'stats';
 const BOARD_DOC = 'public';
 const TOMBSTONE = 'deleted';
@@ -48,6 +60,11 @@ export const privacyCallableOptions = {
   timeoutSeconds: 60,
   maxInstances: 10
 } as const;
+
+const privacySecretOptions = {
+  ...privacyCallableOptions,
+  secrets: [twilioAccountSid, twilioAuthToken]
+};
 
 export const OMITTED_NOTE = 'Aggregate counts only. Not copied into a personal download.';
 
@@ -223,6 +240,87 @@ async function deleteRefs(refs: DocumentReference[]): Promise<void> {
   }
 }
 
+/** Salted hash of this account's address. Skipped when Twilio is not configured. */
+function ownEmailHash(email: string): string | null {
+	const normalized = normalizeInviteEmail(email);
+	const sid = process.env.TWILIO_ACCOUNT_SID ?? '';
+	const token = process.env.TWILIO_AUTH_TOKEN ?? '';
+	if (!normalized || !twilioEmailConfigured(sid, token)) return null;
+	return emailAddressHash(normalized, token);
+}
+
+async function deleteBuddyLinks(uid: string, email: string): Promise<void> {
+	const db = getFirestore();
+	const hash = ownEmailHash(email);
+	const [member, sent, received, blocking, blocked, emailInvites, emailOptOuts, addressedInvites, addressedOptOuts] =
+		await Promise.all([
+			db.collection(BUDDIES).where('members', 'array-contains', uid).get(),
+			db.collection(BUDDY_REQUESTS).where('fromUid', '==', uid).get(),
+			db.collection(BUDDY_REQUESTS).where('toUid', '==', uid).get(),
+			db.collection(BUDDY_BLOCKS).where('blockerUid', '==', uid).get(),
+			db.collection(BUDDY_BLOCKS).where('blockedUid', '==', uid).get(),
+			db.collection(BUDDY_EMAIL_INVITES).where('fromUid', '==', uid).get(),
+			db.collection(BUDDY_EMAIL_OPT_OUTS).where('fromUid', '==', uid).get(),
+			hash ? db.collection(BUDDY_EMAIL_INVITES).where('emailHash', '==', hash).get() : Promise.resolve(null),
+			hash ? db.collection(BUDDY_EMAIL_OPT_OUTS).where('emailHash', '==', hash).get() : Promise.resolve(null)
+		]);
+	const refs = new Map<string, DocumentReference>();
+	for (const item of [
+		...member.docs,
+		...sent.docs,
+		...received.docs,
+		...blocking.docs,
+		...blocked.docs,
+		...emailInvites.docs,
+		...emailOptOuts.docs,
+		...(addressedInvites?.docs ?? []),
+		...(addressedOptOuts?.docs ?? [])
+	]) {
+		refs.set(item.ref.path, item.ref);
+	}
+	refs.set(`${BUDDY_INVITES}/${uid}`, db.doc(`${BUDDY_INVITES}/${uid}`));
+	refs.set(`${BUDDY_DIRECTORY}/${uid}`, db.doc(`${BUDDY_DIRECTORY}/${uid}`));
+	refs.set(`${BUDDY_RATE}/${uid}`, db.doc(`${BUDDY_RATE}/${uid}`));
+	if (hash) {
+		refs.set(`${BUDDY_EMAIL_RATE}/${hash}`, db.doc(`${BUDDY_EMAIL_RATE}/${hash}`));
+		refs.set(`${BUDDY_EMAIL_SUPPRESS}/${hash}`, db.doc(`${BUDDY_EMAIL_SUPPRESS}/${hash}`));
+	}
+	await deleteRefs([...refs.values()]);
+}
+
+async function buddyExport(uid: string, email: string): Promise<Record<string, unknown>> {
+	const db = getFirestore();
+	const hash = ownEmailHash(email);
+	const [member, sent, received, blocking, blocked, invite, directory, rate, emailInvites, emailOptOuts, emailRate, emailSuppress] =
+		await Promise.all([
+			db.collection(BUDDIES).where('members', 'array-contains', uid).get(),
+			db.collection(BUDDY_REQUESTS).where('fromUid', '==', uid).get(),
+			db.collection(BUDDY_REQUESTS).where('toUid', '==', uid).get(),
+			db.collection(BUDDY_BLOCKS).where('blockerUid', '==', uid).get(),
+			db.collection(BUDDY_BLOCKS).where('blockedUid', '==', uid).get(),
+			db.doc(`${BUDDY_INVITES}/${uid}`).get(),
+			db.doc(`${BUDDY_DIRECTORY}/${uid}`).get(),
+			db.doc(`${BUDDY_RATE}/${uid}`).get(),
+			db.collection(BUDDY_EMAIL_INVITES).where('fromUid', '==', uid).get(),
+			db.collection(BUDDY_EMAIL_OPT_OUTS).where('fromUid', '==', uid).get(),
+			hash ? db.doc(`${BUDDY_EMAIL_RATE}/${hash}`).get() : Promise.resolve(null),
+			hash ? db.doc(`${BUDDY_EMAIL_SUPPRESS}/${hash}`).get() : Promise.resolve(null)
+		]);
+	return {
+		[BUDDIES]: queryJson(member.docs),
+		buddyRequestsSent: queryJson(sent.docs),
+		buddyRequestsReceived: queryJson(received.docs),
+		[BUDDY_BLOCKS]: queryJson([...blocking.docs, ...blocked.docs]),
+		[BUDDY_INVITES]: docJson(invite),
+		[BUDDY_DIRECTORY]: docJson(directory),
+		[BUDDY_RATE]: docJson(rate),
+		[BUDDY_EMAIL_INVITES]: queryJson(emailInvites.docs),
+		[BUDDY_EMAIL_OPT_OUTS]: queryJson(emailOptOuts.docs),
+		[BUDDY_EMAIL_RATE]: emailRate ? docJson(emailRate) : null,
+		[BUDDY_EMAIL_SUPPRESS]: emailSuppress ? docJson(emailSuppress) : null
+	};
+}
+
 async function deleteOwnedDocuments(uid: string, entryId: string | null): Promise<void> {
   const db = getFirestore();
   const [teams, legacyTeams] = await Promise.all([
@@ -322,10 +420,12 @@ export async function eraseAccount(uid: string): Promise<string[]> {
   await deleteOwnedDocuments(uid, entryId);
   steps.push('anonymize');
   const contactIds = await anonymizeContactsAndMessages(uid);
-  steps.push('mail');
-  await deleteQueuedMail(email, contactIds);
-  steps.push('rate');
-  await getFirestore().doc(`${PRIVACY_RATE}/${uid}`).delete();
+	steps.push('mail');
+	await deleteQueuedMail(email, contactIds);
+	steps.push('buddies');
+	await deleteBuddyLinks(uid, email);
+	steps.push('rate');
+	await getFirestore().doc(`${PRIVACY_RATE}/${uid}`).delete();
   steps.push('auth');
   try {
     await getAuth().deleteUser(uid);
@@ -394,7 +494,8 @@ export async function exportAccount(uid: string): Promise<Record<string, unknown
     db.collection(GAME_CONTACTS).where('toUid', '==', uid).get()
   ]);
 
-  const privateDoc = entryId ? await db.doc(`${PLAYER_MAP_PRIVATE}/${entryId}`).get() : null;
+	const buddyData = await buddyExport(uid, email);
+	const privateDoc = entryId ? await db.doc(`${PLAYER_MAP_PRIVATE}/${entryId}`).get() : null;
   const mapDoc = entryId ? await db.doc(`${PLAYER_MAP}/${entryId}`).get() : null;
   const ownsPin = entryId !== null;
 
@@ -432,10 +533,11 @@ export async function exportAccount(uid: string): Promise<Record<string, unknown
       [MESSAGES]: queryJson(messages.docs),
       [ROLES]: docJson(roleDoc),
       [ADMIN_USERS]: docJson(adminDoc),
-      [MAIL_COLLECTION]: [...mailSnaps.values()].map((item) => mailForSubject(item.id, item.data() ?? {}, email)),
-      [PRIVACY_RATE]: docJson(rateDoc)
-    }
-  };
+			[MAIL_COLLECTION]: [...mailSnaps.values()].map((item) => mailForSubject(item.id, item.data() ?? {}, email)),
+			[PRIVACY_RATE]: docJson(rateDoc),
+			...buddyData
+		}
+	};
 }
 
 export async function consumePrivacyRateLimit(uid: string, action: RateAction, nowMs = Date.now()): Promise<void> {
@@ -483,12 +585,12 @@ export async function handleDeleteMyAccount(input: {
 }
 
 /** The signed-in account only. A uid in the body is ignored. */
-export const exportMyData = onCall(privacyCallableOptions, async (request) => {
+export const exportMyData = onCall(privacySecretOptions, async (request) => {
   return handleExportMyData(request.auth?.uid);
 });
 
 /** Re-auth and the typed confirmation are required. Admins cannot call this for someone else. */
-export const deleteMyAccount = onCall(privacyCallableOptions, async (request) => {
+export const deleteMyAccount = onCall(privacySecretOptions, async (request) => {
   return handleDeleteMyAccount({
     uid: request.auth?.uid,
     confirmation: readConfirmation(request.data),

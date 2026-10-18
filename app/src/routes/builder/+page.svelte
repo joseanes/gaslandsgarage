@@ -132,6 +132,10 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		
 		// Check if we have stored team data from a failed load attempt
 		try {
+			if (sessionStorage.getItem('gaslands-buddy-copy-banner') === '1') {
+				buddyCopyBanner = true;
+				sessionStorage.removeItem('gaslands-buddy-copy-banner');
+			}
 			const storedTeamData = localStorage.getItem('gaslands-team-data');
 			if (storedTeamData) {
 				console.log("[Builder] Found stored team data, attempting to load");
@@ -180,6 +184,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
   $: sortedPerks = [...perks].sort((a, b) => a.name.localeCompare(b.name));
 
 	/* ---------- UI state ---------- */
+	let buddyCopyBanner = false;
 	// Find "No Sponsor" ID or use first sponsor as fallback
 	let sponsorId: string = sponsors.find(s => s.id === 'no_sponsor')?.id ?? sponsors[0]?.id ?? '';
 	let validation: Validation = { cans: 0, errors: [], vehicleReports: [] };
@@ -3156,6 +3161,12 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
         </div>
       </div>
     {/if}
+	{#if buddyCopyBanner}
+		<div class="mb-4 flex flex-col gap-2 rounded-lg border border-amber-500 bg-amber-50 p-3 text-sm text-stone-800 sm:flex-row sm:items-center sm:justify-between dark:border-amber-600 dark:bg-gray-800 dark:text-gray-100" role="status" data-testid="buddy-copy-banner">
+			<p>This is a copy from a gaming buddy. Saving stores it on your account and does not change their team.</p>
+			<button type="button" class="min-h-11 rounded-lg px-3 py-2 text-amber-800 underline dark:text-amber-300" on:click={() => (buddyCopyBanner = false)}>Dismiss</button>
+		</div>
+	{/if}
 	<header class="mb-3 md:mb-4">
 		<div class="text-3xl md:text-4xl font-extrabold text-stone-800 dark:text-gray-100 tracking-tight flex flex-wrap justify-between items-center">
 			<div class="flex flex-col gap-2 w-full">

@@ -40,6 +40,8 @@ describe('SvelteKit route discovery', () => {
 		expect(discoverSpaRoutes(appRoutes)).toEqual([
 			'/admin',
 			'/admin/users',
+			'/buddies',
+			'/buddies/:p',
 			'/builder',
 			'/players',
 			'/privacy',
@@ -95,7 +97,7 @@ describe('viewer-request function', () => {
 	}
 
 	test('rewrites every current app route, including parents, to index.html', () => {
-		for (const uri of ['/builder', '/stats', '/admin', '/admin/users', '/players', '/profile', '/privacy', '/terms']) {
+		for (const uri of ['/builder', '/stats', '/admin', '/admin/users', '/players', '/profile', '/privacy', '/terms', '/buddies', '/buddies/player1']) {
 			const result = run(handler, uri, { query: { draft: { value: 'abc' } } });
 			expect(result.uri).toBe('/index.html');
 			expect(result.statusCode).toBeUndefined();

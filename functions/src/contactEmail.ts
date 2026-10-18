@@ -4,6 +4,12 @@ import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 /** Collection the Firebase Trigger Email extension watches. */
 export const MAIL_COLLECTION = 'mail';
 
+/**
+ * Opens the builder settings tab where player contact can be turned off.
+ * The Twilio sender in PR #25 appends this link to game-request mail only.
+ */
+export const CONTACT_SETTINGS_URL = 'https://gaslandsgarage.com/builder?openSettingsTab=general';
+
 /** Firestore TTL deletes a mail document this long after it is queued. */
 export const MAIL_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 

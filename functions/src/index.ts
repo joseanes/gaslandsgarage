@@ -3,6 +3,17 @@ import { onDocumentCreated, onDocumentWritten } from 'firebase-functions/v2/fire
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { USAGE_STATS_SCHEDULE, USAGE_STATS_TIME_ZONE, publishUsageStats as runUsageStats } from '../../stats/job.ts';
 import { deleteMyAccount, exportMyData } from './accountPrivacy.ts';
+import { acceptBuddyEmailInvite, sendBuddyInvite, suppressBuddyEmailInvites } from './buddyEmailInvite.ts';
+import {
+	cancelBuddyRequest,
+	getBuddyInvite,
+	removeBuddy,
+	respondBuddyRequest,
+	saveBuddyProfile,
+	searchBuddyPlayers,
+	sendBuddyRequest,
+	unblockBuddy
+} from './buddies.ts';
 import { syncNewsletterToken, unsubscribeNewsletter } from './newsletter.ts';
 import { queueContactEmail } from './contactEmail.ts';
 import { handleAdminUsersWrite } from './disableUser.ts';
@@ -73,6 +84,29 @@ export const queueGameContactEmail = onDocumentCreated(
  * that caller's user. Admin disable does not delete anyone.
  */
 export { deleteMyAccount, exportMyData };
+
+/**
+ * Gaming buddies. Links are created only here, with the Admin SDK.
+ * Clients cannot write `buddies`, requests, blocks, invites, or the directory.
+ */
+export {
+	cancelBuddyRequest,
+	getBuddyInvite,
+	removeBuddy,
+	respondBuddyRequest,
+	saveBuddyProfile,
+	searchBuddyPlayers,
+	sendBuddyRequest,
+	unblockBuddy
+};
+
+/**
+ * Email buddy invites. `sendBuddyInvite` and `acceptBuddyEmailInvite` require
+ * a signed-in account. `suppressBuddyEmailInvites` is a public HTTPS link.
+ * GET shows a confirm page and changes nothing. POST stops future invite mail
+ * to that address. Tokens are not readable by clients.
+ */
+export { acceptBuddyEmailInvite, sendBuddyInvite, suppressBuddyEmailInvites };
 
 /**
  * Monthly-email unsubscribe. `syncNewsletterToken` stores a random token when

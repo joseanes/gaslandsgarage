@@ -588,6 +588,183 @@ describe('monthly email consent', () => {
 	});
 });
 
+describe('gaming buddies', () => {
+	const pair = 'buddy~owner';
+
+	function buddyLink(status = 'accepted') {
+		return {
+			members: ['buddy', 'owner'],
+			status,
+			names: { buddy: 'Bea', owner: 'Oak' },
+			createdAt: NOW,
+			updatedAt: NOW
+		};
+	}
+
+	async function seedTeams() {
+		await seed(async (database) => {
+			await setDoc(doc(database, 'teams', 'visible'), {
+				userId: 'owner',
+				teamName: 'Racers',
+				hiddenFromBuddies: false,
+				teamData: { sponsor: 'rutherford', vehicles: [] }
+			});
+			await setDoc(doc(database, 'teams', 'hidden'), {
+				userId: 'owner',
+				teamName: 'Secret',
+				hiddenFromBuddies: true
+			});
+			await setDoc(doc(database, 'teams', 'legacy'), {
+				userId: 'owner',
+				teamName: 'Old'
+			});
+			await setDoc(doc(database, 'buddies', pair), buddyLink());
+		});
+	}
+
+	it('lets a signed-in player list their own buddy links, requests, and blocks', async () => {
+		const player = authed('buddy');
+		await assertSucceeds(
+			getDocs(query(collection(player, 'buddies'), where('members', 'array-contains', 'buddy'), where('status', '==', 'accepted')))
+		);
+		await assertSucceeds(getDocs(query(collection(player, 'buddyRequests'), where('toUid', '==', 'buddy'))));
+		await assertSucceeds(getDocs(query(collection(player, 'buddyRequests'), where('fromUid', '==', 'buddy'))));
+		await assertSucceeds(getDocs(query(collection(player, 'buddyBlocks'), where('blockerUid', '==', 'buddy'))));
+		await assertFails(getDocs(collection(player, 'buddies')));
+		await assertFails(getDocs(collection(player, 'buddyRequests')));
+		await assertFails(getDocs(collection(player, 'buddyDirectory')));
+	});
+
+	it('lets an accepted buddy read a visible team and blocks writes', async () => {
+		await seedTeams();
+		const buddy = authed('buddy');
+		await assertSucceeds(getDoc(doc(buddy, 'teams', 'visible')));
+		await assertSucceeds(
+			getDocs(query(collection(buddy, 'teams'), where('userId', '==', 'owner'), where('hiddenFromBuddies', '==', false)))
+		);
+		const listed = await getDocs(
+			query(collection(buddy, 'teams'), where('userId', '==', 'owner'), where('hiddenFromBuddies', '==', false))
+		);
+		expect(listed.docs.map((item) => item.id)).toEqual(['visible']);
+		await assertFails(updateDoc(doc(buddy, 'teams', 'visible'), { teamName: 'Stolen' }));
+		await assertFails(deleteDoc(doc(buddy, 'teams', 'visible')));
+		await assertFails(setDoc(doc(buddy, 'teams', 'planted'), { userId: 'owner', teamName: 'Planted', hiddenFromBuddies: false }));
+		await assertFails(setDoc(doc(buddy, 'buddies', pair), buddyLink()));
+	});
+
+	it('denies a player who is not a buddy', async () => {
+		await seedTeams();
+		await assertFails(getDoc(doc(authed('stranger'), 'teams', 'visible')));
+		await assertFails(
+			getDocs(query(collection(authed('stranger'), 'teams'), where('userId', '==', 'owner'), where('hiddenFromBuddies', '==', false)))
+		);
+		await assertFails(getDoc(doc(guest(), 'teams', 'visible')));
+	});
+
+	it('denies a pending request', async () => {
+		await seed(async (database) => {
+			await setDoc(doc(database, 'teams', 'visible'), {
+				userId: 'owner',
+				teamName: 'Racers',
+				hiddenFromBuddies: false
+			});
+			await setDoc(doc(database, 'buddyRequests', 'buddy~owner'), {
+				fromUid: 'buddy',
+				toUid: 'owner',
+				fromName: 'Bea',
+				toName: 'Oak',
+				status: 'pending',
+				createdAt: NOW,
+				updatedAt: NOW
+			});
+		});
+		await assertFails(getDoc(doc(authed('buddy'), 'teams', 'visible')));
+		await assertSucceeds(getDoc(doc(authed('buddy'), 'buddyRequests', 'buddy~owner')));
+		await assertFails(setDoc(doc(authed('buddy'), 'buddyRequests', 'buddy~owner'), { status: 'accepted' }));
+	});
+
+	it('denies access after the buddy link is removed or is not accepted', async () => {
+		await seedTeams();
+		await seed(async (database) => {
+			await deleteDoc(doc(database, 'buddies', pair));
+		});
+		await assertFails(getDoc(doc(authed('buddy'), 'teams', 'visible')));
+
+		await seed(async (database) => {
+			await setDoc(doc(database, 'buddies', pair), buddyLink('removed'));
+		});
+		await assertFails(getDoc(doc(authed('buddy'), 'teams', 'visible')));
+	});
+
+	it('denies a hidden team and a team with no visibility field', async () => {
+		await seedTeams();
+		const buddy = authed('buddy');
+		await assertFails(getDoc(doc(buddy, 'teams', 'hidden')));
+		await assertFails(getDoc(doc(buddy, 'teams', 'legacy')));
+		await assertSucceeds(getDoc(doc(authed('owner'), 'teams', 'hidden')));
+		await assertSucceeds(getDoc(doc(authed('owner'), 'teams', 'legacy')));
+	});
+
+	it('denies a disabled buddy and a buddy of a disabled owner', async () => {
+		await seedTeams();
+		await seed(async (database) => {
+			await setDoc(doc(database, 'adminUsers', 'buddy'), disabledBy('admin'));
+		});
+		await assertFails(getDoc(doc(authed('buddy'), 'teams', 'visible')));
+		await assertFails(getDoc(doc(authed('buddy'), 'buddies', pair)));
+
+		await seed(async (database) => {
+			await deleteDoc(doc(database, 'adminUsers', 'buddy'));
+			await setDoc(doc(database, 'adminUsers', 'owner'), disabledBy('admin'));
+		});
+		await assertFails(getDoc(doc(authed('buddy'), 'teams', 'visible')));
+	});
+
+	it('keeps invite codes, the directory, and blocks off other players', async () => {
+		await seed(async (database) => {
+			await setDoc(doc(database, 'buddyInvites', 'owner'), { code: 'ABCD234567', displayName: 'Oak' });
+			await setDoc(doc(database, 'buddyDirectory', 'owner'), { displayName: 'Oak', displayNameKey: 'oak' });
+			await setDoc(doc(database, 'buddyBlocks', 'owner~buddy'), {
+				blockerUid: 'owner',
+				blockedUid: 'buddy',
+				createdAt: NOW
+			});
+		});
+		await assertSucceeds(getDoc(doc(authed('owner'), 'buddyInvites', 'owner')));
+		await assertFails(getDoc(doc(authed('buddy'), 'buddyInvites', 'owner')));
+		await assertFails(getDocs(collection(authed('buddy'), 'buddyInvites')));
+		await assertSucceeds(getDoc(doc(authed('owner'), 'buddyDirectory', 'owner')));
+		await assertFails(getDoc(doc(authed('buddy'), 'buddyDirectory', 'owner')));
+		await assertFails(getDocs(collection(authed('buddy'), 'buddyDirectory')));
+		await assertSucceeds(getDoc(doc(authed('owner'), 'buddyBlocks', 'owner~buddy')));
+		await assertFails(getDoc(doc(authed('buddy'), 'buddyBlocks', 'owner~buddy')));
+		await assertFails(setDoc(doc(authed('owner'), 'buddyDirectory', 'owner'), { displayName: 'Spoof', email: 'a@b.c' }));
+	});
+
+	it('hides email invite tokens from clients', async () => {
+		const hash = 'ab'.repeat(32);
+		await seed(async (database) => {
+			await setDoc(doc(database, 'buddyEmailInvites', 'invite1'), {
+				fromUid: 'owner',
+				emailHash: hash,
+				exp: 1,
+				message: '',
+				usedAt: null,
+				createdAt: NOW
+			});
+			await setDoc(doc(database, 'buddyEmailOptOuts', hash), { emailHash: hash, fromUid: 'owner', createdAt: NOW });
+			await setDoc(doc(database, 'buddyEmailRate', hash), { sentAt: 1 });
+			await setDoc(doc(database, 'buddyEmailSuppress', hash), { suppressedAt: NOW });
+		});
+		const owner = authed('owner');
+		for (const name of ['buddyEmailInvites', 'buddyEmailOptOuts', 'buddyEmailRate', 'buddyEmailSuppress']) {
+			await assertFails(getDoc(doc(owner, name, name === 'buddyEmailInvites' ? 'invite1' : hash)));
+			await assertFails(getDocs(collection(owner, name)));
+			await assertFails(setDoc(doc(owner, name, 'planted'), { fromUid: 'owner' }));
+		}
+	});
+});
+
 describe('rules file', () => {
 	it('does not name a person as the administrator', () => {
 		const rules = readFileSync(new URL('../firestore.rules', import.meta.url), 'utf8');

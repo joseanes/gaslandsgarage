@@ -1,0 +1,187 @@
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { getApps, initializeApp } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
+import { getFirestore } from 'firebase-admin/firestore';
+import { eraseAccount, exportAccount } from './accountPrivacy';
+import {
+	handleCancelBuddyRequest,
+	handleGetBuddyInvite,
+	handleRemoveBuddy,
+	handleRespondBuddyRequest,
+	handleSaveBuddyProfile,
+	handleSearchBuddyPlayers,
+	handleSendBuddyRequest,
+	handleUnblockBuddy
+} from './buddies';
+import { BUDDY_REQUESTS_PER_HOUR } from '../../app/src/lib/buddies/model';
+
+const projectId = process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT || 'demo-gaslands-functions';
+
+function emulatorUrl(host: string | undefined, fallbackPort: number): string {
+	const value = host && host.length > 0 ? host : `127.0.0.1:${fallbackPort}`;
+	return value.startsWith('http') ? value : `http://${value}`;
+}
+
+async function clearEmulators(): Promise<void> {
+	const firestore = await fetch(
+		`${emulatorUrl(process.env.FIRESTORE_EMULATOR_HOST, 8080)}/emulator/v1/projects/${projectId}/databases/(default)/documents`,
+		{ method: 'DELETE' }
+	);
+	if (!firestore.ok) throw new Error(`Could not clear Firestore (${firestore.status})`);
+	const auth = await fetch(
+		`${emulatorUrl(process.env.FIREBASE_AUTH_EMULATOR_HOST, 9099)}/emulator/v1/projects/${projectId}/accounts`,
+		{ method: 'DELETE' }
+	);
+	if (!auth.ok) throw new Error(`Could not clear Auth (${auth.status})`);
+}
+
+beforeAll(() => {
+	process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST || '127.0.0.1:8080';
+	process.env.FIREBASE_AUTH_EMULATOR_HOST = process.env.FIREBASE_AUTH_EMULATOR_HOST || '127.0.0.1:9099';
+	if (getApps().length === 0) initializeApp({ projectId });
+});
+
+beforeEach(async () => {
+	await clearEmulators();
+});
+
+afterAll(async () => {
+	await clearEmulators();
+});
+
+async function player(uid: string, name: string): Promise<void> {
+	await getAuth().createUser({ uid, email: `${uid}@example.com`, displayName: name });
+}
+
+describe('gaming buddies', () => {
+	const now = Date.parse('2026-10-18T12:00:00.000Z');
+
+	it('sends by invite, accepts a mutual link, and never stores an email', async () => {
+		await player('ada', 'Ada');
+		await player('grace', 'Grace');
+		await handleSaveBuddyProfile('ada', { displayName: 'Ada Lovelace', discoverable: false }, now);
+		await handleSaveBuddyProfile('grace', { displayName: 'Grace Hopper', discoverable: true }, now);
+		const invite = await handleGetBuddyInvite('ada', now);
+		expect(invite.code).toMatch(/^[A-Z2-9]{10}$/);
+		expect(JSON.stringify(invite)).not.toContain('@');
+
+		const lines: string[] = [];
+		const spy = vi.spyOn(console, 'info').mockImplementation((message?: unknown) => {
+			lines.push(String(message));
+		});
+		try {
+			const sent = await handleSendBuddyRequest('grace', { code: invite.code.toLowerCase() }, now);
+			expect(sent.status).toBe('sent');
+			const request = (await getFirestore().doc(`buddyRequests/${sent.requestId}`).get()).data();
+			expect(request).toMatchObject({
+				fromUid: 'grace',
+				toUid: 'ada',
+				fromName: 'Grace Hopper',
+				toName: 'Ada Lovelace',
+				status: 'pending'
+			});
+			expect(JSON.stringify(request)).not.toContain('@');
+			expect(Object.keys(request ?? {})).not.toContain('email');
+
+			await expect(handleRespondBuddyRequest('grace', { requestId: sent.requestId, action: 'accept' }, now)).rejects.toMatchObject({
+				code: 'permission-denied'
+			});
+			await handleRespondBuddyRequest('ada', { requestId: sent.requestId, action: 'accept' }, now);
+			const buddy = (await getFirestore().doc('buddies/ada~grace').get()).data();
+			expect(buddy).toMatchObject({
+				members: ['ada', 'grace'],
+				status: 'accepted',
+				names: { ada: 'Ada Lovelace', grace: 'Grace Hopper' }
+			});
+			expect(JSON.stringify(buddy)).not.toContain('@');
+			expect((await getFirestore().doc(`buddyRequests/${sent.requestId}`).get()).exists).toBe(false);
+			expect(lines.join('\n')).not.toContain('ada@example.com');
+			expect(lines.join('\n')).not.toContain('Ada Lovelace');
+		} finally {
+			spy.mockRestore();
+		}
+	});
+
+	it('refuses a direct id unless that player opted in, and blocks a later request', async () => {
+		await player('ada', 'Ada');
+		await player('grace', 'Grace');
+		await handleSaveBuddyProfile('ada', { displayName: 'Ada', discoverable: false }, now);
+		await expect(handleSendBuddyRequest('grace', { targetUid: 'ada' }, now)).rejects.toMatchObject({
+			code: 'failed-precondition'
+		});
+		await handleSaveBuddyProfile('ada', { displayName: 'Ada', discoverable: true }, now);
+		const sent = await handleSendBuddyRequest('grace', { targetUid: 'ada' }, now + 1);
+		await handleRespondBuddyRequest('ada', { requestId: sent.requestId, action: 'block' }, now);
+		await expect(handleSendBuddyRequest('grace', { targetUid: 'ada' }, now + 2)).rejects.toMatchObject({
+			code: 'failed-precondition'
+		});
+		expect((await getFirestore().doc('buddyBlocks/ada~grace').get()).get('blockerUid')).toBe('ada');
+		await handleUnblockBuddy('ada', { otherUid: 'grace' });
+		const again = await handleSendBuddyRequest('grace', { targetUid: 'ada' }, now + 3);
+		expect(again.status).toBe('sent');
+	});
+
+	it('removes the link for both people and keeps the other team', async () => {
+		await player('ada', 'Ada');
+		await player('grace', 'Grace');
+		await handleSaveBuddyProfile('ada', { displayName: 'Ada', discoverable: true }, now);
+		const sent = await handleSendBuddyRequest('grace', { targetUid: 'ada' }, now);
+		await handleRespondBuddyRequest('ada', { requestId: sent.requestId, action: 'accept' }, now);
+		await getFirestore().doc('teams/ada-team').set({ userId: 'ada', teamName: 'Racers', hiddenFromBuddies: false });
+		await handleRemoveBuddy('grace', { otherUid: 'ada' });
+		expect((await getFirestore().doc('buddies/ada~grace').get()).exists).toBe(false);
+		expect((await getFirestore().doc('teams/ada-team').get()).get('teamName')).toBe('Racers');
+	});
+
+	it('searches display names only and rate limits requests', async () => {
+		await player('ada', 'Ada');
+		await player('grace', 'Grace');
+		await handleSaveBuddyProfile('ada', { displayName: 'Ada Lovelace', discoverable: true }, now);
+		await getFirestore().doc('buddyDirectory/ada').set({
+			displayName: 'Ada Lovelace',
+			displayNameKey: 'ada lovelace',
+			email: 'ada@example.com',
+			updatedAt: '2026-10-18T12:00:00.000Z'
+		});
+		const found = await handleSearchBuddyPlayers('grace', { query: 'ada' }, now);
+		expect(found.results).toEqual([{ uid: 'ada', displayName: 'Ada Lovelace', relationship: 'none' }]);
+		expect(JSON.stringify(found)).not.toContain('ada@example.com');
+		await expect(handleSearchBuddyPlayers('grace', { query: 'ada@example.com' }, now)).rejects.toMatchObject({
+			code: 'invalid-argument'
+		});
+
+		const stamps = Array.from({ length: BUDDY_REQUESTS_PER_HOUR }, (_, index) => now + index);
+		await getFirestore().doc('buddyRate/grace').set({ requestAt: stamps });
+		await expect(handleSendBuddyRequest('grace', { targetUid: 'ada' }, now + 10)).rejects.toMatchObject({
+			code: 'resource-exhausted'
+		});
+	});
+
+	it('rejects a disabled account and includes buddies in export and delete', async () => {
+		await player('ada', 'Ada');
+		await player('grace', 'Grace');
+		await getAuth().updateUser('ada', { disabled: true });
+		await expect(handleGetBuddyInvite('ada', now)).rejects.toMatchObject({ code: 'permission-denied' });
+		await getAuth().updateUser('ada', { disabled: false });
+		await handleSaveBuddyProfile('ada', { displayName: 'Ada', discoverable: true }, now);
+		const sent = await handleSendBuddyRequest('grace', { targetUid: 'ada' }, now);
+		await handleCancelBuddyRequest('grace', { requestId: sent.requestId });
+		const resent = await handleSendBuddyRequest('grace', { targetUid: 'ada' }, now + 1);
+		await handleRespondBuddyRequest('ada', { requestId: resent.requestId, action: 'accept' }, now);
+		await getFirestore().doc('teams/grace-team').set({ userId: 'grace', teamName: 'Keepers', hiddenFromBuddies: false });
+
+		const exported = await exportAccount('ada');
+		const data = exported.data as Record<string, unknown>;
+		expect(JSON.stringify(data.buddies)).toContain('grace');
+		expect(JSON.stringify(data.buddyInvites)).toContain('Ada');
+		expect(JSON.stringify(exported)).not.toContain('grace@example.com');
+
+		await eraseAccount('ada');
+		const db = getFirestore();
+		expect((await db.doc('buddies/ada~grace').get()).exists).toBe(false);
+		expect((await db.doc('buddyInvites/ada').get()).exists).toBe(false);
+		expect((await db.doc('buddyDirectory/ada').get()).exists).toBe(false);
+		expect((await db.doc('teams/grace-team').get()).get('teamName')).toBe('Keepers');
+		expect((await getAuth().getUser('grace')).email).toBe('grace@example.com');
+	});
+});

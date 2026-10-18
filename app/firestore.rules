@@ -327,9 +327,45 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    function uidOk(uid) {
+      return uid is string
+        && uid.size() > 0
+        && uid.size() <= 128
+        && uid.matches('^[A-Za-z0-9_-]+$');
+    }
+
+    function accountDisabled(uid) {
+      return exists(/databases/$(database)/documents/adminUsers/$(uid))
+        && get(/databases/$(database)/documents/adminUsers/$(uid)).data.disabled == true;
+    }
+
+    // One accepted document for the pair. The id is the two uids in order, joined
+    // with ~. Clients cannot create it; a callable writes it with the Admin SDK.
+    function acceptedBuddy(ownerUid) {
+      let pair = request.auth.uid < ownerUid
+        ? request.auth.uid + '~' + ownerUid
+        : ownerUid + '~' + request.auth.uid;
+      return uidOk(request.auth.uid)
+        && uidOk(ownerUid)
+        && request.auth.uid != ownerUid
+        && exists(/databases/$(database)/documents/buddies/$(pair))
+        && get(/databases/$(database)/documents/buddies/$(pair)).data.status == 'accepted'
+        && get(/databases/$(database)/documents/buddies/$(pair)).data.members is list
+        && get(/databases/$(database)/documents/buddies/$(pair)).data.members.size() == 2
+        && get(/databases/$(database)/documents/buddies/$(pair)).data.members.hasAll([request.auth.uid, ownerUid]);
+    }
+
     // Teams collection rules
     match /teams/{teamId} {
       allow read: if signedIn() && !isDisabled() && resource.data.userId == request.auth.uid;
+      // A buddy can read a team that the owner has not hidden. They cannot write it.
+      // hiddenFromBuddies must be false on the document. Missing means hidden from buddies
+      // until the owner opens their teams and the app fills the field in.
+      allow read: if signedIn()
+        && !isDisabled()
+        && resource.data.hiddenFromBuddies == false
+        && acceptedBuddy(resource.data.userId)
+        && !accountDisabled(resource.data.userId);
       allow read: if isAdmin();
 
       allow create: if signedIn()
@@ -578,6 +614,66 @@ service cloud.firestore {
       allow delete: if signedIn()
         && !isDisabled()
         && (resource.data.fromUid == request.auth.uid || resource.data.toUid == request.auth.uid);
+    }
+
+    // Accepted buddy links. Written only by the Admin SDK. Either member can read.
+    // The list query is members array-contains the caller and status == accepted.
+    // Do not add "members is list" here: that check is not implied by the query,
+    // so Firestore denies the whole list.
+    match /buddies/{pairId} {
+      allow read: if signedIn()
+        && !isDisabled()
+        && resource.data.status == 'accepted'
+        && resource.data.members.hasAny([request.auth.uid]);
+      allow write: if false;
+    }
+
+    // Requests are readable by the sender or the recipient. No email field.
+    // Creating, accepting, declining, and blocking go through callables.
+    match /buddyRequests/{requestId} {
+      allow read: if signedIn() && !isDisabled() && resource.data.toUid == request.auth.uid;
+      allow read: if signedIn() && !isDisabled() && resource.data.fromUid == request.auth.uid;
+      allow write: if false;
+    }
+
+    // The invite code for this account. Other players resolve a code through a callable.
+    match /buddyInvites/{userId} {
+      allow read: if signedIn() && !isDisabled() && userId == request.auth.uid;
+      allow write: if false;
+    }
+
+    // Opt-in display name for search. The owner can read their own card.
+    // Search runs in a callable so this collection cannot be listed.
+    match /buddyDirectory/{userId} {
+      allow get: if signedIn() && !isDisabled() && userId == request.auth.uid;
+      allow list: if false;
+      allow write: if false;
+    }
+
+    // Email-invite tokens, recipient hashes, and opt-out tokens.
+    // Clients cannot read or write them. Callables use the Admin SDK.
+    match /buddyEmailInvites/{inviteId} {
+      allow read, write: if false;
+    }
+
+    match /buddyEmailOptOuts/{tokenHash} {
+      allow read, write: if false;
+    }
+
+    match /buddyEmailRate/{addressHash} {
+      allow read, write: if false;
+    }
+
+    match /buddyEmailSuppress/{addressHash} {
+      allow read, write: if false;
+    }
+
+    // A block is visible to the person who blocked. The blocked player is not told here.
+    match /buddyBlocks/{blockId} {
+      allow read: if signedIn()
+        && !isDisabled()
+        && resource.data.blockerUid == request.auth.uid;
+      allow write: if false;
     }
   }
 }

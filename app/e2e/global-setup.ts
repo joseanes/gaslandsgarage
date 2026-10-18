@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
@@ -29,8 +29,10 @@ async function waitForEmulators(child: ReturnType<typeof spawn>) {
 		exitCode = code;
 	});
 	const started = Date.now();
-	while (Date.now() - started < 180_000) {
-		if ((await canConnect(9099)) && (await canConnect(8080))) return;
+	while (Date.now() - started < 240_000) {
+		if ((await canConnect(9099)) && (await canConnect(8080)) && (await canConnect(5001)) && emulatorLog().includes('All emulators ready')) {
+			return;
+		}
 		if (exitCode !== null) {
 			throw new Error(`Firebase emulators exited (${exitCode}) before they were ready.\n${emulatorLog()}`);
 		}
@@ -40,23 +42,37 @@ async function waitForEmulators(child: ReturnType<typeof spawn>) {
 }
 
 export default async function globalSetup() {
-	if ((await canConnect(9099)) && (await canConnect(8080))) return;
+	const authUp = await canConnect(9099);
+	const firestoreUp = await canConnect(8080);
+	const functionsUp = await canConnect(5001);
+	if (authUp && firestoreUp && functionsUp) return;
+	if (authUp || firestoreUp || functionsUp) {
+		throw new Error('Firebase emulators are only partly running. Stop them, then run the UI tests again.');
+	}
+
+	execFileSync('pnpm', ['--dir', 'functions', 'run', 'build'], {
+		cwd: repoRoot,
+		stdio: 'inherit',
+		env: { ...process.env, npm_config_engine_strict: 'false' }
+	});
 
 	const log = fs.openSync(logFile, 'w');
-	// CI runs Node 20, and `pnpm test:e2e` inherits engine-strict=true from app/.npmrc.
-	// firebase-tools itself supports that Node, but universal-analytics@0.5.4 declares
-	// engines.node >=22. Relax the check only for this throwaway dlx install.
+	// firebase-tools 13 calls functions.config() while loading a function, and
+	// firebase-functions 7 throws on that call, so the Functions emulator never
+	// serves getBuddyInvite. 15 loads these callables. The project id has to
+	// match the client config: the Functions emulator 404s any other project,
+	// while Auth and Firestore accept the request in single-project mode.
 	const child = spawn(
 		'pnpm',
 		[
 			'--config.engine-strict=false',
 			'dlx',
-			'firebase-tools@13.29.1',
+			'firebase-tools@15.34.0',
 			'emulators:start',
 			'--only',
-			'auth,firestore',
+			'auth,firestore,functions',
 			'--project',
-			'demo-gaslands'
+			'gaslandsgarage-74ce6'
 		],
 		{
 			cwd: repoRoot,
@@ -64,7 +80,12 @@ export default async function globalSetup() {
 			stdio: ['ignore', log, log],
 			env: {
 				...process.env,
-				npm_config_engine_strict: 'false'
+				npm_config_engine_strict: 'false',
+				METADATA_SERVER_DETECTION: 'none',
+				// Emulator placeholders so the buddies page can show the email form.
+				// These are not Twilio credentials and must not be used outside this process.
+				TWILIO_ACCOUNT_SID: 'AC00000000000000000000000000000000',
+				TWILIO_AUTH_TOKEN: 'emulator-placeholder-token'
 			}
 		}
 	);

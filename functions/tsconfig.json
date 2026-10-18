@@ -13,5 +13,5 @@
     "noImplicitReturns": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src/**/*.ts"]
+	"include": ["src/**/*.ts", "../app/src/lib/buddies/model.ts", "../app/src/lib/buddies/emailInvite.ts"]
 }
