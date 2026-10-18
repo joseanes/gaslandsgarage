@@ -3,12 +3,6 @@
     "rules": "app/firestore.rules",
     "indexes": "firestore.indexes.json"
   },
-  "functions": {
-    "predeploy": [
-      "npm --prefix \"$RESOURCE_DIR\" run build"
-    ],
-    "source": "functions"
-  },
   "emulators": {
     "auth": {
       "host": "127.0.0.1",

@@ -214,8 +214,8 @@ function namedPin(overrides: Record<string, unknown> = {}) {
 	};
 }
 
-function openCard() {
-	return { playerName: 'Ada', bio: 'Rookie', playSpots: 'At home', updatedAt: NOW };
+function openCard(overrides: Record<string, unknown> = {}) {
+	return { playerName: 'Ada', bio: 'Rookie', playSpots: 'At home', updatedAt: NOW, ...overrides };
 }
 
 function contact(fromUid: string, toUid: string, overrides: Record<string, unknown> = {}) {
@@ -270,7 +270,7 @@ describe('player privacy', () => {
 
 		const pin = await getDoc(doc(guest(), 'playerMap', ENTRY));
 		expect(pin.data()).toEqual(anonPin());
-		await assertSucceeds(getDocs(collection(guest(), 'playerMap')));
+		await assertFails(getDocs(collection(guest(), 'playerMap')));
 		await assertFails(getDoc(doc(guest(), 'playerMapPrivate', ENTRY)));
 		await assertFails(getDoc(doc(authed('other'), 'playerMapPrivate', ENTRY)));
 		await assertFails(getDoc(doc(guest(), 'playerMapOwners', 'player')));
@@ -352,6 +352,147 @@ describe('player privacy', () => {
 		await assertFails(setDoc(doc(player, 'playerProfiles', 'player'), playerProfile()));
 		await assertFails(setDoc(doc(player, 'openToGames', 'player'), openCard()));
 		await assertFails(setDoc(doc(player, 'gameContacts', 'player_other'), contact('player', 'other')));
+		await assertFails(getDoc(doc(player, 'openToGamesBoard', 'public')));
+		await assertFails(setDoc(doc(player, 'openToGamesBoard', 'public'), { players: { player: openCard() } }));
+		await assertFails(setDoc(doc(player, 'playerMapBoard', 'public'), { markers: { [ENTRY]: anonPin() } }));
+	});
+});
+
+function fullMarkerBoard(count: number, extra: Record<string, unknown> = {}) {
+	const markers: Record<string, unknown> = { ...extra };
+	for (let index = 0; index < count; index += 1) {
+		markers[`m${String(index).padStart(19, '0')}`] = anonPin();
+	}
+	return markers;
+}
+
+describe('player directory boards', () => {
+	const otherEntry = 'bbbbbbbbbbbbbbbbbbbb';
+
+	async function claimPin(uid: string, entryId: string) {
+		const player = authed(uid);
+		await assertSucceeds(setDoc(doc(player, 'playerMapOwners', uid), { entryId, updatedAt: NOW }));
+		await assertSucceeds(setDoc(doc(player, 'playerMapPrivate', entryId), { ownerUid: uid }));
+	}
+
+	it('publishes one public map board and rejects scans, spoofed pins, and deletion', async () => {
+		await claimPin('player', ENTRY);
+		const player = authed('player');
+		await assertSucceeds(setDoc(doc(player, 'playerMapBoard', 'public'), { markers: { [ENTRY]: anonPin() } }));
+		expect((await getDoc(doc(guest(), 'playerMapBoard', 'public'))).data()).toEqual({
+			markers: { [ENTRY]: anonPin() }
+		});
+		await assertFails(getDocs(collection(guest(), 'playerMapBoard')));
+		await assertFails(getDoc(doc(guest(), 'playerMapBoard', 'secret')));
+		await assertFails(setDoc(doc(guest(), 'playerMapBoard', 'public'), { markers: { [ENTRY]: anonPin() } }));
+		await assertFails(deleteDoc(doc(player, 'playerMapBoard', 'public')));
+		await assertFails(setDoc(doc(player, 'playerMapBoard', 'other'), { markers: { [ENTRY]: anonPin() } }));
+		await assertFails(
+			setDoc(doc(player, 'playerMapBoard', 'public'), {
+				markers: { [ENTRY]: { ...anonPin(), email: 'ada@example.com' } }
+			})
+		);
+		await assertFails(
+			setDoc(doc(player, 'playerMapBoard', 'public'), { markers: { [ENTRY]: anonPin() }, note: 'extra' })
+		);
+
+		await claimPin('other', otherEntry);
+		const other = authed('other');
+		await assertSucceeds(
+			setDoc(doc(other, 'playerMapBoard', 'public'), {
+				markers: { [ENTRY]: anonPin(), [otherEntry]: namedPin() }
+			})
+		);
+		await assertFails(
+			setDoc(doc(other, 'playerMapBoard', 'public'), {
+				markers: { [otherEntry]: namedPin() }
+			})
+		);
+		await assertFails(
+			setDoc(doc(other, 'playerMapBoard', 'public'), {
+				markers: { [ENTRY]: { ...anonPin(), latE2: 1 }, [otherEntry]: namedPin() }
+			})
+		);
+		await assertFails(deleteDoc(doc(other, 'playerMapBoard', 'public')));
+
+		await assertSucceeds(setDoc(doc(player, 'playerMapBoard', 'public'), { markers: { [otherEntry]: namedPin() } }));
+		expect((await getDoc(doc(guest(), 'playerMapBoard', 'public'))).data()).toEqual({
+			markers: { [otherEntry]: namedPin() }
+		});
+	});
+
+	it('stops a new pin once the map board is full but still lets an owner edit theirs', async () => {
+		const owned = 'm' + '0'.repeat(19);
+		const markers = fullMarkerBoard(500);
+		await seed(async (database) => {
+			await setDoc(doc(database, 'playerMapBoard', 'public'), { markers });
+			await setDoc(doc(database, 'playerMapOwners', 'player'), { entryId: owned, updatedAt: NOW });
+			await setDoc(doc(database, 'playerMapPrivate', owned), { ownerUid: 'player' });
+		});
+		const player = authed('player');
+		const updated = { ...markers, [owned]: { ...anonPin(), latE2: 1200 } };
+		await assertSucceeds(setDoc(doc(player, 'playerMapBoard', 'public'), { markers: updated }));
+
+		await claimPin('newbie', otherEntry);
+		await assertFails(
+			setDoc(doc(authed('newbie'), 'playerMapBoard', 'public'), {
+				markers: { ...updated, [otherEntry]: anonPin() }
+			})
+		);
+	});
+
+	it('lists open players from one board and blocks taking or erasing someone else', async () => {
+		const player = authed('player');
+		await assertSucceeds(setDoc(doc(player, 'openToGamesBoard', 'public'), { players: { player: openCard() } }));
+		await assertSucceeds(getDoc(doc(authed('other'), 'openToGamesBoard', 'public')));
+		await assertFails(getDoc(doc(guest(), 'openToGamesBoard', 'public')));
+		await assertFails(getDocs(collection(authed('other'), 'openToGames')));
+		await assertFails(getDocs(collection(authed('other'), 'openToGamesBoard')));
+		await assertFails(
+			setDoc(doc(player, 'openToGamesBoard', 'public'), {
+				players: { player: { ...openCard(), email: 'ada@example.com' } }
+			})
+		);
+		await assertFails(deleteDoc(doc(player, 'openToGamesBoard', 'public')));
+
+		const other = authed('other');
+		await assertSucceeds(
+			setDoc(doc(other, 'openToGamesBoard', 'public'), {
+				players: { player: openCard(), other: openCard({ playerName: 'Bea' }) }
+			})
+		);
+		await assertFails(
+			setDoc(doc(other, 'openToGamesBoard', 'public'), {
+				players: { other: openCard({ playerName: 'Bea' }) }
+			})
+		);
+		await assertFails(
+			setDoc(doc(other, 'openToGamesBoard', 'public'), {
+				players: { player: openCard({ playerName: 'Stolen' }), other: openCard({ playerName: 'Bea' }) }
+			})
+		);
+		await assertSucceeds(
+			setDoc(doc(player, 'openToGamesBoard', 'public'), {
+				players: { other: openCard({ playerName: 'Bea' }) }
+			})
+		);
+	});
+
+	it('stops a new contact card once the open board is full', async () => {
+		const players: Record<string, unknown> = { player: openCard() };
+		for (let index = 0; index < 499; index += 1) {
+			players[`open${String(index).padStart(16, '0')}`] = openCard();
+		}
+		await seed(async (database) => {
+			await setDoc(doc(database, 'openToGamesBoard', 'public'), { players });
+		});
+		const updated = { ...players, player: openCard({ playerName: 'Ada 2' }) };
+		await assertSucceeds(setDoc(doc(authed('player'), 'openToGamesBoard', 'public'), { players: updated }));
+		await assertFails(
+			setDoc(doc(authed('newbie'), 'openToGamesBoard', 'public'), {
+				players: { ...updated, newbie: openCard({ playerName: 'Newbie' }) }
+			})
+		);
 	});
 });
 
