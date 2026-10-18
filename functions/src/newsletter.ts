@@ -24,6 +24,47 @@ export const newsletterHttpsOptions = {
 
 export type UnsubscribeResult = 'unsubscribed' | 'invalid';
 
+/**
+ * In-memory limiter for the public unsubscribe link. Nothing about the caller
+ * is stored. With maxInstances 10 this bounds the total request rate too.
+ */
+export const UNSUBSCRIBE_RATE_WINDOW_MS = 10 * 60 * 1000;
+export const UNSUBSCRIBE_RATE_PER_CLIENT = 20;
+export const UNSUBSCRIBE_RATE_GLOBAL_PER_MINUTE = 300;
+const MAX_TRACKED_CLIENTS = 5000;
+
+export function createUnsubscribeLimiter() {
+  const clients = new Map<string, number[]>();
+  let globalStamps: number[] = [];
+  return function allow(clientKey: string, nowMs = Date.now()): boolean {
+    globalStamps = globalStamps.filter((stamp) => nowMs - stamp < 60_000);
+    if (globalStamps.length >= UNSUBSCRIBE_RATE_GLOBAL_PER_MINUTE) return false;
+    const key = clientKey || 'unknown';
+    const recent = (clients.get(key) ?? []).filter((stamp) => nowMs - stamp < UNSUBSCRIBE_RATE_WINDOW_MS);
+    if (recent.length >= UNSUBSCRIBE_RATE_PER_CLIENT) {
+      clients.set(key, recent);
+      return false;
+    }
+    recent.push(nowMs);
+    clients.delete(key);
+    clients.set(key, recent);
+    if (clients.size > MAX_TRACKED_CLIENTS) {
+      const oldest = clients.keys().next().value;
+      if (oldest !== undefined) clients.delete(oldest);
+    }
+    globalStamps.push(nowMs);
+    return true;
+  };
+}
+
+const allowUnsubscribe = createUnsubscribeLimiter();
+
+export function clientKey(req: { ip?: string; headers?: Record<string, unknown> }): string {
+  const forwarded = req.headers?.['x-forwarded-for'];
+  const first = typeof forwarded === 'string' ? forwarded.split(',')[0]?.trim() : '';
+  return first || req.ip || '';
+}
+
 export function newUnsubscribeToken(): string {
   return randomBytes(32).toString('base64url');
 }
@@ -131,6 +172,15 @@ export const syncNewsletterToken = onDocumentWritten(
 export const unsubscribeNewsletter = onRequest(newsletterHttpsOptions, async (req, res) => {
   if (req.method !== 'GET' && req.method !== 'POST') {
     res.status(405).set('Allow', 'GET, POST').type('text/plain').send('Method not allowed');
+    return;
+  }
+  if (!allowUnsubscribe(clientKey(req))) {
+    res
+      .status(429)
+      .set('Retry-After', '600')
+      .set('Cache-Control', 'no-store')
+      .type('text/plain')
+      .send('Too many requests. Try again later.');
     return;
   }
   const result = await unsubscribeByToken(readUnsubscribeToken(req.query));
