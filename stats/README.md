@@ -46,6 +46,6 @@ Do this once. Nothing in CI deploys rules or hosting.
 
 6. Run the workflow once: Actions → **Usage stats** → **Run workflow**. After that it runs every day at 06:15 UTC.
 
-Do not run `firebase deploy --only functions`. This setup does not use Cloud Functions.
+`firebase.json` has no Cloud Functions block. Do not run `firebase deploy --only functions`. This setup does not use Cloud Functions.
 
 The site itself still ships through the existing Build-and-Deploy workflow when the app change reaches `main`. The stats page shows an empty state until step 5 and step 6 have both succeeded.

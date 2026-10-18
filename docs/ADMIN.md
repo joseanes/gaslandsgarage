@@ -53,7 +53,7 @@ firebase deploy --only firestore:rules --project=gaslandsgarage-74ce6
 
 That publishes `app/firestore.rules`. Regular players keep the same access to their own teams and settings. Do not paste an older rules sample from `app/FIREBASE-SETUP.md` over the live rules.
 
-Do not run `firebase deploy --only functions`.
+`firebase.json` does not define a Cloud Functions codebase. `functions/` is gitignored and is not in the repo. Do not add one, and do not run `firebase deploy --only functions`. Hosting stays on AWS. The players map uses the same rule: see `docs/PLAYERS.md`.
 
 ### 2. Bootstrap the Administrator role
 

@@ -1,13 +1,28 @@
 import { db, initializeFirebase } from '$lib/firebase';
+import {
+	applyBoardField,
+	clearDirectoryCache,
+	DIRECTORY_CACHE_TTL_MS,
+	isCachedMarkerList,
+	isCachedOpenPlayerList,
+	MAP_CACHE_KEY,
+	markersFromBoard,
+	OPEN_CACHE_KEY,
+	openPlayersFromBoard,
+	readDirectoryCache,
+	writeDirectoryCache,
+	type OpenPlayer
+} from '$lib/players/directory';
 import { coordinatesForSave } from '$lib/players/geocode';
 import {
 	contactDocId,
 	emptyForm,
 	planPresence,
-	presentMapMarker,
 	readStoredProfile,
 	validateContact,
 	type MapMarker,
+	type MapWrite,
+	type OpenToGamesWrite,
 	type PlayerForm,
 	type StoredProfile
 } from '$lib/players/profile';
@@ -28,7 +43,10 @@ const PROFILES = 'playerProfiles';
 const OWNERS = 'playerMapOwners';
 const PRIVATE = 'playerMapPrivate';
 const MAP = 'playerMap';
+const MAP_BOARD = 'playerMapBoard';
 const OPEN = 'openToGames';
+const OPEN_BOARD = 'openToGamesBoard';
+const BOARD_DOC = 'public';
 const CONTACTS = 'gameContacts';
 
 async function ready() {
@@ -41,6 +59,34 @@ async function ready() {
 function failure(error: unknown): string {
 	console.error(error);
 	return 'Could not save that. Check your connection and try again.';
+}
+
+function browserStorage(): Storage | undefined {
+	return typeof sessionStorage === 'undefined' ? undefined : sessionStorage;
+}
+
+async function writeBoardEntry(
+	collectionName: string,
+	field: 'markers' | 'players',
+	key: string,
+	entry: object | null
+): Promise<void> {
+	const { doc, runTransaction, database } = await ready();
+	const ref = doc(database, collectionName, BOARD_DOC);
+	await runTransaction(database, async (transaction) => {
+		const snap = await transaction.get(ref);
+		const next = applyBoardField(snap.exists() ? snap.get(field) : undefined, key, entry);
+		if (!snap.exists() && !entry) return;
+		transaction.set(ref, { [field]: next });
+	});
+}
+
+async function publishMap(entryId: string, entry: MapWrite | null): Promise<void> {
+	await writeBoardEntry(MAP_BOARD, 'markers', entryId, entry);
+}
+
+async function publishOpen(uid: string, entry: OpenToGamesWrite | null): Promise<void> {
+	await writeBoardEntry(OPEN_BOARD, 'players', uid, entry);
 }
 
 export async function loadOwnProfile(uid: string): Promise<StoredProfile | null> {
@@ -79,7 +125,9 @@ export async function saveOwnProfile(
 				return { success: false, error: 'That map pin is already taken. Try saving again.' };
 			}
 			await setDoc(doc(database, MAP, plan.map.entryId), plan.map.entry);
+			await publishMap(plan.map.entryId, plan.map.entry);
 		} else if (plan.removeMapEntryId) {
+			await publishMap(plan.removeMapEntryId, null);
 			const mapRef = doc(database, MAP, plan.removeMapEntryId);
 			const privateRef = doc(database, PRIVATE, plan.removeMapEntryId);
 			const mapSnap = await getDoc(mapRef);
@@ -93,12 +141,15 @@ export async function saveOwnProfile(
 		const openRef = doc(database, OPEN, uid);
 		if (plan.openToGames) {
 			await setDoc(openRef, plan.openToGames);
+			await publishOpen(uid, plan.openToGames);
 		} else if (plan.removeOpenToGames) {
+			await publishOpen(uid, null);
 			const openSnap = await getDoc(openRef);
 			if (openSnap.exists()) await deleteDoc(openRef);
 		}
 
 		await setDoc(doc(database, PROFILES, uid), plan.profile);
+		clearDirectoryCache(browserStorage());
 		return { success: true, profile: plan.profile };
 	} catch (error) {
 		return { success: false, error: failure(error) };
@@ -106,30 +157,29 @@ export async function saveOwnProfile(
 }
 
 export async function loadMapMarkers(): Promise<MapMarker[]> {
-	const { collection, getDocs, database } = await ready();
-	const snap = await getDocs(collection(database, MAP));
-	const markers: MapMarker[] = [];
-	for (const item of snap.docs) {
-		const marker = presentMapMarker(item.id, item.data() as Record<string, unknown>);
-		if (marker) markers.push(marker);
-	}
+	const storage = browserStorage();
+	const now = Date.now();
+	const cached = readDirectoryCache(storage, MAP_CACHE_KEY, now, DIRECTORY_CACHE_TTL_MS, isCachedMarkerList);
+	if (cached) return cached;
+	const { doc, getDoc, database } = await ready();
+	const snap = await getDoc(doc(database, MAP_BOARD, BOARD_DOC));
+	const markers = markersFromBoard(snap.exists() ? (snap.data() as Record<string, unknown>) : undefined);
+	writeDirectoryCache(storage, MAP_CACHE_KEY, markers, now);
 	return markers;
 }
 
-export type OpenPlayer = { uid: string; playerName: string; bio: string; playSpots: string };
+export type { OpenPlayer };
 
 export async function loadOpenPlayers(): Promise<OpenPlayer[]> {
-	const { collection, getDocs, database } = await ready();
-	const snap = await getDocs(collection(database, OPEN));
-	return snap.docs.map((item) => {
-		const data = item.data() as Record<string, unknown>;
-		return {
-			uid: item.id,
-			playerName: typeof data.playerName === 'string' ? data.playerName : 'Player',
-			bio: typeof data.bio === 'string' ? data.bio : '',
-			playSpots: typeof data.playSpots === 'string' ? data.playSpots : ''
-		};
-	});
+	const storage = browserStorage();
+	const now = Date.now();
+	const cached = readDirectoryCache(storage, OPEN_CACHE_KEY, now, DIRECTORY_CACHE_TTL_MS, isCachedOpenPlayerList);
+	if (cached) return cached;
+	const { doc, getDoc, database } = await ready();
+	const snap = await getDoc(doc(database, OPEN_BOARD, BOARD_DOC));
+	const players = openPlayersFromBoard(snap.exists() ? (snap.data() as Record<string, unknown>) : undefined);
+	writeDirectoryCache(storage, OPEN_CACHE_KEY, players, now);
+	return players;
 }
 
 function readContact(id: string, data: Record<string, unknown>, uid: string): GameContact {
