@@ -11,6 +11,8 @@
 	export let settings: AdminAccountSettings | null;
 	export let profile: AdminProfileView | null;
 	export let profileLoaded: boolean;
+	export let loading = false;
+	export let loadError = '';
 
 	function formatWhen(value: string | null): string {
 		if (!value) return 'Not recorded';
@@ -34,12 +36,17 @@
 	$: visibility = profile ? profileVisibility(profile) : '';
 </script>
 
-<section class="mt-6 rounded-lg border border-stone-200 p-4 dark:border-gray-700" data-testid="admin-user-settings" aria-label={`Settings for ${label}`}>
+<section class="rounded-lg border border-stone-200 p-4 dark:border-gray-700" data-testid="admin-user-settings" aria-label={`Settings for ${label}`}>
 	<h2 class="text-xl font-bold">Settings for {label}</h2>
 	<p class="mt-1 text-sm text-stone-600 dark:text-gray-300">
 		Read-only. An administrator cannot change these choices.
 	</p>
 
+	{#if loading}
+		<p class="mt-4" data-testid="settings-loading">Loading settings</p>
+	{:else if loadError}
+		<p class="mt-4" role="alert" data-testid="settings-error">{loadError}</p>
+	{:else}
 	<dl class="mt-4 grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-[12rem_1fr]">
 		<dt class="font-medium">Account status</dt>
 		<dd data-testid="account-status">{person.disabled ? 'Disabled' : 'Active'}</dd>
@@ -129,7 +136,7 @@
 			<dd data-testid="settings-location">{settings.location || 'None saved'}</dd>
 		{:else}
 			<dt class="font-medium">Account settings</dt>
-			<dd data-testid="settings-unavailable">Account settings could not be loaded.</dd>
+			<dd role="alert" data-testid="settings-unavailable">Account settings could not be loaded.</dd>
 		{/if}
 
 		<dt class="font-medium">Profile city</dt>
@@ -165,4 +172,5 @@
 			{/if}
 		</dd>
 	</dl>
+	{/if}
 </section>
