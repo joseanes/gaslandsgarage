@@ -55,6 +55,147 @@ service cloud.firestore {
         );
     }
 
+    // \x40 is the at-sign. Public text rejects it so a profile cannot smuggle an
+    // email address. The rules file keeps the hex escape on purpose.
+    function noEmail(value) {
+      return value is string && value.matches('^[^\\x40]*$');
+    }
+
+    function shortText(value, max) {
+      return noEmail(value) && value.size() <= max;
+    }
+
+    function hundredth(value, min, max) {
+      return value is int && value >= min && value <= max;
+    }
+
+    function optionalHundredth(value, min, max) {
+      return value == null || hundredth(value, min, max);
+    }
+
+    function validPlayerProfile() {
+      return request.resource.data.keys().hasOnly([
+          'playerName', 'bio', 'locationLabel', 'playSpots',
+          'latE2', 'lngE2', 'showOnMap', 'anonymousOnMap', 'openToGames',
+          'mapEntryId', 'updatedAt'
+        ])
+        && shortText(request.resource.data.playerName, 60)
+        && shortText(request.resource.data.bio, 280)
+        && shortText(request.resource.data.locationLabel, 80)
+        && shortText(request.resource.data.playSpots, 280)
+        && optionalHundredth(request.resource.data.latE2, -9000, 9000)
+        && optionalHundredth(request.resource.data.lngE2, -18000, 18000)
+        && request.resource.data.showOnMap is bool
+        && request.resource.data.anonymousOnMap is bool
+        && request.resource.data.openToGames is bool
+        && request.resource.data.mapEntryId is string
+        && (
+          request.resource.data.mapEntryId == ''
+          || request.resource.data.mapEntryId.matches('^[A-Za-z0-9]{20,40}$')
+        )
+        && request.resource.data.updatedAt is string
+        && request.resource.data.updatedAt.size() < 40
+        && (
+          !request.resource.data.showOnMap
+          || (
+            hundredth(request.resource.data.latE2, -9000, 9000)
+            && hundredth(request.resource.data.lngE2, -18000, 18000)
+          )
+        )
+        && (
+          !(request.resource.data.showOnMap && request.resource.data.anonymousOnMap == false)
+          || request.resource.data.playerName.size() > 0
+        )
+        && (!request.resource.data.openToGames || request.resource.data.playerName.size() > 0);
+    }
+
+    function ownsMapClaim(entryId) {
+      return signedIn()
+        && !isDisabled()
+        && entryId != request.auth.uid
+        && entryId.matches('^[A-Za-z0-9]{20,40}$')
+        && exists(/databases/$(database)/documents/playerMapOwners/$(request.auth.uid))
+        && get(/databases/$(database)/documents/playerMapOwners/$(request.auth.uid)).data.entryId == entryId;
+    }
+
+    function coarsePin() {
+      return hundredth(request.resource.data.latE2, -9000, 9000)
+        && hundredth(request.resource.data.lngE2, -18000, 18000)
+        && request.resource.data.updatedAt is string
+        && request.resource.data.updatedAt.size() < 40;
+    }
+
+    function anonMapEntry() {
+      return request.resource.data.keys().hasOnly(['anonymous', 'latE2', 'lngE2', 'updatedAt'])
+        && request.resource.data.anonymous == true
+        && coarsePin();
+    }
+
+    function namedMapEntry() {
+      return request.resource.data.keys().hasOnly([
+          'anonymous', 'playerName', 'bio', 'playSpots', 'locationLabel',
+          'latE2', 'lngE2', 'openToGames', 'updatedAt'
+        ])
+        && request.resource.data.anonymous == false
+        && shortText(request.resource.data.playerName, 60)
+        && request.resource.data.playerName.size() > 0
+        && shortText(request.resource.data.bio, 280)
+        && shortText(request.resource.data.playSpots, 280)
+        && shortText(request.resource.data.locationLabel, 80)
+        && request.resource.data.openToGames is bool
+        && coarsePin();
+    }
+
+    function validOpenToGames() {
+      return request.resource.data.keys().hasOnly(['playerName', 'bio', 'playSpots', 'updatedAt'])
+        && shortText(request.resource.data.playerName, 60)
+        && request.resource.data.playerName.size() > 0
+        && shortText(request.resource.data.bio, 280)
+        && shortText(request.resource.data.playSpots, 280)
+        && request.resource.data.updatedAt is string
+        && request.resource.data.updatedAt.size() < 40;
+    }
+
+    function contactShape() {
+      return request.resource.data.keys().hasOnly([
+          'fromUid', 'toUid', 'fromName', 'toName', 'message', 'createdAt', 'read', 'reply', 'repliedAt'
+        ])
+        && request.resource.data.fromUid is string
+        && request.resource.data.toUid is string
+        && request.resource.data.fromUid.size() > 0
+        && request.resource.data.fromUid.size() <= 128
+        && request.resource.data.toUid.size() > 0
+        && request.resource.data.toUid.size() <= 128
+        && request.resource.data.fromUid.matches('^[A-Za-z0-9_-]+$')
+        && request.resource.data.toUid.matches('^[A-Za-z0-9_-]+$')
+        && request.resource.data.fromUid != request.resource.data.toUid
+        && shortText(request.resource.data.fromName, 60)
+        && request.resource.data.fromName.size() > 0
+        && shortText(request.resource.data.toName, 60)
+        && request.resource.data.toName.size() > 0
+        && request.resource.data.message is string
+        && request.resource.data.message.size() > 0
+        && request.resource.data.message.size() <= 500
+        && request.resource.data.createdAt is string
+        && request.resource.data.createdAt.size() < 40
+        && request.resource.data.read is bool
+        && request.resource.data.reply is string
+        && request.resource.data.reply.size() <= 500
+        && request.resource.data.repliedAt is string
+        && request.resource.data.repliedAt.size() < 40;
+    }
+
+    // The document id is fromUid_toUid. Only a safe account id is interpolated
+    // into the pattern, so a missing thread can be read by either party.
+    function contactParty(requestId) {
+      return request.auth.uid.matches('^[A-Za-z0-9_-]+$')
+        && request.auth.uid.size() <= 128
+        && (
+          requestId.matches('^' + request.auth.uid + '_.+$')
+          || requestId.matches('^.+_' + request.auth.uid + '$')
+        );
+    }
+
     function profileCreate(userId) {
       return request.resource.data.keys().hasOnly(['uid', 'email', 'displayName', 'createdAt', 'lastSeenAt', 'lastSignInAt'])
         && request.resource.data.keys().hasAll(['uid', 'email', 'displayName', 'createdAt', 'lastSeenAt', 'lastSignInAt'])
@@ -158,6 +299,126 @@ service cloud.firestore {
 
       allow create, update: if accountControlWrite(userId);
       allow delete: if false;
+    }
+
+    // Private player profile. Map pins and contact cards live in other collections
+    // so a public read cannot see email, the account id, or a precise location.
+    match /playerProfiles/{userId} {
+      allow read: if signedIn() && !isDisabled() && userId == request.auth.uid;
+      allow read: if isAdmin();
+
+      allow create, update: if signedIn() && !isDisabled() && userId == request.auth.uid && validPlayerProfile();
+      allow delete: if signedIn() && !isDisabled() && userId == request.auth.uid;
+    }
+
+    // One claim per player. The public pin id is random and is not the account id.
+    match /playerMapOwners/{userId} {
+      allow read: if signedIn() && !isDisabled() && userId == request.auth.uid;
+      allow read: if isAdmin();
+
+      allow create, update: if signedIn()
+        && !isDisabled()
+        && userId == request.auth.uid
+        && request.resource.data.keys().hasOnly(['entryId', 'updatedAt'])
+        && request.resource.data.entryId is string
+        && request.resource.data.entryId.matches('^[A-Za-z0-9]{20,40}$')
+        && request.resource.data.entryId != request.auth.uid
+        && request.resource.data.updatedAt is string
+        && request.resource.data.updatedAt.size() < 40;
+      allow delete: if signedIn() && !isDisabled() && userId == request.auth.uid;
+    }
+
+    // Owner of a pin, readable only by that player and administrators.
+    // Anonymous pins stay anonymous because this link is not on the public pin.
+    match /playerMapPrivate/{entryId} {
+      // A missing pin link is readable so the owner can tell it has not been created.
+      // resource is null for a missing document; do not touch resource.data in that case.
+      allow read: if signedIn() && !isDisabled() && (resource == null || resource.data.ownerUid == request.auth.uid);
+      allow read: if isAdmin();
+
+      allow create: if ownsMapClaim(entryId)
+        && request.resource.data.keys().hasOnly(['ownerUid'])
+        && request.resource.data.ownerUid == request.auth.uid;
+      allow update: if false;
+      allow delete: if signedIn() && !isDisabled() && resource.data.ownerUid == request.auth.uid;
+    }
+
+    // Public pins. Anonymous documents have a coarse coordinate and nothing else.
+    match /playerMap/{entryId} {
+      allow read: if true;
+
+      allow create, update: if ownsMapClaim(entryId)
+        && exists(/databases/$(database)/documents/playerMapPrivate/$(entryId))
+        && get(/databases/$(database)/documents/playerMapPrivate/$(entryId)).data.ownerUid == request.auth.uid
+        && (anonMapEntry() || namedMapEntry());
+      allow delete: if signedIn()
+        && !isDisabled()
+        && exists(/databases/$(database)/documents/playerMapPrivate/$(entryId))
+        && get(/databases/$(database)/documents/playerMapPrivate/$(entryId)).data.ownerUid == request.auth.uid;
+    }
+
+    // Contact opt-in. No email and no coordinate. Signed-in players can read it.
+    match /openToGames/{userId} {
+      allow read: if signedIn() && !isDisabled();
+
+      allow create, update: if signedIn() && !isDisabled() && userId == request.auth.uid && validOpenToGames();
+      allow delete: if signedIn() && !isDisabled() && userId == request.auth.uid;
+    }
+
+    // A game request between two signed-in players. The id is fromUid_toUid.
+    // Email is not a field. The recipient must have an openToGames document.
+    match /gameContacts/{requestId} {
+      // A missing thread is readable by either named party so the sender can
+      // tell that the first request has not been created yet. resource is null
+      // for a missing document; do not touch resource.data in that case.
+      allow read: if signedIn()
+        && !isDisabled()
+        && (
+          (resource == null && contactParty(requestId))
+          || (
+            resource != null
+            && (resource.data.fromUid == request.auth.uid || resource.data.toUid == request.auth.uid)
+          )
+        );
+      allow read: if isAdmin();
+
+      allow create: if signedIn()
+        && !isDisabled()
+        && requestId == request.resource.data.fromUid + '_' + request.resource.data.toUid
+        && contactShape()
+        && request.resource.data.fromUid == request.auth.uid
+        && request.resource.data.read == false
+        && request.resource.data.reply == ''
+        && request.resource.data.repliedAt == ''
+        && exists(/databases/$(database)/documents/openToGames/$(request.resource.data.toUid));
+
+      allow update: if signedIn()
+        && !isDisabled()
+        && contactShape()
+        && request.resource.data.fromUid == resource.data.fromUid
+        && request.resource.data.toUid == resource.data.toUid
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.toName == resource.data.toName
+        && (
+          (
+            resource.data.toUid == request.auth.uid
+            && request.resource.data.fromName == resource.data.fromName
+            && request.resource.data.message == resource.data.message
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read', 'reply', 'repliedAt'])
+          )
+          || (
+            resource.data.fromUid == request.auth.uid
+            && request.resource.data.read == resource.data.read
+            && request.resource.data.reply == resource.data.reply
+            && request.resource.data.repliedAt == resource.data.repliedAt
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['fromName', 'message'])
+            && exists(/databases/$(database)/documents/openToGames/$(resource.data.toUid))
+          )
+        );
+
+      allow delete: if signedIn()
+        && !isDisabled()
+        && (resource.data.fromUid == request.auth.uid || resource.data.toUid == request.auth.uid);
     }
   }
 }

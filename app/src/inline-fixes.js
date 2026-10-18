@@ -7,6 +7,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Fix all inputs, selects and buttons
     document.querySelectorAll('input, select, button').forEach((el) => {
       const node = /** @type {HTMLElement} */ (el);
+      if (node.closest('.leaflet-container, .player-profile, .players-page')) return;
       node.style.height = '32px';
       node.style.minHeight = '32px';
       node.style.maxHeight = '32px';

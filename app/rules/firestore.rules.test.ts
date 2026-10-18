@@ -176,6 +176,185 @@ describe('disabled accounts', () => {
 	});
 });
 
+const ENTRY = 'aaaaaaaaaaaaaaaaaaaa';
+
+function playerProfile(overrides: Record<string, unknown> = {}) {
+	return {
+		playerName: '',
+		bio: '',
+		locationLabel: '',
+		playSpots: '',
+		latE2: null,
+		lngE2: null,
+		showOnMap: false,
+		anonymousOnMap: false,
+		openToGames: false,
+		mapEntryId: '',
+		updatedAt: NOW,
+		...overrides
+	};
+}
+
+function anonPin() {
+	return { anonymous: true, latE2: 3011, lngE2: -9802, updatedAt: NOW };
+}
+
+function namedPin(overrides: Record<string, unknown> = {}) {
+	return {
+		anonymous: false,
+		playerName: 'Ada',
+		bio: 'Rookie',
+		playSpots: 'At home',
+		locationLabel: 'Austin, TX',
+		latE2: 3019,
+		lngE2: -9766,
+		openToGames: false,
+		updatedAt: NOW,
+		...overrides
+	};
+}
+
+function openCard() {
+	return { playerName: 'Ada', bio: 'Rookie', playSpots: 'At home', updatedAt: NOW };
+}
+
+function contact(fromUid: string, toUid: string, overrides: Record<string, unknown> = {}) {
+	return {
+		fromUid,
+		toUid,
+		fromName: 'Pat',
+		toName: 'Ada',
+		message: 'Game on Friday?',
+		createdAt: NOW,
+		read: false,
+		reply: '',
+		repliedAt: '',
+		...overrides
+	};
+}
+
+describe('player privacy', () => {
+	it('keeps the private profile to the owner and administrators', async () => {
+		const player = authed('player');
+		await assertSucceeds(setDoc(doc(player, 'playerProfiles', 'player'), playerProfile()));
+		await assertSucceeds(getDoc(doc(player, 'playerProfiles', 'player')));
+		await assertFails(getDoc(doc(authed('other'), 'playerProfiles', 'player')));
+		await assertFails(getDoc(doc(guest(), 'playerProfiles', 'player')));
+		await assertFails(getDocs(collection(player, 'playerProfiles')));
+		await assertFails(setDoc(doc(player, 'playerProfiles', 'player'), { ...playerProfile(), email: 'player@example.com' }));
+		await assertFails(
+			setDoc(doc(player, 'playerProfiles', 'player'), playerProfile({ bio: 'mail me player@example.com' }))
+		);
+		await assertFails(
+			setDoc(
+				doc(player, 'playerProfiles', 'player'),
+				playerProfile({ showOnMap: true, anonymousOnMap: true, latE2: 30.27, lngE2: -9774, mapEntryId: ENTRY })
+			)
+		);
+
+		await seed(async (database) => {
+			await setDoc(doc(database, 'roles', 'admin'), roleDoc());
+		});
+		await assertSucceeds(getDoc(doc(authed('admin'), 'playerProfiles', 'player')));
+	});
+
+	it('publishes an anonymous pin with no identity and blocks hijacking', async () => {
+		const player = authed('player');
+		const missing = await getDoc(doc(player, 'playerMapPrivate', 'zzzzzzzzzzzzzzzzzzzz'));
+		expect(missing.exists()).toBe(false);
+		await assertSucceeds(
+			setDoc(doc(player, 'playerMapOwners', 'player'), { entryId: ENTRY, updatedAt: NOW })
+		);
+		await assertSucceeds(setDoc(doc(player, 'playerMapPrivate', ENTRY), { ownerUid: 'player' }));
+		await assertSucceeds(setDoc(doc(player, 'playerMap', ENTRY), anonPin()));
+
+		const pin = await getDoc(doc(guest(), 'playerMap', ENTRY));
+		expect(pin.data()).toEqual(anonPin());
+		await assertSucceeds(getDocs(collection(guest(), 'playerMap')));
+		await assertFails(getDoc(doc(guest(), 'playerMapPrivate', ENTRY)));
+		await assertFails(getDoc(doc(authed('other'), 'playerMapPrivate', ENTRY)));
+		await assertFails(getDoc(doc(guest(), 'playerMapOwners', 'player')));
+		await assertFails(setDoc(doc(player, 'playerMap', ENTRY), { ...anonPin(), playerName: 'Ada', uid: 'player' }));
+		await assertFails(setDoc(doc(player, 'playerMap', ENTRY), { ...anonPin(), email: 'player@example.com' }));
+
+		const same = 'bbbbbbbbbbbbbbbbbbbb';
+		await assertFails(setDoc(doc(authed(same), 'playerMapOwners', same), { entryId: same, updatedAt: NOW }));
+
+		const attacker = authed('attacker');
+		await assertSucceeds(setDoc(doc(attacker, 'playerMapOwners', 'attacker'), { entryId: ENTRY, updatedAt: NOW }));
+		await assertFails(updateDoc(doc(attacker, 'playerMap', ENTRY), { latE2: 1 }));
+		await assertFails(setDoc(doc(attacker, 'playerMapPrivate', ENTRY), { ownerUid: 'attacker' }));
+		await assertFails(deleteDoc(doc(attacker, 'playerMap', ENTRY)));
+
+		await assertSucceeds(deleteDoc(doc(player, 'playerMap', ENTRY)));
+	});
+
+	it('lets a named pin show only opted-in fields', async () => {
+		const player = authed('player');
+		await assertSucceeds(setDoc(doc(player, 'playerMapOwners', 'player'), { entryId: ENTRY, updatedAt: NOW }));
+		await assertSucceeds(setDoc(doc(player, 'playerMapPrivate', ENTRY), { ownerUid: 'player' }));
+		await assertSucceeds(setDoc(doc(player, 'playerMap', ENTRY), namedPin()));
+		expect((await getDoc(doc(guest(), 'playerMap', ENTRY))).data()).toEqual(namedPin());
+		await assertFails(setDoc(doc(player, 'playerMap', ENTRY), { ...namedPin(), email: 'ada@example.com', uid: 'player' }));
+		await assertFails(setDoc(doc(player, 'playerMap', ENTRY), namedPin({ playerName: '' })));
+	});
+
+	it('lists open players to signed-in users without email or a coordinate', async () => {
+		const player = authed('player');
+		await assertSucceeds(setDoc(doc(player, 'openToGames', 'player'), openCard()));
+		await assertSucceeds(getDoc(doc(authed('other'), 'openToGames', 'player')));
+		await assertFails(getDoc(doc(guest(), 'openToGames', 'player')));
+		await assertFails(setDoc(doc(player, 'openToGames', 'player'), { ...openCard(), email: 'ada@example.com' }));
+		await assertFails(setDoc(doc(player, 'openToGames', 'player'), { ...openCard(), latE2: 3019, lngE2: -9766 }));
+		await assertFails(setDoc(doc(authed('other'), 'openToGames', 'player'), openCard()));
+	});
+
+	it('stores a game request for the two players and never an email field', async () => {
+		await seed(async (database) => {
+			await setDoc(doc(database, 'openToGames', 'player'), openCard());
+		});
+		const other = authed('other');
+		const missing = await assertSucceeds(getDoc(doc(other, 'gameContacts', 'other_player')));
+		expect(missing.exists()).toBe(false);
+		await assertFails(getDoc(doc(authed('stranger'), 'gameContacts', 'other_nobody')));
+		await assertFails(setDoc(doc(other, 'gameContacts', 'other_stranger'), contact('other', 'stranger')));
+		await assertSucceeds(setDoc(doc(other, 'gameContacts', 'other_player'), contact('other', 'player')));
+		await assertFails(
+			setDoc(doc(other, 'gameContacts', 'other_player'), { ...contact('other', 'player'), email: 'other@example.com' })
+		);
+		await assertFails(getDoc(doc(guest(), 'gameContacts', 'other_player')));
+		await assertFails(getDoc(doc(authed('stranger'), 'gameContacts', 'other_player')));
+		await assertSucceeds(getDoc(doc(authed('player'), 'gameContacts', 'other_player')));
+		await assertSucceeds(
+			updateDoc(doc(authed('player'), 'gameContacts', 'other_player'), {
+				read: true,
+				reply: 'Saturday works.',
+				repliedAt: NOW
+			})
+		);
+		await assertFails(updateDoc(doc(other, 'gameContacts', 'other_player'), { toUid: 'stranger' }));
+		await assertFails(updateDoc(doc(authed('player'), 'gameContacts', 'other_player'), { message: 'changed' }));
+
+		await seed(async (database) => {
+			await setDoc(doc(database, 'roles', 'admin'), roleDoc());
+		});
+		await assertSucceeds(getDoc(doc(authed('admin'), 'gameContacts', 'other_player')));
+	});
+
+	it('blocks a disabled player from profiles, the map, and contact', async () => {
+		await seed(async (database) => {
+			await setDoc(doc(database, 'roles', 'admin'), roleDoc());
+			await setDoc(doc(database, 'adminUsers', 'player'), disabledBy('admin'));
+			await setDoc(doc(database, 'playerProfiles', 'player'), playerProfile({ playerName: 'Ada' }));
+		});
+		const player = authed('player');
+		await assertFails(getDoc(doc(player, 'playerProfiles', 'player')));
+		await assertFails(setDoc(doc(player, 'playerProfiles', 'player'), playerProfile()));
+		await assertFails(setDoc(doc(player, 'openToGames', 'player'), openCard()));
+		await assertFails(setDoc(doc(player, 'gameContacts', 'player_other'), contact('player', 'other')));
+	});
+});
+
 describe('rules file', () => {
 	it('does not name a person as the administrator', () => {
 		const rules = readFileSync(new URL('../firestore.rules', import.meta.url), 'utf8');

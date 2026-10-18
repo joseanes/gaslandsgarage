@@ -37,7 +37,7 @@ function run(
 
 describe('SvelteKit route discovery', () => {
 	test('lists the app pages and their parent paths', () => {
-		expect(discoverSpaRoutes(appRoutes)).toEqual(['/admin', '/admin/users', '/builder', '/stats']);
+		expect(discoverSpaRoutes(appRoutes)).toEqual(['/admin', '/admin/users', '/builder', '/players', '/profile', '/stats']);
 	});
 
 	test('reads nested, grouped, optional, and dynamic pages from a fixture', () => {
@@ -86,7 +86,7 @@ describe('viewer-request function', () => {
 	}
 
 	test('rewrites every current app route, including parents, to index.html', () => {
-		for (const uri of ['/builder', '/stats', '/admin', '/admin/users']) {
+		for (const uri of ['/builder', '/stats', '/admin', '/admin/users', '/players', '/profile']) {
 			const result = run(handler, uri, { query: { draft: { value: 'abc' } } });
 			expect(result.uri).toBe('/index.html');
 			expect(result.statusCode).toBeUndefined();
