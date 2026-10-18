@@ -64,7 +64,7 @@
 			<li>
 				The monthly Gaslands Garage email is a separate choice, off until you opt in. It is about once
 				a month and covers game tips, car suggestions, and new site features. Unsubscribe from the link
-				in that email, or turn it off in settings.
+				in that email, turn it off in settings, or subscribe and unsubscribe on your player profile.
 			</li>
 		</ul>
 

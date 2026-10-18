@@ -10,12 +10,16 @@ export const NEWSLETTER_CONSENT_VERSION = 'monthly-email-v1';
 export const NEWSLETTER_CONSENT_COPY =
 	'Send me the monthly Gaslands Garage email: game tips, car suggestions, and new site features. About once a month. Unsubscribe anytime.';
 
+/** Where the player last recorded the monthly-email choice. */
+export type NewsletterSource = 'profile' | 'prompt' | 'settings';
+
 export interface NewsletterConsentFields {
 	newsletterOptIn?: boolean;
 	newsletterOptInAt?: string;
 	newsletterOptOutAt?: string;
 	newsletterConsentText?: string;
 	newsletterPromptDismissedAt?: string;
+	newsletterSource?: string;
 }
 
 const NEWSLETTER_KEYS = [
@@ -23,7 +27,8 @@ const NEWSLETTER_KEYS = [
 	'newsletterOptInAt',
 	'newsletterOptOutAt',
 	'newsletterConsentText',
-	'newsletterPromptDismissedAt'
+	'newsletterPromptDismissedAt',
+	'newsletterSource'
 ] as const;
 
 function withoutNewsletter<T extends object>(value: T): T {
@@ -34,6 +39,18 @@ function withoutNewsletter<T extends object>(value: T): T {
 
 function keptString(value: unknown): string | undefined {
 	return typeof value === 'string' && value ? value : undefined;
+}
+
+function keptSource(value: unknown): string | undefined {
+	return typeof value === 'string' && value.length > 0 && value.length < 40 ? value : undefined;
+}
+
+/** Keep a recorded source. A new choice without a source does not keep the old one. */
+function sourceFor(choice: NewsletterConsentFields, prev: NewsletterConsentFields): string | undefined {
+	if (Object.prototype.hasOwnProperty.call(choice, 'newsletterSource')) return keptSource(choice.newsletterSource);
+	const sameChoice =
+		!Object.prototype.hasOwnProperty.call(choice, 'newsletterOptIn') || choice.newsletterOptIn === prev.newsletterOptIn;
+	return sameChoice ? keptSource(prev.newsletterSource) : undefined;
 }
 
 /**
@@ -53,8 +70,11 @@ export function stampNewsletterConsent<T extends object>(
 	const dismissed = keptString(prev.newsletterPromptDismissedAt);
 	const keptDismiss = dismissed ? { newsletterPromptDismissedAt: dismissed } : {};
 
+	const source = sourceFor(choice, prev);
+	const sourced = source ? { newsletterSource: source } : {};
+
 	if (!Object.prototype.hasOwnProperty.call(choice, 'newsletterOptIn')) {
-		const kept: NewsletterConsentFields = { ...keptDismiss };
+		const kept: NewsletterConsentFields = { ...keptDismiss, ...sourced };
 		if (typeof prev.newsletterOptIn === 'boolean') kept.newsletterOptIn = prev.newsletterOptIn;
 		const optInAt = keptString(prev.newsletterOptInAt);
 		const optOutAt = keptString(prev.newsletterOptOutAt);
@@ -71,6 +91,7 @@ export function stampNewsletterConsent<T extends object>(
 		return {
 			...rest,
 			...keptDismiss,
+			...sourced,
 			...(optOutAt ? { newsletterOptOutAt: optOutAt } : {}),
 			newsletterOptIn: true,
 			newsletterOptInAt: previousOptInAt ?? nowIso,
@@ -83,6 +104,7 @@ export function stampNewsletterConsent<T extends object>(
 	return {
 		...rest,
 		...keptDismiss,
+		...sourced,
 		...(optInAt ? { newsletterOptInAt: optInAt } : {}),
 		newsletterOptIn: false,
 		newsletterOptOutAt: previousOptOutAt ?? nowIso,

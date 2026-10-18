@@ -38,10 +38,13 @@ The player writes their own `userSettings` document. The rules do not whitelist 
 | `newsletterOptOutAt` | ISO time of the latest opt-out, including the unsubscribe link. |
 | `newsletterConsentText` | `monthly-email-v1`, the version of the sentence above. |
 | `newsletterPromptDismissedAt` | ISO time they closed the one-time prompt without answering. The prompt is not shown again. |
+| `newsletterSource` | Where they last changed the choice. `profile` is the player profile page. Absent when the choice came from settings or the prompt. |
 
 Firestore rules let only that player write these fields, and only with those types. Opt-in requires `newsletterConsentText == monthly-email-v1` and a string `newsletterOptInAt`. Another player cannot read `userSettings`. An administrator can read the document and cannot change it. Firestore returns every field on that read; the Users page shows consent, email choices, and map preferences, and it does not show precise map coordinates. `newsletterTokens` stays unreadable, including to administrators.
 
 A signed-in player who has never answered sees a small prompt on the page. It is not a dialog and it does not block the builder. "No thanks" only writes `newsletterPromptDismissedAt`. "Send me the monthly email" opts in. After either one, or after they save the checkbox, the prompt stays hidden.
+
+The same choice is on the signed-in player profile, under **Monthly Gaslands Garage email**. Subscribe and Unsubscribe call `saveNewsletterChoice` and store `newsletterSource` as `profile`, with consent version `monthly-email-v1`. That control stays in step with the General Settings checkbox. It does not change **Keep me up to date**.
 
 This change does not send the monthly email. Send it later with Twilio Email, and only after the sending domain is verified.
 
@@ -104,7 +107,7 @@ A disabled account cannot obtain an ID token, so the callable cannot run until t
 | --- | --- |
 | Profile, teams, settings, player profile, map pin, open-to-games card | Until the person deletes the account, or until a verified request is completed |
 | `receiveUpdatesChangedAt` | With `userSettings`, until the account is deleted |
-| `newsletterOptIn`, `newsletterOptInAt`, `newsletterOptOutAt`, `newsletterConsentText`, `newsletterPromptDismissedAt` | With `userSettings`, until the account is deleted |
+| `newsletterOptIn`, `newsletterOptInAt`, `newsletterOptOutAt`, `newsletterConsentText`, `newsletterPromptDismissedAt`, `newsletterSource` | With `userSettings`, until the account is deleted |
 | `newsletterTokens/{uid}` | Until the account is deleted. Opting out does not delete it, so an old unsubscribe link still works |
 | Analytics choice | In `localStorage` on that browser until they change it or clear site data. It is not stored in Firestore |
 | `gameContacts` after deletion | The thread stays for the other player. The departing name and text are replaced |

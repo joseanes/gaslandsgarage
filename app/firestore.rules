@@ -362,6 +362,7 @@ service cloud.firestore {
         && (!('newsletterOptOutAt' in data) || newsletterText(data.newsletterOptOutAt))
         && (!('newsletterConsentText' in data) || (data.newsletterConsentText is string && data.newsletterConsentText.size() > 0 && data.newsletterConsentText.size() < 80))
         && (!('newsletterPromptDismissedAt' in data) || newsletterText(data.newsletterPromptDismissedAt))
+        && (!('newsletterSource' in data) || (data.newsletterSource is string && data.newsletterSource.size() > 0 && data.newsletterSource.size() < 40))
         && (
           !('newsletterOptIn' in data)
           || (

@@ -509,6 +509,12 @@ describe('monthly email consent', () => {
 		await assertSucceeds(setDoc(doc(player, 'userSettings', 'player'), { darkMode: true }));
 		await assertSucceeds(setDoc(doc(player, 'userSettings', 'player'), { ...NEWSLETTER_IN, darkMode: true }));
 		await assertSucceeds(
+			setDoc(doc(player, 'userSettings', 'player'), { ...NEWSLETTER_IN, newsletterSource: 'profile', darkMode: true })
+		);
+		await assertFails(
+			setDoc(doc(player, 'userSettings', 'player'), { ...NEWSLETTER_IN, newsletterSource: 'x'.repeat(40) })
+		);
+		await assertSucceeds(
 			updateDoc(doc(player, 'userSettings', 'player'), {
 				newsletterOptIn: false,
 				newsletterOptOutAt: NOW,
