@@ -81,7 +81,7 @@ test('an administrator can view settings and cannot edit them', async ({ page })
 		newsletterOptIn: true,
 		newsletterOptInAt: '2026-10-01T15:04:00.000Z',
 		newsletterConsentText: 'monthly-email-v1',
-		receiveUpdates: false,
+		receiveUpdates: true,
 		receiveUpdatesChangedAt: '2026-09-01T12:00:00.000Z',
 		allowContactFromPlayers: true,
 		showOnPlayersMap: false,
@@ -112,7 +112,8 @@ test('an administrator can view settings and cannot edit them', async ({ page })
 	await expect(panel.getByTestId('newsletter-status')).toHaveText('On');
 	await expect(panel.getByTestId('newsletter-given')).toContainText('2026');
 	await expect(panel.getByTestId('newsletter-given')).toContainText('monthly-email-v1');
-	await expect(panel.getByTestId('updates-status')).toHaveText('Off');
+	await expect(panel.getByText('Keep me up to date')).toHaveCount(0);
+	await expect(panel.getByTestId('updates-status')).toHaveCount(0);
 	await expect(panel.getByTestId('game-request-email')).toHaveText('On');
 	await expect(panel.getByTestId('analytics-consent')).toHaveText('Not stored on the account');
 	await expect(panel.getByTestId('ads-consent')).toContainText('Denied');
@@ -132,5 +133,6 @@ test('an administrator can view settings and cannot edit them', async ({ page })
 
 	const before = (await db.doc(`userSettings/${playerUid}`).get()).data();
 	expect(before?.newsletterOptIn).toBe(true);
+	expect(before?.receiveUpdates).toBe(true);
 	expect(before?.printStyle).toBe('dashboard');
 });

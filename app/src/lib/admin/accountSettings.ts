@@ -10,8 +10,6 @@ export type AdminAccountSettings = {
 	newsletterOptInAt: string | null;
 	newsletterOptOutAt: string | null;
 	newsletterConsentText: string | null;
-	receiveUpdates: boolean;
-	receiveUpdatesChangedAt: string | null;
 	allowContactFromPlayers: boolean;
 	showOnPlayersMap: boolean;
 	location: string;
@@ -73,8 +71,6 @@ export function projectUserSettings(data: Record<string, unknown> | undefined): 
 		newsletterOptInAt: text(source.newsletterOptInAt),
 		newsletterOptOutAt: text(source.newsletterOptOutAt),
 		newsletterConsentText: text(source.newsletterConsentText),
-		receiveUpdates: source.receiveUpdates === true,
-		receiveUpdatesChangedAt: text(source.receiveUpdatesChangedAt),
 		allowContactFromPlayers: source.allowContactFromPlayers === true,
 		showOnPlayersMap: source.showOnPlayersMap === true,
 		location: typeof source.location === 'string' ? source.location : '',

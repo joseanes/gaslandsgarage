@@ -31,7 +31,7 @@ test('the monthly email stays unchecked, separate, and easy to dismiss', async (
 	await expect(prompt).toContainText(CONSENT);
 
 	const dialog = await openGeneralSettings(page);
-	await expect(dialog.getByText('Keep me up to date', { exact: true })).toBeVisible();
+	await expect(dialog.getByText('Keep me up to date')).toHaveCount(0);
 	const checkbox = dialog.getByTestId('newsletter-opt-in');
 	await expect(checkbox).not.toBeChecked();
 	await expect(dialog.getByLabel(CONSENT)).toBeVisible();
@@ -66,7 +66,7 @@ test('opting in from the prompt stores the consent version and hides the prompt'
 
 	const dialog = await openGeneralSettings(page);
 	await expect(dialog.getByTestId('newsletter-opt-in')).toBeChecked();
-	await expect(dialog.getByRole('checkbox', { name: 'Keep me up to date' })).not.toBeChecked();
+	await expect(dialog.getByText('Keep me up to date')).toHaveCount(0);
 });
 
 test('saving the settings checkbox opts in without the prompt coming back', async ({ page }) => {

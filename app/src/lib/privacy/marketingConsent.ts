@@ -112,27 +112,23 @@ export function stampNewsletterConsent<T extends object>(
 	};
 }
 
+const RETIRED_UPDATE_KEYS = ['receiveUpdates', 'receiveUpdatesChangedAt'] as const;
+
 /**
- * Record when marketing consent is turned on or off.
- * The first save of the default off state is not a change.
- * A timestamp supplied by the caller is kept only when the choice did not change.
+ * "Keep me up to date" is retired. A save cannot turn that choice on or off,
+ * and it cannot copy the old choice onto the monthly email.
+ * A value already stored on the account is written back unchanged.
  */
-export function stampReceiveUpdatesConsent<T extends MarketingConsentFields>(
+export function preserveStoredReceiveUpdates<T extends object>(
 	previous: MarketingConsentFields | null | undefined,
-	next: T,
-	nowIso: string
-): T {
-	const prevOn = previous?.receiveUpdates === true;
-	const nextOn = next.receiveUpdates === true;
-	const changed = previous ? prevOn !== nextOn : nextOn;
-	if (changed) return { ...next, receiveUpdatesChangedAt: nowIso };
-
-	if (previous && typeof previous.receiveUpdatesChangedAt === 'string' && previous.receiveUpdatesChangedAt) {
-		return { ...next, receiveUpdatesChangedAt: previous.receiveUpdatesChangedAt };
+	next: T
+): T & MarketingConsentFields {
+	const copy: Record<string, unknown> = { ...(next as Record<string, unknown>) };
+	for (const key of RETIRED_UPDATE_KEYS) delete copy[key];
+	const prev = (previous ?? {}) as Record<string, unknown>;
+	for (const key of RETIRED_UPDATE_KEYS) {
+		if (!Object.prototype.hasOwnProperty.call(prev, key)) continue;
+		if (prev[key] !== undefined) copy[key] = prev[key];
 	}
-
-	if (!Object.prototype.hasOwnProperty.call(next, 'receiveUpdatesChangedAt')) return next;
-	const copy = { ...next };
-	delete copy.receiveUpdatesChangedAt;
-	return copy;
+	return copy as T & MarketingConsentFields;
 }

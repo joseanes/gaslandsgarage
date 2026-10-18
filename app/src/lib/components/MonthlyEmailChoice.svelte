@@ -44,7 +44,7 @@
 	<h2 id="monthly-email-heading" class="text-xl font-bold">Monthly Gaslands Garage email</h2>
 	<p class="mt-1 text-sm text-stone-600 dark:text-gray-300" data-testid="profile-newsletter-status">{status}</p>
 	<p class="mt-2 text-sm text-stone-600 dark:text-gray-300">
-		This is separate from Keep me up to date. It saves as soon as you change it.
+		It saves as soon as you change it.
 	</p>
 	<label class="mt-3 flex items-start gap-2">
 		<input

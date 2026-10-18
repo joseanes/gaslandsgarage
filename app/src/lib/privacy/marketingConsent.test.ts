@@ -2,47 +2,60 @@ import { describe, expect, it } from 'vitest';
 import {
 	NEWSLETTER_CONSENT_COPY,
 	NEWSLETTER_CONSENT_VERSION,
+	preserveStoredReceiveUpdates,
 	stampNewsletterConsent,
-	stampReceiveUpdatesConsent
+	type MarketingConsentFields,
+	type NewsletterConsentFields
 } from './marketingConsent';
 
 const now = '2026-10-18T12:00:00.000Z';
 
-describe('receiveUpdates consent timestamp', () => {
-	it('stamps a change on or off and leaves an unchanged choice alone', () => {
-		expect(stampReceiveUpdatesConsent(null, { receiveUpdates: false, darkMode: true }, now)).toEqual({
-			receiveUpdates: false,
-			darkMode: true
-		});
-		expect(stampReceiveUpdatesConsent(null, { receiveUpdates: true }, now)).toEqual({
-			receiveUpdates: true,
-			receiveUpdatesChangedAt: now
-		});
-		expect(stampReceiveUpdatesConsent({ receiveUpdates: false }, { receiveUpdates: true, darkMode: false }, now)).toEqual({
-			receiveUpdates: true,
-			darkMode: false,
-			receiveUpdatesChangedAt: now
-		});
-		expect(
-			stampReceiveUpdatesConsent(
-				{ receiveUpdates: true, receiveUpdatesChangedAt: '2026-01-01T00:00:00.000Z' },
-				{ receiveUpdates: false },
-				now
-			)
-		).toEqual({ receiveUpdates: false, receiveUpdatesChangedAt: now });
-		expect(
-			stampReceiveUpdatesConsent(
-				{ receiveUpdates: true, receiveUpdatesChangedAt: '2026-01-01T00:00:00.000Z' },
-				{ receiveUpdates: true, receiveUpdatesChangedAt: '2099-01-01T00:00:00.000Z' },
-				now
-			)
-		).toEqual({ receiveUpdates: true, receiveUpdatesChangedAt: '2026-01-01T00:00:00.000Z' });
+/** Same order as saveUserSettings: stamp the monthly choice, then put the retired fields back. */
+function saved(
+	previous: (NewsletterConsentFields & MarketingConsentFields) | null,
+	next: Record<string, unknown>
+) {
+	return preserveStoredReceiveUpdates(previous, stampNewsletterConsent(previous, next, now));
+}
+
+describe('retired Keep me up to date field', () => {
+	it('drops a new choice and does not opt that person into the monthly email', () => {
+		expect(saved(null, { receiveUpdates: true, darkMode: true })).toEqual({ darkMode: true });
+		expect(saved(null, { receiveUpdates: false })).toEqual({});
+		const opted = saved(null, { receiveUpdates: true, newsletterOptIn: true });
+		expect(opted.receiveUpdates).toBeUndefined();
+		expect(opted.newsletterOptIn).toBe(true);
 	});
 
-	it('drops a caller-supplied timestamp when the choice never changed', () => {
-		expect(
-			stampReceiveUpdatesConsent({ receiveUpdates: false }, { receiveUpdates: false, receiveUpdatesChangedAt: now }, now)
-		).toEqual({ receiveUpdates: false });
+	it('keeps a stored value when a later save omits it or tries to change it', () => {
+		const previous = {
+			receiveUpdates: true,
+			receiveUpdatesChangedAt: '2026-01-01T00:00:00.000Z',
+			darkMode: true
+		};
+		expect(saved(previous, { darkMode: false, receiveUpdates: false })).toEqual({
+			darkMode: false,
+			receiveUpdates: true,
+			receiveUpdatesChangedAt: '2026-01-01T00:00:00.000Z'
+		});
+		expect(saved(previous, { receiveUpdates: false, receiveUpdatesChangedAt: now })).toEqual({
+			receiveUpdates: true,
+			receiveUpdatesChangedAt: '2026-01-01T00:00:00.000Z'
+		});
+		expect(saved({ receiveUpdates: false }, { newsletterOptIn: false })).toMatchObject({
+			receiveUpdates: false,
+			newsletterOptIn: false
+		});
+	});
+
+	it('does not turn the monthly email on for someone who only had the old box checked', () => {
+		const onlyOldBox = saved(
+			{ receiveUpdates: true, receiveUpdatesChangedAt: '2026-01-01T00:00:00.000Z' },
+			{ darkMode: false }
+		);
+		expect(onlyOldBox.newsletterOptIn).toBeUndefined();
+		expect(onlyOldBox.receiveUpdates).toBe(true);
+		expect(onlyOldBox.receiveUpdatesChangedAt).toBe('2026-01-01T00:00:00.000Z');
 	});
 });
 

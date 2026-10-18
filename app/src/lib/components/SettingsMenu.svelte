@@ -20,7 +20,6 @@
   export let showOnPlayersMap = false;
   export let allowContactFromPlayers = false;
   export let location = '';
-  export let receiveUpdates = false;
   export let saveSettingsToFirebase: (settings: Record<string, unknown>) => void | Promise<void> = async () => {};
 
   let newsletterOptIn = false;
@@ -160,7 +159,6 @@
                     showOnPlayersMap,
                     allowContactFromPlayers,
                     location,
-                    receiveUpdates,
                     ...(newsletterTouched || newsletterAnswered ? { newsletterOptIn } : {})
                   };
                   
@@ -321,25 +319,8 @@
             </p>
           </div>
 
-          <!-- Email Updates Option - Only shown when logged in -->
+          <!-- Monthly email - Only shown when logged in -->
           {#if $user}
-            <div class="p-4 rounded-lg bg-amber-50 dark:bg-amber-900/30 space-y-3">
-              <div class="flex items-center">
-                <input
-                  type="checkbox"
-                  id="receive-updates"
-                  bind:checked={receiveUpdates}
-                  class="w-5 h-5 text-amber-600 bg-stone-100 dark:bg-gray-700 border-stone-300 dark:border-gray-600 rounded focus:ring-amber-500"
-                />
-                <label for="receive-updates" class="ml-3 text-stone-800 dark:text-white font-medium">
-                  Keep me up to date
-                </label>
-              </div>
-              <p class="text-stone-600 dark:text-gray-200 text-sm ml-8">
-                Receive emails with Gaslands and Gaslands Garage feature updates and marketing materials.
-              </p>
-            </div>
-
             <div class="p-4 rounded-lg bg-amber-50 dark:bg-amber-900/30 space-y-3" data-testid="newsletter-setting">
               <div class="flex items-start">
                 <input

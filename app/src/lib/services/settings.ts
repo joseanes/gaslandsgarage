@@ -2,8 +2,8 @@ import { writable } from 'svelte/store';
 import { auth, db } from '../firebase';
 import { browser } from '$app/environment';
 import {
+	preserveStoredReceiveUpdates,
 	stampNewsletterConsent,
-	stampReceiveUpdatesConsent,
 	type NewsletterConsentFields
 } from '../privacy/marketingConsent';
 
@@ -17,8 +17,8 @@ export interface UserSettings {
   showGaslandsMath?: boolean;
   hasRules?: boolean; // Indicates if the user has acknowledged owning the rules
   showExperimentalFeatures?: boolean; // Whether to show experimental features
-  receiveUpdates?: boolean; // Whether user wants to receive updates and marketing emails
-  receiveUpdatesChangedAt?: string; // When receiveUpdates was last turned on or off
+  receiveUpdates?: boolean; // Retired "Keep me up to date" choice. Kept on existing accounts. Not shown or changed.
+  receiveUpdatesChangedAt?: string; // Timestamp stored with that retired choice. Not updated.
   newsletterOptIn?: boolean; // Monthly email. Absent until the player answers. Unchecked by default.
   newsletterOptInAt?: string; // When newsletterOptIn was last turned on
   newsletterOptOutAt?: string; // When newsletterOptIn was last turned off
@@ -43,7 +43,6 @@ export const DEFAULT_SETTINGS: UserSettings = {
   showGaslandsMath: true,
   hasRules: false, // Default to false until acknowledged
   showExperimentalFeatures: false, // Default to not showing experimental features
-  receiveUpdates: false, // Default to not receiving updates
   showOnPlayersMap: false, // Default to not showing on players map
   allowContactFromPlayers: false, // Default to not allowing contact
   location: '', // Default to empty location
@@ -109,10 +108,9 @@ export async function saveUserSettings(settings: UserSettings): Promise<{ succes
     const existing = await getDoc(settingsRef);
     const previous = existing.exists() ? (existing.data() as UserSettings) : null;
     const now = new Date().toISOString();
-    const stamped = stampNewsletterConsent(
+    const stamped = preserveStoredReceiveUpdates(
       previous,
-      stampReceiveUpdatesConsent(previous, settings, now),
-      now
+      stampNewsletterConsent(previous, settings, now)
     );
     await setDoc(settingsRef, stamped);
     publishNewsletter(stamped, true);

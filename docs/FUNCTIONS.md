@@ -37,7 +37,7 @@ The admin page writes `adminUsers/{uid}` (`app/src/lib/admin/api.ts`). The funct
 
 ## Game-request email
 
-On create of `gameContacts/{id}`, the function reads `userSettings/{toUid}`. It queues mail only when `allowContactFromPlayers` is exactly `true`. That setting defaults to false. `receiveUpdates` is marketing consent and does not send this mail. An `openToGames` card lets another player send an in-app request. It is not consent to email, and the profile copy says the address is not shared.
+On create of `gameContacts/{id}`, the function reads `userSettings/{toUid}`. It queues mail only when `allowContactFromPlayers` is exactly `true`. That setting defaults to false. A stored `receiveUpdates` value is the retired "Keep me up to date" checkbox. It does not send this mail, and it does not opt the player into the monthly email. An `openToGames` card lets another player send an in-app request. It is not consent to email, and the profile copy says the address is not shared.
 
 The recipient address is loaded with `auth.getUser(toUid)`. It is written only as the `to` field of `mail/gameContact_{contactId}`, which is the [Trigger Email extension](https://firebase.google.com/docs/extensions/official/firestore-send-email) document:
 
