@@ -14,7 +14,7 @@ async function signIn(page: Page, email: string) {
 }
 
 async function emailsInOrder(page: Page): Promise<string[]> {
-	const cells = page.getByTestId('admin-users').locator('tbody tr td:first-child');
+	const cells = page.getByTestId('admin-user-row').locator('td:first-child');
 	const count = await cells.count();
 	const emails: string[] = [];
 	for (let index = 0; index < count; index += 1) {

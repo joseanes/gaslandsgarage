@@ -1,9 +1,12 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import { user } from '$lib/firebase';
 	import { accountSessionReady, isAdministrator } from '$lib/admin/session';
 	import {
 		changeUserRole,
 		loadDirectory,
+		loadUserAccount,
+		loadUserTeams,
 		setUserDisabled,
 		type DirectoryTeam,
 		type DirectoryUser
@@ -11,7 +14,7 @@
 	import { REGULAR_USER_LABEL, roleChoices, userMatchesSearch } from '$lib/admin/accountActions';
 	import AdminAccountSettings from '$lib/components/AdminAccountSettings.svelte';
 	import ReadonlyTeam from '$lib/components/ReadonlyTeam.svelte';
-	import { projectUserSettings, type AdminAccountSettings as AccountSettings, type AdminProfileView } from '$lib/admin/accountSettings';
+	import { type AdminAccountSettings as AccountSettings, type AdminProfileView } from '$lib/admin/accountSettings';
 	import {
 		DEFAULT_USER_SORT,
 		nextUserSort,
@@ -27,11 +30,20 @@
 	let sortKey: UserSortKey = DEFAULT_USER_SORT.key;
 	let sortDirection: SortDirection = DEFAULT_USER_SORT.direction;
 	let rows: DirectoryUser[] = [];
-	let teamsByUser = new Map<string, DirectoryTeam[]>();
-	let settingsByUser: Map<string, AccountSettings> | null = null;
-	let profilesByUser: Map<string, AdminProfileView> | null = null;
 	let selectedUid = '';
 	let settingsUid = '';
+	let settingsPanelEl: HTMLElement | null = null;
+	let teamsPanelEl: HTMLElement | null = null;
+	let settingsDetailStatus: 'idle' | 'loading' | 'ready' | 'error' = 'idle';
+	let settingsDetailError = '';
+	let settingsDetail: AccountSettings | null = null;
+	let settingsProfile: AdminProfileView | null = null;
+	let settingsProfileLoaded = false;
+	let settingsRequest = 0;
+	let teamsDetailStatus: 'idle' | 'loading' | 'ready' | 'error' = 'idle';
+	let teamsDetailError = '';
+	let teamsDetail: DirectoryTeam[] = [];
+	let teamsRequest = 0;
 	let busy = false;
 	let loadedFor = '';
 
@@ -64,9 +76,6 @@
 			if ($user?.uid !== uid) return;
 			const previousRole = roleTarget ? roleLabel(roleTarget.role) : '';
 			rows = directory.users;
-			teamsByUser = directory.teamsByUser;
-			settingsByUser = directory.settingsByUser;
-			profilesByUser = directory.profilesByUser;
 			roleTarget = sameAccount(roleTarget, rows);
 			if (roleTarget && roleChoice === previousRole) roleChoice = roleLabel(roleTarget.role);
 			disableTarget = sameAccount(disableTarget, rows);
@@ -108,15 +117,93 @@
 		if (sortKey !== key) return 'none';
 		return sortDirection === 'asc' ? 'ascending' : 'descending';
 	}
-	$: selected = rows.find((row) => row.uid === selectedUid) ?? null;
-	$: selectedTeams = selected ? teamsByUser.get(selected.uid) ?? [] : [];
-	$: settingsPerson = rows.find((row) => row.uid === settingsUid) ?? null;
-	$: settingsRecord = settingsPerson
-		? settingsByUser
-			? (settingsByUser.get(settingsPerson.uid) ?? projectUserSettings(undefined))
-			: null
-		: null;
-	$: profileRecord = settingsPerson && profilesByUser ? (profilesByUser.get(settingsPerson.uid) ?? null) : null;
+
+	function detailMessage(error: unknown, fallback: string): string {
+		return error instanceof Error && error.message ? error.message : fallback;
+	}
+
+	function revealDetail(rowEl: HTMLElement | null, panelEl: HTMLElement | null) {
+		if (!panelEl) return;
+		panelEl.focus({ preventScroll: true });
+		const scroller = rowEl?.closest('[data-testid="admin-users-scroll"]');
+		if (scroller instanceof HTMLElement) scroller.scrollLeft = 0;
+		if (!rowEl) return;
+		const panel = panelEl.getBoundingClientRect();
+		const row = rowEl.getBoundingClientRect();
+		const panelTopVisible = panel.top >= 0 && panel.top < window.innerHeight - 40 && panel.left >= 0 && panel.left < window.innerWidth;
+		const rowVisible = row.top >= 0 && row.bottom <= window.innerHeight;
+		if (!panelTopVisible || !rowVisible) {
+			rowEl.scrollIntoView({ block: 'start', inline: 'nearest' });
+		}
+	}
+
+	async function toggleSettings(row: DirectoryUser, event: MouseEvent) {
+		const trigger = event.currentTarget instanceof HTMLButtonElement ? event.currentTarget : null;
+		if (settingsUid === row.uid) {
+			settingsUid = '';
+			settingsDetailStatus = 'idle';
+			await tick();
+			trigger?.focus();
+			return;
+		}
+		const request = ++settingsRequest;
+		settingsUid = row.uid;
+		settingsDetail = null;
+		settingsProfile = null;
+		settingsProfileLoaded = false;
+		settingsDetailError = '';
+		settingsDetailStatus = 'loading';
+		const rowEl = trigger?.closest('tr') ?? null;
+		await tick();
+		revealDetail(rowEl, settingsPanelEl);
+		try {
+			const view = await loadUserAccount(row.uid);
+			if (request !== settingsRequest || settingsUid !== row.uid) return;
+			settingsDetail = view.settings;
+			settingsProfile = view.profile;
+			settingsProfileLoaded = view.profileLoaded;
+			settingsDetailStatus = 'ready';
+		} catch (error) {
+			if (request !== settingsRequest || settingsUid !== row.uid) return;
+			settingsDetail = null;
+			settingsDetailStatus = 'error';
+			settingsDetailError = detailMessage(error, 'Account settings could not be loaded.');
+		}
+		await tick();
+		revealDetail(rowEl, settingsPanelEl);
+	}
+
+	async function toggleTeams(row: DirectoryUser, event: MouseEvent) {
+		const trigger = event.currentTarget instanceof HTMLButtonElement ? event.currentTarget : null;
+		if (selectedUid === row.uid) {
+			selectedUid = '';
+			teamsDetailStatus = 'idle';
+			await tick();
+			trigger?.focus();
+			return;
+		}
+		const request = ++teamsRequest;
+		selectedUid = row.uid;
+		teamsDetail = [];
+		teamsDetailError = '';
+		teamsDetailStatus = 'loading';
+		const rowEl = trigger?.closest('tr') ?? null;
+		await tick();
+		revealDetail(rowEl, teamsPanelEl);
+		try {
+			const teams = await loadUserTeams(row.uid);
+			if (request !== teamsRequest || selectedUid !== row.uid) return;
+			teamsDetail = teams;
+			teamsDetailStatus = 'ready';
+		} catch (error) {
+			if (request !== teamsRequest || selectedUid !== row.uid) return;
+			teamsDetail = [];
+			teamsDetailStatus = 'error';
+			teamsDetailError = detailMessage(error, 'Teams could not be loaded.');
+		}
+		await tick();
+		revealDetail(rowEl, teamsPanelEl);
+	}
 
 	function openRole(row: DirectoryUser) {
 		actionError = '';
@@ -221,7 +308,7 @@
 			<p role="alert" class="mb-4 text-red-700 dark:text-red-300">{actionError}</p>
 		{/if}
 
-		<div class="overflow-x-auto rounded-lg border border-stone-200 dark:border-gray-700">
+		<div class="user-table-scroll overflow-x-auto rounded-lg border border-stone-200 dark:border-gray-700" data-testid="admin-users-scroll">
 			<table class="min-w-full text-sm" data-testid="admin-users">
 				<thead class="bg-stone-100 text-left dark:bg-gray-800">
 					<tr>
@@ -250,7 +337,7 @@
 						</tr>
 					{/if}
 					{#each visible as row (row.uid)}
-						<tr class="border-t border-stone-200 align-top dark:border-gray-700">
+						<tr class="border-t border-stone-200 align-top dark:border-gray-700" data-testid="admin-user-row">
 							<td class="px-3 py-3">
 								<div>{row.email || 'No email'}</div>
 								<div class="text-xs text-stone-500">{row.uid}</div>
@@ -273,16 +360,20 @@
 									<button
 										type="button"
 										class="text-amber-700 underline dark:text-amber-300"
+										aria-expanded={settingsUid === row.uid}
+										aria-controls={`user-settings-${row.uid}`}
 										aria-label={`${settingsUid === row.uid ? 'Hide' : 'View'} settings for ${row.email || row.uid}`}
-										on:click={() => (settingsUid = settingsUid === row.uid ? '' : row.uid)}
+										on:click={(event) => toggleSettings(row, event)}
 									>
 										{settingsUid === row.uid ? 'Hide settings' : 'View settings'}
 									</button>
 									<button
 										type="button"
 										class="text-amber-700 underline dark:text-amber-300"
+										aria-expanded={selectedUid === row.uid}
+										aria-controls={`user-teams-${row.uid}`}
 										aria-label={`${selectedUid === row.uid ? 'Hide' : 'View'} teams for ${row.email || row.uid}`}
-										on:click={() => (selectedUid = selectedUid === row.uid ? '' : row.uid)}
+										on:click={(event) => toggleTeams(row, event)}
 									>
 										{selectedUid === row.uid ? 'Hide teams' : 'View teams'}
 									</button>
@@ -321,40 +412,81 @@
 								</div>
 							</td>
 						</tr>
+						{#if settingsUid === row.uid}
+							<tr class="border-t border-stone-200 bg-stone-50 dark:border-gray-700 dark:bg-gray-900" data-testid="admin-settings-row">
+								<td colspan="8" class="p-0">
+									<div
+										id={`user-settings-${row.uid}`}
+										class="user-detail p-3 outline-none"
+										tabindex="-1"
+										bind:this={settingsPanelEl}
+										data-testid="admin-settings-panel"
+									>
+										<AdminAccountSettings
+											person={row}
+											settings={settingsDetail}
+											profile={settingsProfile}
+											profileLoaded={settingsProfileLoaded}
+											loading={settingsDetailStatus === 'loading'}
+											loadError={settingsDetailStatus === 'error' ? settingsDetailError : ''}
+										/>
+									</div>
+								</td>
+							</tr>
+						{/if}
+						{#if selectedUid === row.uid}
+							<tr class="border-t border-stone-200 bg-stone-50 dark:border-gray-700 dark:bg-gray-900" data-testid="admin-teams-row">
+								<td colspan="8" class="p-0">
+									<div
+										id={`user-teams-${row.uid}`}
+										class="user-detail space-y-3 p-3 outline-none"
+										tabindex="-1"
+										bind:this={teamsPanelEl}
+										data-testid="admin-teams-panel"
+										aria-label={`Teams for ${row.email || row.uid}`}
+									>
+										<h2 class="text-xl font-bold">Teams for {row.email || row.displayName || row.uid}</h2>
+										{#if teamsDetailStatus === 'loading'}
+											<p data-testid="teams-loading">Loading teams</p>
+										{:else if teamsDetailStatus === 'error'}
+											<p role="alert" data-testid="teams-error">{teamsDetailError || 'Teams could not be loaded.'}</p>
+										{:else if teamsDetail.length === 0}
+											<p data-testid="teams-empty">No saved teams</p>
+										{:else}
+											{#each teamsDetail as team (team.id)}
+												<ReadonlyTeam
+													teamName={team.teamName}
+													sponsorId={team.sponsorId}
+													rulesVersion={team.rulesVersion}
+													maxCans={team.maxCans}
+													vehicles={team.vehicles}
+												/>
+											{/each}
+										{/if}
+									</div>
+								</td>
+							</tr>
+						{/if}
 					{/each}
 				</tbody>
 			</table>
 		</div>
-
-		{#if settingsPerson}
-			<AdminAccountSettings
-				person={settingsPerson}
-				settings={settingsRecord}
-				profile={profileRecord}
-				profileLoaded={profilesByUser !== null}
-			/>
-		{/if}
-
-		{#if selected}
-			<div class="mt-6 space-y-3" aria-label={`Teams for ${selected.email || selected.uid}`}>
-				<h2 class="text-xl font-bold">Teams for {selected.email || selected.displayName || selected.uid}</h2>
-				{#if selectedTeams.length === 0}
-					<p>No saved teams.</p>
-				{:else}
-					{#each selectedTeams as team (team.id)}
-						<ReadonlyTeam
-							teamName={team.teamName}
-							sponsorId={team.sponsorId}
-							rulesVersion={team.rulesVersion}
-							maxCans={team.maxCans}
-							vehicles={team.vehicles}
-						/>
-					{/each}
-				{/if}
-			</div>
-		{/if}
 	{/if}
 </section>
+
+<style>
+	.user-table-scroll {
+		container-type: inline-size;
+	}
+
+	.user-detail {
+		position: sticky;
+		left: 0;
+		box-sizing: border-box;
+		width: 100cqw;
+		max-width: 100%;
+	}
+</style>
 
 {#if roleTarget}
 	<div class="fixed inset-0 z-[70] flex items-end justify-center bg-black/60 p-4 sm:items-center">
