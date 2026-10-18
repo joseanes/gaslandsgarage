@@ -17,7 +17,7 @@
 
 	<div class="space-y-4">
 		<p>
-			Gaslands Garage at gaslandsgarage.com is a free fan-made team builder operated by José Anés. This
+			Gaslands Garage at gaslandsgarage.com is a free fan-made team builder operated by Anes & Rincon LLC. This
 			page describes information the site actually collects and stores. You can also read the
 			<a class={linkClass} href="/terms">Terms and Conditions</a>.
 		</p>
@@ -287,7 +287,8 @@
 		<h2 class="text-xl font-bold mt-8 mb-3">Your rights</h2>
 		<p>
 			If you are signed in, you can download your data and delete your account from settings. You can
-			also email <a class={linkClass} href="mailto:jose.anes@gmail.com">jose.anes@gmail.com</a>. We
+			also email the contact address,
+			<a class={linkClass} href="mailto:jose.anes@gmail.com">jose.anes@gmail.com</a>. We
 			answer email requests within 1 month. We may need to confirm that you control the Google account.
 		</p>
 		<p>If the GDPR or UK GDPR applies, you can ask us to:</p>
@@ -316,7 +317,8 @@
 		<p>
 			You can ask us to tell you the categories and specific pieces of personal information we hold, to
 			correct it, or to delete it. We will not discriminate against you for asking. If you are signed
-			in, you can download your data and delete your account from settings. You can also email
+			in, you can download your data and delete your account from settings. You can also email the
+			contact address,
 			<a class={linkClass} href="mailto:jose.anes@gmail.com">jose.anes@gmail.com</a>. We answer email
 			requests within 1 month.
 		</p>
@@ -337,7 +339,8 @@
 		<h2 class="text-xl font-bold mt-8 mb-3">Asking us to delete information</h2>
 		<p>
 			If you are signed in, you can download your data and delete your account from settings. You can
-			also email <a class={linkClass} href="mailto:jose.anes@gmail.com">jose.anes@gmail.com</a>, or use
+			also email the contact address,
+			<a class={linkClass} href="mailto:jose.anes@gmail.com">jose.anes@gmail.com</a>, or use
 			Contact Us while signed in, and say what you want removed. We answer email requests within 1
 			month. We can delete the Gaslands Garage records we hold for that account, including the account
 			record, teams, profile, settings, game requests, and messages to us. Disabling an account is not
@@ -360,7 +363,8 @@
 
 		<h2 class="text-xl font-bold mt-8 mb-3">Contact</h2>
 		<p>
-			José Anés<br />
+			Anes & Rincon LLC<br />
+			Contact address:
 			<a class={linkClass} href="mailto:jose.anes@gmail.com">jose.anes@gmail.com</a>
 		</p>
 		<p>
