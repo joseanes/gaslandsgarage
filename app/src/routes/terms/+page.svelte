@@ -6,7 +6,7 @@
 	<title>Terms and Conditions - Gaslands Garage</title>
 	<meta
 		name="description"
-		content="Terms and Conditions for Gaslands Garage, a free fan-made Gaslands team builder operated by José Anés."
+		content="Terms and Conditions for Gaslands Garage, a free fan-made Gaslands team builder operated by Anes & Rincon LLC."
 	/>
 	<link rel="canonical" href="https://gaslandsgarage.com/terms" />
 </svelte:head>
@@ -17,7 +17,7 @@
 
 	<div class="space-y-4">
 		<p>
-			These terms cover use of Gaslands Garage at gaslandsgarage.com. The site is operated by José Anés.
+			These terms cover use of Gaslands Garage at gaslandsgarage.com. The site is operated by Anes & Rincon LLC.
 			The <a class={linkClass} href="/privacy">Privacy Policy</a> describes what the site stores.
 		</p>
 
@@ -36,7 +36,7 @@
 
 		<h2 class="text-xl font-bold mt-8 mb-3">Gaslands</h2>
 		<p>
-			Gaslands is a trademark of its owners, Mike Hutchinson and Osprey Games. José Anés and Gaslands
+			Gaslands is a trademark of its owners, Mike Hutchinson and Osprey Games. We and Gaslands
 			Garage are not affiliated with, endorsed by, or sponsored by Mike Hutchinson or Osprey Games.
 		</p>
 		<p>
@@ -80,7 +80,7 @@
 
 		<h2 class="text-xl font-bold mt-8 mb-3">Limitation of liability</h2>
 		<p>
-			To the extent the law allows, José Anés is not liable for lost teams, lost data, downtime, or for
+			To the extent the law allows, we are not liable for lost teams, lost data, downtime, or for
 			indirect, incidental, special, or consequential damages arising out of use of the site. The site
 			is free. Some places do not allow certain limits. In those places, the limits apply only as far as
 			the law allows.
@@ -101,7 +101,8 @@
 
 		<h2 class="text-xl font-bold mt-8 mb-3">Contact</h2>
 		<p>
-			José Anés<br />
+			Anes & Rincon LLC<br />
+			Contact address:
 			<a class={linkClass} href="mailto:jose.anes@gmail.com">jose.anes@gmail.com</a>
 		</p>
 		<p>

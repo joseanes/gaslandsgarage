@@ -11,8 +11,10 @@ The functions are 2nd gen, Node.js 22, TypeScript, in `functions/`. Node.js 20 i
 | `queueGameContactEmail` | `gameContacts/{contactId}` create | Queues one Trigger Email document when the recipient opted in. |
 | `exportMyData` | Callable, signed-in user | JSON of that account's Firestore data. |
 | `deleteMyAccount` | Callable, signed-in user | Deletes that account. Requires a fresh sign-in and the confirmation `DELETE`. |
+| `syncNewsletterToken` | `userSettings/{uid}` write | When `newsletterOptIn` is true, stores one random unsubscribe token. Does not send mail. |
+| `unsubscribeNewsletter` | Public HTTPS `GET` or `POST` | Sets `newsletterOptIn` to false for a valid `?token=`. No sign-in. |
 
-Region is `us-central1`. `publishUsageStats` uses 256MiB, a 300 second timeout, and one instance. `syncAuthDisabled` and `queueGameContactEmail` use the platform defaults and retry on failure. `exportMyData` and `deleteMyAccount` use 256MiB, a 60 second timeout, and at most 10 instances. None keep a warm instance.
+Region is `us-central1`. `publishUsageStats` uses 256MiB, a 300 second timeout, and one instance. `syncAuthDisabled`, `queueGameContactEmail`, and `syncNewsletterToken` retry on failure. `syncAuthDisabled` and `queueGameContactEmail` use the platform defaults. `syncNewsletterToken` uses the platform memory and timeout. `exportMyData` and `deleteMyAccount` use 256MiB, a 60 second timeout, and at most 10 instances. `unsubscribeNewsletter` uses 256MiB, a 30 second timeout, at most 10 instances, and `invoker: public` so the email link works without a Google sign-in. None keep a warm instance.
 
 ## Usage stats
 
@@ -74,12 +76,12 @@ Point the extension at the `mail` collection. Leave its sender address in the ex
 
 `exportMyData` and `deleteMyAccount` are HTTPS callables in `us-central1`. Both require a signed-in Firebase user and act only on `request.auth.uid`. A uid in the request body is ignored. Each allows 5 calls per rolling hour, stored on `privacyRate/{uid}` (`exportAt` and `deleteAt`). Clients cannot read or write that collection. The default deny rule covers it, so no rules change is required.
 
-`exportMyData` returns JSON for `users`, `users/{uid}/teams`, `teams`, `userSettings`, `playerProfiles`, `playerMapOwners`, `playerMapPrivate`, `playerMap`, that account's key on `playerMapBoard/public` and `openToGamesBoard/public`, `openToGames`, game requests sent and received, `messages`, `roles`, `adminUsers`, `mail` (another person's address is left out), and `privacyRate`. `stats/public` is aggregate and is not copied. The callable response has to stay under Cloud Functions' 10 MB limit.
+`exportMyData` returns JSON for `users`, `users/{uid}/teams`, `teams`, `userSettings` (including the monthly-email fields), `newsletterTokens`, `playerProfiles`, `playerMapOwners`, `playerMapPrivate`, `playerMap`, that account's key on `playerMapBoard/public` and `openToGamesBoard/public`, `openToGames`, game requests sent and received, `messages`, `roles`, `adminUsers`, `mail` (another person's address is left out), and `privacyRate`. `stats/public` is aggregate and is not copied. The callable response has to stay under Cloud Functions' 10 MB limit.
 
 `deleteMyAccount` checks that `confirmation` is exactly `DELETE` and that the ID token `auth_time` is less than five minutes old. It then, in order:
 
 1. Removes this account's key from `playerMapBoard/public` and `openToGamesBoard/public` in one transaction.
-2. Deletes the account's documents, including teams and the legacy `users/{uid}/teams` subcollection.
+2. Deletes the account's documents, including teams, the legacy `users/{uid}/teams` subcollection, and `newsletterTokens/{uid}`.
 3. Anonymizes this account's side of `gameContacts` and `messages`. The other person's text stays. Names become `Deleted player`. Contact-form messages lose their email and body, and `userId` becomes `deleted`.
 4. Deletes queued `mail` documents for those requests and any mail addressed to this account.
 5. Deletes `privacyRate/{uid}`.
@@ -98,7 +100,9 @@ pnpm install
 firebase deploy --only functions --force --project=gaslandsgarage-74ce6
 ```
 
-`syncAuthDisabled` and `queueGameContactEmail` set `retry: true`, so failed events are retried. The Firebase CLI stops and asks before deploying a function that retries. Those retrying functions require `firebase deploy --only functions --force`. `--force` accepts that prompt, including in a non-interactive shell. Without it, a deploy that includes either function does not finish. `publishUsageStats` is on the same deploy.
+`syncAuthDisabled`, `queueGameContactEmail`, and `syncNewsletterToken` set `retry: true`, so failed events are retried. The Firebase CLI stops and asks before deploying a function that retries. Those retrying functions require `firebase deploy --only functions --force`. `--force` accepts that prompt, including in a non-interactive shell. Without it, a deploy that includes any of them does not finish. `publishUsageStats` and `unsubscribeNewsletter` are on the same deploy.
+
+`unsubscribeNewsletter` does not send the monthly email. The query a future sender has to use, the unsubscribe link, and the postal line are in `docs/PRIVACY-OPS.md`. Deploy the rules in that same checklist. `newsletterTokens` is denied to clients.
 
 The predeploy hook runs `pnpm --dir functions run build`, which bundles `functions/lib/index.js`. `lib/` is gitignored and is not in the functions ignore list, so the bundle is uploaded. Node.js 22 comes from `functions/package.json` `engines.node`.
 
