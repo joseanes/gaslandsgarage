@@ -1,3 +1,4 @@
+import { getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth, type UserRecord } from 'firebase-admin/auth';
 import { getFirestore, type QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { aggregateUsage } from './aggregate';
@@ -61,13 +62,23 @@ async function loadTeams(): Promise<unknown[]> {
 }
 
 /**
+ * The Cloud Function and the manual workflow each initialize the Admin SDK
+ * before calling this. Tests that load this file through a second copy of
+ * firebase-admin initialize that copy here. No service account key is read.
+ */
+function ensureApp(projectId: string): void {
+  if (getApps().length > 0) return;
+  initializeApp({ projectId });
+}
+
+/**
  * Writes `stats/public` and upserts `users/{uid}` from Firebase Auth.
- * The caller initializes the Admin SDK. The scheduled function uses the
- * default runtime identity. The manual workflow still passes a service
- * account. This module does not read a key.
+ * The scheduled function uses the default runtime identity. The manual
+ * workflow still passes a service account. This module does not read a key.
  */
 export async function publishUsageStats(): Promise<void> {
   const projectId = process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT || USAGE_STATS_PROJECT_ID;
+  ensureApp(projectId);
   console.log(`Counting usage for ${projectId}`);
 
   const [authUsers, teams, profiles] = await Promise.all([listAuthUsers(), loadTeams(), loadUserProfiles()]);

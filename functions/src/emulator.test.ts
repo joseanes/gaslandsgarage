@@ -2,7 +2,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
-import { MAIL_COLLECTION, queueContactEmail } from './contactEmail';
+import { Timestamp } from 'firebase-admin/firestore';
+import { MAIL_COLLECTION, MAIL_TTL_MS, queueContactEmail } from './contactEmail';
 import { applyAuthDisabled, handleAdminUsersWrite } from './disableUser';
 import { publishUsageStats } from '../../stats/job';
 
@@ -195,13 +196,16 @@ describe('game contact email', () => {
     expect(mailSnap.size).toBe(1);
     const mail = mailSnap.docs[0].data();
     expect(mailSnap.docs[0].id).toBe('gameContact_ada_grace');
-    expect(mail).toEqual({
-      to: ['grace@example.com'],
-      message: {
-        subject: 'Ada sent a Gaslands game request',
-        text: expect.stringContaining('Race on Sunday?')
-      }
+    expect(mail.to).toEqual(['grace@example.com']);
+    expect(mail.message).toEqual({
+      subject: 'Ada sent a Gaslands game request',
+      text: expect.stringContaining('Race on Sunday?')
     });
+    expect(mail.expireAt).toBeInstanceOf(Timestamp);
+    const ttl = (mail.expireAt as Timestamp).toMillis() - Date.now();
+    expect(ttl).toBeGreaterThan(MAIL_TTL_MS - 60_000);
+    expect(ttl).toBeLessThan(MAIL_TTL_MS + 60_000);
+    expect(Object.keys(mail).sort()).toEqual(['expireAt', 'message', 'to']);
     expect(JSON.stringify(mail.message)).not.toContain('grace@example.com');
 
     const storedContact = (await getFirestore().doc('gameContacts/ada_grace').get()).data();

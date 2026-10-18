@@ -1,8 +1,11 @@
 import { getAuth } from 'firebase-admin/auth';
-import { getFirestore } from 'firebase-admin/firestore';
+import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 
 /** Collection the Firebase Trigger Email extension watches. */
 export const MAIL_COLLECTION = 'mail';
+
+/** Firestore TTL deletes a mail document this long after it is queued. */
+export const MAIL_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 export type ContactMail = {
   to: string[];
@@ -10,6 +13,10 @@ export type ContactMail = {
     subject: string;
     text: string;
   };
+};
+
+export type QueuedContactMail = ContactMail & {
+  expireAt: Timestamp;
 };
 
 export type QueueResult =
@@ -30,6 +37,11 @@ function singleLine(value: string, max: number): string {
 
 export function mailDocId(contactId: string): string {
   return `gameContact_${contactId.replace(/\//g, '_')}`;
+}
+
+/** Timestamp a Firestore TTL policy on `mail.expireAt` can purge. */
+export function mailExpiresAt(now: Date = new Date()): Timestamp {
+  return Timestamp.fromMillis(now.getTime() + MAIL_TTL_MS);
 }
 
 /** Trigger Email extension document. `to` is the only copy of the address. */
@@ -100,7 +112,10 @@ export async function queueContactEmail(contactId: string, data: Record<string, 
   }
   if (!email) return { status: 'skipped', reason: 'no-email' };
 
-  const mail = contactMailDocument({ to: email, fromName: contact.fromName, message: contact.message });
+  const mail: QueuedContactMail = {
+    ...contactMailDocument({ to: email, fromName: contact.fromName, message: contact.message }),
+    expireAt: mailExpiresAt()
+  };
   try {
     await db.doc(`${MAIL_COLLECTION}/${mailDocId(contactId)}`).create(mail);
   } catch (error) {
