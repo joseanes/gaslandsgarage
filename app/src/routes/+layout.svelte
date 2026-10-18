@@ -673,6 +673,14 @@
       <slot />
     </main>
   </div>
+
+  <footer class="print-hide print:hidden border-t border-stone-200 dark:border-gray-700">
+    <div class="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 py-4 text-sm text-stone-600 dark:text-gray-300">
+      <a href="/privacy" class="text-amber-600 dark:text-amber-400 hover:underline">Privacy Policy</a>
+      <span aria-hidden="true"> · </span>
+      <a href="/terms" class="text-amber-600 dark:text-amber-400 hover:underline">Terms and Conditions</a>
+    </div>
+  </footer>
 </div>
 
 {#if showSignInPrompt}
@@ -792,6 +800,13 @@
 
           <p class="text-stone-600 dark:text-gray-400 mt-2">
             This project is open source! Check out the <a href="https://github.com/joseanes/gaslandsgarage" target="_blank" rel="noopener noreferrer" class="text-amber-600 dark:text-amber-400 hover:underline">GitHub repository</a> to contribute or report issues.
+          </p>
+
+          <p class="text-stone-600 dark:text-gray-400 mt-4">
+            <span class="font-semibold text-stone-800 dark:text-white">Legal.</span>
+            <a href="/privacy" class="text-amber-600 dark:text-amber-400 hover:underline" on:click={() => (showAboutModal = false)}>Privacy Policy</a>
+            <span aria-hidden="true"> · </span>
+            <a href="/terms" class="text-amber-600 dark:text-amber-400 hover:underline" on:click={() => (showAboutModal = false)}>Terms and Conditions</a>
           </p>
 
           <div class="mt-4">

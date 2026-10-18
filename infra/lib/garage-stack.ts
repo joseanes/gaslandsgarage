@@ -49,7 +49,7 @@ export interface GarageStackProps extends cdk.StackProps {
  *   bucket, and CloudFront turns that into a real 404.
  */
 const spaRoutes = discoverSpaRoutes(path.join(__dirname, '../../app/src/routes'));
-for (const required of ['/builder', '/stats', '/admin/users']) {
+for (const required of ['/builder', '/stats', '/admin/users', '/privacy', '/terms']) {
   if (!spaRoutes.includes(required)) {
     throw new Error(
       `Viewer function is missing ${required}. Refusing to publish a function that would 404 it.`

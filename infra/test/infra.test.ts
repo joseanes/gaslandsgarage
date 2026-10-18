@@ -72,6 +72,8 @@ describe('CDK v2 infra', () => {
 		expect(viewerCode).toContain('/builder');
 		expect(viewerCode).toContain('/stats');
 		expect(viewerCode).toContain('/admin/users');
+		expect(viewerCode).toContain('/privacy');
+		expect(viewerCode).toContain('/terms');
 		expect(viewerCode).not.toContain('/beta');
 		expect(viewerCode.toLowerCase()).not.toContain('g3e');
 	});
