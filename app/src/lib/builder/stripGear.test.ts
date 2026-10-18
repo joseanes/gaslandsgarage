@@ -41,6 +41,13 @@ describe('withoutDisallowedGear', () => {
 		expect(withoutDisallowedGear(next, { includeAdvanced: false, clearPerks: false, ...catalogs })).toBe(next);
 	});
 
+	it('keeps a vehicle the catalog cannot resolve', () => {
+		const vehicles = [car({ type: 'ghost_rider', weapons: [], upgrades: [], perks: [] })];
+		const next = withoutDisallowedGear(vehicles, { includeAdvanced: false, clearPerks: false, ...catalogs });
+		expect(next).toBe(vehicles);
+		expect(next[0].type).toBe('ghost_rider');
+	});
+
 	it('drops an advanced vehicle once and then stays stable', () => {
 		const vehicles = [car(), car({ type: 'tank', weapons: [], upgrades: [], perks: [] })];
 		const next = withoutDisallowedGear(vehicles, { includeAdvanced: false, clearPerks: false, ...catalogs });

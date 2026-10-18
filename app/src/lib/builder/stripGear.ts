@@ -39,7 +39,9 @@ export function withoutDisallowedGear<T extends GearVehicle>(vehicles: T[], opti
 	for (const vehicle of vehicles) {
 		if (!options.includeAdvanced) {
 			const type = options.vehicleTypes.find((entry) => entry.id === vehicle.type);
-			if (!type || type.advanced) {
+			// A type the catalog does not know is kept. Dropping it hid saved
+			// vehicles while their cans were still in the team total.
+			if (type?.advanced) {
 				changed = true;
 				continue;
 			}

@@ -1787,44 +1787,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 							}
 							
 							if (Array.isArray(detail.vehicles)) {
-								// Process vehicles with additional logging for debugging
-								const processedVehicles = detail.vehicles.map((v: Veh) => {
-									// Create a safe vehicle object with all required arrays
-									const safeVehicle: Veh = {
-										...v,
-										weapons: Array.isArray(v.weapons) ? [...v.weapons] : [],
-										upgrades: Array.isArray(v.upgrades) ? [...v.upgrades] : [],
-										perks: Array.isArray(v.perks) ? [...v.perks] : []
-									};
-									
-									// Log for debugging
-									console.log(`Loading vehicle from event:
-										- ID: ${safeVehicle.id}
-										- Weapons: ${safeVehicle.weapons.join(', ')}
-										- Upgrades: ${safeVehicle.upgrades.join(', ')}
-										- Perks: ${safeVehicle.perks.join(', ')}`);
-									
-									// Add any perks from upgrades
-									const allPerks = [...safeVehicle.perks];
-									safeVehicle.upgrades.forEach((upgradeId: string) => {
-										const upgradeObj = upgrades.find(u => u.id === upgradeId);
-										if (upgradeObj && upgradeObj.perks && Array.isArray(upgradeObj.perks)) {
-											upgradeObj.perks.forEach(perkId => {
-												if (!allPerks.includes(perkId)) {
-													allPerks.push(perkId);
-												}
-											});
-										}
-									});
-									
-									return {
-										...safeVehicle,
-										perks: allPerks
-									};
-								});
-								
-								// Update the vehicles array
-								vehicles = processedVehicles;
+								vehicles = withUpgradePerks(detail.vehicles as Veh[], upgrades);
 							}
 							
 							// Update maxCans if specified
@@ -2397,7 +2360,8 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		let totalCost = vehicleType.baseCost || 0;
 
 		// Add weapon costs
-		for (const weaponInstanceId of vehicle.weapons) {
+		for (const weaponInstanceId of vehicle.weapons || []) {
+			if (typeof weaponInstanceId !== 'string') continue;
 			const lastUnderscoreIndex = weaponInstanceId.lastIndexOf('_');
 				const baseWeaponId = lastUnderscoreIndex !== -1 ? 
 					weaponInstanceId.substring(0, lastUnderscoreIndex) : 
@@ -2438,7 +2402,8 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			totalCost += vehicleType.baseCost || 0;
 			
 			// Add weapon costs
-			for (const weaponInstanceId of vehicle.weapons) {
+			for (const weaponInstanceId of vehicle.weapons || []) {
+				if (typeof weaponInstanceId !== 'string') continue;
 				const lastUnderscoreIndex = weaponInstanceId.lastIndexOf('_');
 				const baseWeaponId = lastUnderscoreIndex !== -1 ? 
 					weaponInstanceId.substring(0, lastUnderscoreIndex) : 
@@ -3425,6 +3390,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 				{@const VehicleCard = cardModule.default}
 				<div class="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-10">
 					{#each vehicles as vehicle (vehicle.id)}
+						<svelte:boundary>
 						<VehicleCard
 							{vehicle}
 							vehicleTypes={sortedVehicleTypes}
@@ -3455,6 +3421,13 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 							on:decrementHazard={e => decrementHazard(e.detail.vehicleId)}
 							on:vehicleTypeChanged={e => handleVehicleTypeChange(e.detail.id, e.detail.vehicleType)}
 						/>
+						{#snippet failed()}
+							<div class="vehicle-card bg-white border-2 border-red-400 rounded-lg p-4" data-testid="vehicle-warning">
+								<p class="font-medium text-red-800">{vehicle.name || 'Vehicle'} is on this team but could not be drawn.</p>
+								<p class="text-sm text-red-700 mt-1">Type: {vehicle.type || 'unknown'}. It is still counted in the cans total.</p>
+							</div>
+						{/snippet}
+						</svelte:boundary>
 					{/each}
 				</div>
 			{/await}
