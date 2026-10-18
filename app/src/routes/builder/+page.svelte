@@ -28,6 +28,7 @@
 	import { v3BuildSlots } from '$lib/validate/v3/slots';
 	import { goto } from '$app/navigation';
 	import { draftToDataURL } from '$lib/draft/qr';
+	import { teamHasVehicles } from '$lib/print/canPrintTeam';
 	import {
 		peekCurrentTeam,
 		rememberCurrentTeam,
@@ -1215,14 +1216,35 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 	let isPrinting = false;
 	
 	// Wrapper function for printing with rules check
+	/** The same team object the print sheet is built from. */
+	function editorTeam() {
+		return {
+			sponsor: sponsorId,
+			vehicles,
+			teamName,
+			maxCans,
+			darkMode,
+			rulesVersion
+		};
+	}
+
+	/** True when the action must stop. The notice is the existing on-page message. */
+	function stopIfTeamEmpty(action: 'print' | 'copy' | 'share' | 'qr') {
+		if (teamHasVehicles(editorTeam())) {
+			if (teamActionNotice === teamActionMessages[action]) teamActionNotice = '';
+			return false;
+		}
+		teamActionNotice = teamActionMessages[action];
+		return true;
+	}
+
 	// Direct dashboard printing test
 	function printDashboardDirect() {
 		console.log('[printDashboardDirect] Called');
 		
 		// Check if we have vehicles
-		if (!vehicles || !Array.isArray(vehicles) || vehicles.length === 0) {
+		if (stopIfTeamEmpty('print')) {
 			console.log('[printDashboardDirect] No vehicles to print');
-			alert('You need to add at least one vehicle before printing.');
 			return;
 		}
 		
@@ -1288,10 +1310,9 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 	function printWithRulesCheck() {
 		console.log('[printWithRulesCheck] Called');
 		
-		// Check if we have vehicles before proceeding
-		if (!vehicles || !Array.isArray(vehicles) || vehicles.length === 0) {
+		// Same list the print sheet maps. Stop before the rules prompt or the window.
+		if (stopIfTeamEmpty('print')) {
 			console.log('[printWithRulesCheck] No vehicles to print');
-			alert('You need to add at least one vehicle before printing.');
 			return;
 		}
 		
@@ -1516,11 +1537,10 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			}
 		});
 		
-		// Check for vehicles again (defensive coding)
-		if (!vehicles || !Array.isArray(vehicles) || vehicles.length === 0) {
+		// Same guard as the menu. A second alert here used to fire and then the sheet still opened.
+		if (stopIfTeamEmpty('print')) {
 			console.log("[printTeam] No vehicles to print");
 			isPrinting = false;
-			alert("You need to add at least one vehicle before printing.");
 			return;
 		}
 		
@@ -1746,6 +1766,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 	// Expose these functions to the global window object for use by the layout
 	onMount(() => {
 		let storageCheckInterval: ReturnType<typeof setInterval> | undefined;
+		let onMenuAction: ((event: Event) => void) | undefined;
 		if (typeof window !== 'undefined') {
 			// Set up a custom event listener for menu commands
 			// Listen for custom team loading events
@@ -1880,8 +1901,10 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 				}
 			});
 			
-			// Normal menu action listener
-			window.addEventListener('gaslands-menu-action', (event: Event) => {
+			// Normal menu action listener. Removed on destroy: a leftover listener
+			// still sees the previous visit's empty vehicle list and alerts,
+			// while the new page prints the team that is actually on screen.
+			onMenuAction = (event: Event) => {
 				if (!(event instanceof CustomEvent)) return;
 				const detail = (event.detail ?? {}) as { action?: string; draft?: unknown; tab?: string };
 				console.log('[Event] Received gaslands-menu-action event:', detail);
@@ -1906,7 +1929,8 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 					console.log('[Event] Opening settings from event with tab:', detail.tab || 'general');
 					openSettings(detail.tab || 'general');
 				}
-			});
+			};
+			window.addEventListener('gaslands-menu-action', onMenuAction);
 			
 			// Make openSettings function globally available
 			window.openSettings = openSettings;
@@ -2052,6 +2076,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			if (storageCheckInterval) clearInterval(storageCheckInterval);
 			// Clean up when component is destroyed
 			if (typeof window !== 'undefined') {
+				if (onMenuAction) window.removeEventListener('gaslands-menu-action', onMenuAction);
 				console.log("[onUnmount] Cleaning up global functions");
 				// Clean up function references with Fn suffix
 				window.copyDraftFn = undefined;
@@ -2101,13 +2126,10 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			return;
 		}
 		if (!teamActionNeedsTeam(action)) return;
-		if (vehicles.length === 0) {
+		if (!teamHasVehicles(editorTeam())) {
 			applyImportedDraft(pendingTeamSnapshot);
 		}
-		if (vehicles.length === 0) {
-			teamActionNotice = teamActionMessages[action];
-			return;
-		}
+		if (stopIfTeamEmpty(action)) return;
 		if (action === 'print') printWithRulesCheck();
 		else if (action === 'copy') void copyDraft();
 		else if (action === 'share') shareLink();

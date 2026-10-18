@@ -154,6 +154,15 @@
     return typeof window !== 'undefined' && window.location.pathname.includes('/builder');
   }
 
+  // The builder is already home. A normal click would remount it and drop the
+  // team on screen. Other links do not ask before leaving; staying put is what
+  // keeps the in-progress list. Modified clicks still open a new tab.
+  function stayOnBuilder(event: MouseEvent) {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+    if (!onBuilderPage()) return;
+    event.preventDefault();
+  }
+
   function openOnBuilder(action: TeamMenuAction) {
     rememberTeamMenuAction(action);
     void goto(builderPathForTeamAction(action));
@@ -483,9 +492,9 @@
     <nav class="menu-bar print:hidden">
       <div class="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 w-full flex justify-between items-center">
         <div class="flex flex-col justify-start">
-          <span class="logo text-left">
+          <a href="/builder" class="logo text-left" aria-label="Gaslands Garage home" on:click={stayOnBuilder}>
             <span class="logo-highlight">Gaslands</span> Garage
-          </span>
+          </a>
           <span class="logo-sponsor">
             by <a href="https://funboardgames.etsy.com/" target="_blank" rel="noopener noreferrer" class="etsy-link">Fun Board Games</a>
           </span>
@@ -1149,6 +1158,20 @@
   font-size: 1.25rem;
   line-height: 1.2;
   letter-spacing: 0.02em;
+}
+
+:global(a.logo) {
+  color: inherit;
+  text-decoration: none;
+}
+
+:global(a.logo:focus) {
+  outline: none;
+}
+
+:global(a.logo:focus-visible) {
+  outline: 2px solid #f59e0b;
+  outline-offset: 2px;
 }
 
 /* Responsive adjustments for mobile screens */
