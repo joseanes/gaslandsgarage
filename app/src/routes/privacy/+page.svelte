@@ -92,6 +92,15 @@
 			shipped with the site and is not sent to Nominatim.
 		</p>
 		<p>
+			On the player profile page, the location field can also suggest cities from Google Places. The Maps
+			JavaScript API script loads only on that page, after the profile form is shown, and it is not used
+			for the players map. Characters typed in that field are sent to Google so it can suggest a city.
+			The request does not include your email or account id, and the page does not ask the browser for
+			GPS. A suggestion is kept only when it is a city, region, or 5-digit US ZIP. Street addresses are
+			still rejected. Google’s precise place point is not stored. The coordinate saved with the profile
+			is still the approximate point from Nominatim or the local ZIP list.
+		</p>
+		<p>
 			Before anything is stored, the coordinate is moved 2 to 8 kilometers in a random direction and
 			rounded to about 1 kilometer (0.01 degrees). The original point is not kept. Only that approximate
 			point can appear on the map.
@@ -193,8 +202,8 @@
 
 		<h2 class="text-xl font-bold mt-8 mb-3">Map tiles</h2>
 		<p>
-			The players map uses Leaflet. The map pictures are CARTO’s Voyager tiles from
-			basemaps.cartocdn.com, based on OpenStreetMap data. Your browser requests those tiles directly
+			The players map uses Leaflet. It does not load Google Maps. The map pictures are CARTO’s Voyager tiles
+			from basemaps.cartocdn.com, based on OpenStreetMap data. Your browser requests those tiles directly
 			from CARTO, so CARTO receives the request, including an IP address. We do not send your email or
 			account id with that request. Tile copyright stays with OpenStreetMap contributors and CARTO.
 		</p>
@@ -279,9 +288,9 @@
 			<li>Legal obligation: when the law requires us to keep or disclose information.</li>
 		</ul>
 		<p>
-			The operator is in Florida, USA. Google (sign-in, the database, and Analytics), Twilio (email),
-			CARTO (map tiles), and OpenStreetMap Nominatim (city lookup) process information for the site,
-			including in the United States.
+			The operator is in Florida, USA. Google (sign-in, the database, Analytics, and Places city
+			suggestions on the profile page), Twilio (email), CARTO (map tiles), and OpenStreetMap Nominatim
+			(city lookup) process information for the site, including in the United States.
 		</p>
 
 		<h2 class="text-xl font-bold mt-8 mb-3">Your rights</h2>
