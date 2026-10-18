@@ -12,11 +12,20 @@
 	import AdminAccountSettings from '$lib/components/AdminAccountSettings.svelte';
 	import ReadonlyTeam from '$lib/components/ReadonlyTeam.svelte';
 	import { projectUserSettings, type AdminAccountSettings as AccountSettings, type AdminProfileView } from '$lib/admin/accountSettings';
+	import {
+		DEFAULT_USER_SORT,
+		nextUserSort,
+		sortDirectoryUsers,
+		type SortDirection,
+		type UserSortKey
+	} from '$lib/admin/userSort';
 
 	let status: 'loading' | 'signed-out' | 'forbidden' | 'ready' | 'error' = 'loading';
 	let loadError = '';
 	let actionError = '';
 	let query = '';
+	let sortKey: UserSortKey = DEFAULT_USER_SORT.key;
+	let sortDirection: SortDirection = DEFAULT_USER_SORT.direction;
 	let rows: DirectoryUser[] = [];
 	let teamsByUser = new Map<string, DirectoryTeam[]>();
 	let settingsByUser: Map<string, AccountSettings> | null = null;
@@ -84,7 +93,21 @@
 		void refresh($user.uid);
 	}
 
-	$: visible = rows.filter((row) => userMatchesSearch(row, query));
+	$: visible = sortDirectoryUsers(
+		rows.filter((row) => userMatchesSearch(row, query)),
+		{ key: sortKey, direction: sortDirection }
+	);
+
+	function toggleSort(key: UserSortKey) {
+		const next = nextUserSort({ key: sortKey, direction: sortDirection }, key);
+		sortKey = next.key;
+		sortDirection = next.direction;
+	}
+
+	function ariaSort(key: UserSortKey): 'ascending' | 'descending' | 'none' {
+		if (sortKey !== key) return 'none';
+		return sortDirection === 'asc' ? 'ascending' : 'descending';
+	}
 	$: selected = rows.find((row) => row.uid === selectedUid) ?? null;
 	$: selectedTeams = selected ? teamsByUser.get(selected.uid) ?? [] : [];
 	$: settingsPerson = rows.find((row) => row.uid === settingsUid) ?? null;
@@ -153,6 +176,16 @@
 	function confirmationText(row: DirectoryUser): string {
 		return row.email || row.uid;
 	}
+
+	const sortColumns: { key: UserSortKey; label: string }[] = [
+		{ key: 'email', label: 'Email' },
+		{ key: 'displayName', label: 'Display name' },
+		{ key: 'created', label: 'Created' },
+		{ key: 'lastSignIn', label: 'Last sign-in' },
+		{ key: 'teams', label: 'Teams' },
+		{ key: 'role', label: 'Role' },
+		{ key: 'status', label: 'Status' }
+	];
 </script>
 
 <svelte:head>
@@ -192,13 +225,21 @@
 			<table class="min-w-full text-sm" data-testid="admin-users">
 				<thead class="bg-stone-100 text-left dark:bg-gray-800">
 					<tr>
-						<th class="px-3 py-2 font-medium">Email</th>
-						<th class="px-3 py-2 font-medium">Display name</th>
-						<th class="px-3 py-2 font-medium">Created</th>
-						<th class="px-3 py-2 font-medium">Last sign-in</th>
-						<th class="px-3 py-2 font-medium">Teams</th>
-						<th class="px-3 py-2 font-medium">Role</th>
-						<th class="px-3 py-2 font-medium">Status</th>
+						{#each sortColumns as column (column.key)}
+							<th class="px-3 py-2 font-medium" aria-sort={ariaSort(column.key)}>
+								<button
+									type="button"
+									class="inline-flex items-center gap-1 text-left font-medium hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-600"
+									data-testid={`sort-${column.key}`}
+									on:click={() => toggleSort(column.key)}
+								>
+									{column.label}
+									{#if sortKey === column.key}
+										<span aria-hidden="true">{sortDirection === 'asc' ? '▲' : '▼'}</span>
+									{/if}
+								</button>
+							</th>
+						{/each}
 						<th class="px-3 py-2 font-medium">Actions</th>
 					</tr>
 				</thead>
