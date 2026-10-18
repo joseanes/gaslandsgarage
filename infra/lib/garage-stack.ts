@@ -29,6 +29,9 @@ import { RemovalPolicy } from 'aws-cdk-lib';
 import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as route53Targets from 'aws-cdk-lib/aws-route53-targets';
 import { Certificate, CertificateValidation } from 'aws-cdk-lib/aws-certificatemanager';
+import * as path from 'path';
+import { discoverSpaRoutes } from './spa-routes';
+import { viewerRequestCode } from './viewer-request';
 
 export interface GarageStackProps extends cdk.StackProps {
   domainName?: string;
@@ -36,69 +39,24 @@ export interface GarageStackProps extends cdk.StackProps {
 }
 
 /**
- * Viewer-request function.
+ * Viewer-request function. Routes come from app/src/routes (see spa-routes.ts).
  * - www.gaslandsgarage.com → 301 to the apex, same path and query.
  * - `/` and `/index.html` → 301 to `/builder` (keeps ?draft= and ?open=).
- * - `/builder` and `/stats` are client routes, not S3 objects. Rewrite them to
- *   `/index.html` so the SPA still loads. Query strings stay on the browser URL.
- * - Every other path is left alone. Missing objects 403 from the private bucket,
- *   and CloudFront turns that into a real 404.
- * Add a new app route here when one is created, or it will 404.
+ * - Each SvelteKit page, and a parent such as `/admin`, is rewritten to
+ *   `/index.html`. Query strings stay on the browser URL.
+ * - File names are left alone, so assets, robots.txt, sitemap.xml, and PDFs
+ *   are still the S3 objects. Any other missing path 403s from the private
+ *   bucket, and CloudFront turns that into a real 404.
  */
-const VIEWER_REQUEST_CODE = `
-function handler(event) {
-  var request = event.request;
-  var hostHeader = request.headers && request.headers.host;
-  var host = hostHeader && hostHeader.value ? hostHeader.value.toLowerCase() : '';
-  var uri = request.uri || '/';
-  var query = toQuery(request.querystring);
-  var dest = normalize(uri);
-  if (host === 'www.gaslandsgarage.com' || dest !== uri) {
-    return redirect('https://gaslandsgarage.com' + dest + query);
+const spaRoutes = discoverSpaRoutes(path.join(__dirname, '../../app/src/routes'));
+for (const required of ['/builder', '/stats', '/admin/users']) {
+  if (!spaRoutes.includes(required)) {
+    throw new Error(
+      `Viewer function is missing ${required}. Refusing to publish a function that would 404 it.`
+    );
   }
-  if (uri === '/builder' || uri === '/stats') {
-    request.uri = '/index.html';
-  }
-  return request;
 }
-
-function normalize(uri) {
-  if (uri === '/' || uri === '/index.html') return '/builder';
-  if (uri === '/builder/' || uri === '/stats/') return uri.slice(0, -1);
-  return uri;
-}
-
-function redirect(location) {
-  return {
-    statusCode: 301,
-    statusDescription: 'Moved Permanently',
-    headers: {
-      location: { value: location }
-    }
-  };
-}
-
-function toQuery(querystring) {
-  if (!querystring) return '';
-  var parts = [];
-  var key;
-  for (key in querystring) {
-    if (!Object.prototype.hasOwnProperty.call(querystring, key)) continue;
-    var entry = querystring[key] || {};
-    if (entry.multiValue && entry.multiValue.length) {
-      var i;
-      for (i = 0; i < entry.multiValue.length; i++) {
-        parts.push(encodeURIComponent(key) + '=' + encodeURIComponent(entry.multiValue[i].value));
-      }
-    } else if (entry.value) {
-      parts.push(encodeURIComponent(key) + '=' + encodeURIComponent(entry.value));
-    } else {
-      parts.push(encodeURIComponent(key));
-    }
-  }
-  return parts.length ? '?' + parts.join('&') : '';
-}
-`;
+const VIEWER_REQUEST_CODE = viewerRequestCode(spaRoutes);
 
 export class GarageStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: GarageStackProps) {

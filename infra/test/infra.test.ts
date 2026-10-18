@@ -70,6 +70,9 @@ describe('CDK v2 infra', () => {
 		const viewerCode = JSON.stringify(template.findResources('AWS::CloudFront::Function'));
 		expect(viewerCode).toContain('www.gaslandsgarage.com');
 		expect(viewerCode).toContain('/builder');
+		expect(viewerCode).toContain('/stats');
+		expect(viewerCode).toContain('/admin/users');
 		expect(viewerCode).not.toContain('/beta');
+		expect(viewerCode.toLowerCase()).not.toContain('g3e');
 	});
 });
