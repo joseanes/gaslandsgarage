@@ -21,6 +21,7 @@ Gaslands Garage is a web application for creating, validating, and sharing vehic
   - `/src/lib/validate`: Validation logic for team builds
   - `/src/routes`: Svelte routes and components
 - `/infra`: AWS CDK infrastructure for deployment
+- `/functions`: 2nd gen Cloud Functions (usage stats, Auth disable, contact email). See `docs/FUNCTIONS.md`
 - `/validate`: Core validation logic (shared)
 
 ## Commands
@@ -66,6 +67,9 @@ cd app && pnpm preview
 cd app && node deploy-firebase-rules.mjs
 # Or using Firebase CLI directly:
 firebase deploy --only firestore:rules --project=gaslandsgarage-74ce6
+
+# Deploy Cloud Functions by hand. CI does not deploy them. Hosting stays on AWS.
+firebase deploy --only functions --project=gaslandsgarage-74ce6
 
 # Build the infrastructure
 cd infra && pnpm build

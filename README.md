@@ -44,6 +44,7 @@ To develop Gaslands Garage, you'll need:
   - `/src/lib/validate`: Validation logic for team builds
   - `/src/routes`: Svelte routes and components
 - `/infra`: AWS CDK infrastructure for deployment
+- `/functions`: Cloud Functions for usage stats, account disable, and contact email
 - `/validate`: Core validation logic (shared)
 
 ### Getting Started
@@ -107,9 +108,12 @@ cd app && node deploy-firebase-rules.mjs
 
 # Or using Firebase CLI directly:
 firebase deploy --only firestore:rules --project=gaslandsgarage-74ce6
+
+# Deploy Cloud Functions (Auth and Firestore only; the site stays on AWS)
+firebase deploy --only functions --project=gaslandsgarage-74ce6
 ```
 
-Administrator accounts, disabling a player, and the one-time bootstrap are documented in [docs/ADMIN.md](docs/ADMIN.md).
+Administrator accounts, disabling a player, and the one-time bootstrap are documented in [docs/ADMIN.md](docs/ADMIN.md). Cloud Functions, the runtime identity, and cost are documented in [docs/FUNCTIONS.md](docs/FUNCTIONS.md).
 
 ### Infrastructure Deployment (AWS)
 

@@ -1,12 +1,13 @@
-# Daily usage totals for the public stats page.
-# Scheduled Cloud Functions need the Blaze plan, so this job uses the Admin SDK instead.
-# It writes stats/public and upserts users/{uid} profiles from Firebase Auth for /admin/users.
-# It does not deploy the site or the rules.
+# Manual fallback for stats/public and users/{uid}.
+# The daily run is the publishUsageStats Cloud Function at 06:15 America/New_York.
+# See docs/FUNCTIONS.md. This schedule is disabled. workflow_dispatch remains so
+# the job can still be run by hand.
+# After that function has published once, the usage-stats service account key and
+# the FIREBASE_SERVICE_ACCOUNT GitHub secret can be deleted. This workflow does
+# not delete them. Deleting the secret makes this manual run fail.
 name: Usage stats
 
 on:
-  schedule:
-    - cron: '15 6 * * *'
   workflow_dispatch:
 
 jobs:

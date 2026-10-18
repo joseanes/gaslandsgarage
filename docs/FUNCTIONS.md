@@ -1,0 +1,140 @@
+# Cloud Functions
+
+Firebase project `gaslandsgarage-74ce6` is on the Blaze plan. Auth and Firestore stay in Firebase. The website stays on AWS S3 and CloudFront. Nothing in CI deploys functions, rules, or hosting.
+
+The functions are 2nd gen, Node.js 20, TypeScript, in `functions/`. They use the Admin SDK with the default compute runtime identity. No function takes a service account key, a secret, or a pinned runtime account.
+
+| Function | Trigger | What it does |
+| --- | --- | --- |
+| `publishUsageStats` | Cloud Scheduler `15 6 * * *` in `America/New_York` | Writes `stats/public` and upserts `users/{uid}`. Same job as `stats/job.ts`. |
+| `syncAuthDisabled` | `adminUsers/{uid}` write | Sets Firebase Auth `disabled` to match the document. On disable, revokes refresh tokens. Does not delete the user. |
+| `queueGameContactEmail` | `gameContacts/{contactId}` create | Queues one Trigger Email document when the recipient opted in. |
+
+Region is `us-central1`. `publishUsageStats` uses 256MiB, a 300 second timeout, and one instance. The other two use the platform defaults and retry on failure. None keep a warm instance.
+
+## Usage stats
+
+The GitHub Action cron in `.github/workflows/usage-stats.yml` is removed. **Run workflow** remains as a manual fallback that still needs the `FIREBASE_SERVICE_ACCOUNT` secret.
+
+The function runs the same five-field cron at 06:15 America/New_York. The old Action ran that cron at 06:15 UTC, because GitHub Actions has no timezone. The count is `aggregateUsage` in `stats/aggregate.ts` plus the user upsert in `stats/usersSync.ts`. It does not write `roles` or `adminUsers`.
+
+After `publishUsageStats` has published once, these are unused by the daily job and can be deleted:
+
+- the JSON key on the `usage-stats` service account
+- the GitHub Actions secret `FIREBASE_SERVICE_ACCOUNT`
+
+This repository does not delete them. Deleting the secret makes **Run workflow** fail. `pnpm set-admin` can still use a key file in your shell, or Application Default Credentials. That local variable is not the GitHub secret.
+
+## Disable and re-enable
+
+The admin page writes `adminUsers/{uid}` (`app/src/lib/admin/api.ts`). The function calls `auth.updateUser(uid, { disabled })`. A change to `disabled: true` also calls `auth.revokeRefreshTokens(uid)`. A change to `disabled: false` re-enables the Auth user and does not revoke tokens. A repeated write of the same flag does nothing. Removing the document does nothing to Auth.
+
+The function never calls `deleteUser`. Teams, profiles, and the Auth user stay.
+
+## Game-request email
+
+On create of `gameContacts/{id}`, the function reads `userSettings/{toUid}`. It queues mail only when `allowContactFromPlayers` is exactly `true`. That setting defaults to false. `receiveUpdates` is marketing consent and does not send this mail. An `openToGames` card lets another player send an in-app request. It is not consent to email, and the profile copy says the address is not shared.
+
+The recipient address is loaded with `auth.getUser(toUid)`. It is written only as the `to` field of `mail/gameContact_{contactId}`, which is the [Trigger Email extension](https://firebase.google.com/docs/extensions/official/firestore-send-email) document:
+
+```json
+{
+  "to": ["player@example.com"],
+  "message": {
+    "subject": "Ada sent a Gaslands game request",
+    "text": "..."
+  }
+}
+```
+
+The address is not written onto `gameContacts`, `users`, `playerProfiles`, or `userSettings`. The message body does not include it. A second delivery for the same contact id is ignored. Updates and replies do not queue another message. A disabled Auth user, or an account with no email, is skipped.
+
+Clients cannot read or write `mail`. Firestore rules are default deny, and there is no allow rule for that collection. The queued address is not visible to the browser.
+
+Deploying functions does not install the extension and does not send mail. Without the extension, opted-in requests only create `mail` documents. Install and configure SMTP later if those messages should actually go out:
+
+```bash
+firebase ext:install firebase/firestore-send-email --project=gaslandsgarage-74ce6
+```
+
+Point the extension at the `mail` collection. Leave its sender address in the extension config. Do not put a recipient address in source.
+
+## Deploy
+
+From the repository root, with the Firebase CLI logged in as someone who can deploy this project. Do this by hand. Do not add it to the AWS deploy workflow.
+
+```bash
+pnpm install
+firebase deploy --only functions --project=gaslandsgarage-74ce6
+```
+
+The predeploy hook runs `pnpm --dir functions run build`, which bundles `functions/lib/index.js`. `lib/` is gitignored and is not in the functions ignore list, so the bundle is uploaded. Node 20 comes from `functions/package.json` `engines.node`.
+
+Rules stay a separate command:
+
+```bash
+firebase deploy --only firestore:rules --project=gaslandsgarage-74ce6
+```
+
+Do not deploy Firebase Hosting. The site ships through the existing AWS workflow when `main` changes.
+
+The first functions deploy can ask to enable Cloud Functions, Cloud Build, Artifact Registry, Cloud Run, Eventarc, Cloud Scheduler, and Pub/Sub, and to grant roles to the Google service agents. Accept those prompts. Do not create a JSON key for the runtime account.
+
+### Runtime identity
+
+2nd gen functions run as the default compute service account:
+
+`PROJECT_NUMBER-compute@developer.gserviceaccount.com`
+
+Find the number with:
+
+```bash
+gcloud projects describe gaslandsgarage-74ce6 --format='value(projectNumber)'
+```
+
+If that account does not already have Editor, grant only:
+
+- **Cloud Datastore User** (`roles/datastore.user`) so the stats job can read `teams` and `users` and write `stats/public`, `users`, and `mail`
+- **Firebase Authentication Admin** (`roles/firebaseauth.admin`) so the stats job can list users and the disable function can update a user and revoke refresh tokens
+
+```bash
+PROJECT_NUMBER=$(gcloud projects describe gaslandsgarage-74ce6 --format='value(projectNumber)')
+SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+gcloud projects add-iam-policy-binding gaslandsgarage-74ce6 \
+  --member="serviceAccount:${SA}" \
+  --role="roles/datastore.user"
+gcloud projects add-iam-policy-binding gaslandsgarage-74ce6 \
+  --member="serviceAccount:${SA}" \
+  --role="roles/firebaseauth.admin"
+```
+
+`roles/firebaseauth.admin` is broader than the calls in this code: it can also delete users. The functions do not. Do not download a key for this account.
+
+## Tests
+
+```bash
+cd functions
+pnpm check
+pnpm build
+pnpm test
+```
+
+`pnpm test` starts the Auth and Firestore emulators with `firebase-tools@13.29.1` and project `demo-gaslands-functions`. It needs Java. The tests call the same handlers the triggers call. They do not deploy.
+
+## Cost
+
+Prices below are the public list prices as of October 2026. Check [Cloud Run pricing](https://cloud.google.com/run/pricing), [Cloud Scheduler pricing](https://cloud.google.com/scheduler/pricing), [Cloud Functions pricing](https://cloud.google.com/functions/pricing), and [Eventarc pricing](https://cloud.google.com/eventarc/pricing) before a large change. 2nd gen functions are billed as Cloud Run.
+
+This project does not set a minimum instance count, so there is no idle charge.
+
+| Piece | This project | Expected bill |
+| --- | --- | --- |
+| `publishUsageStats` | 1 run per day. Budget about 20 seconds at 1 vCPU and 256MiB: about 600 vCPU-seconds and 150 GiB-seconds a month. | $0 inside the Cloud Run free tier (240,000 vCPU-seconds and 450,000 GiB-seconds per month). List price past that is about $0.000018 per vCPU-second and $0.000002 per GiB-second, so this job is about $0.01 a month even with no free tier. |
+| Cloud Scheduler | 1 job. | $0 while the billing account is under 3 jobs. Otherwise $0.10 per job per month. A paused job still counts. |
+| Disable and contact triggers | A handful of Eventarc deliveries. | Covered by the Eventarc and Cloud Run free tiers at this size. |
+| Firestore | The daily job reads `teams` and `users` and writes `stats/public` plus changed user profiles. Each opted-in contact adds one settings read and one `mail` write. | $0 while under the Firestore free tier (50,000 reads and 20,000 writes per day). Past that, reads are $0.06 and writes are $0.18 per 100,000. |
+| Auth | `listUsers`, `getUser`, `updateUser`, `revokeRefreshTokens`. | No Firebase Auth charge for these calls. |
+| Artifact Registry and Cloud Build | Image storage and the deploy build. | $0 inside the Artifact Registry 0.5 GB free tier and the Cloud Build 120 minutes per day free tier. |
+| Trigger Email extension | Not installed by the functions deploy. | SMTP is whatever the extension's mail provider charges. No messages send until the extension is installed. |
+
+A normal month for this site is **$0**, or **$0.10** if the billing account already has its three free Cloud Scheduler jobs.

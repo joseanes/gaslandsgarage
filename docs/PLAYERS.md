@@ -32,7 +32,7 @@ Deploy the rules before, or in the same window as, the site build that contains 
 firebase deploy --only firestore:rules --project=gaslandsgarage-74ce6
 ```
 
-`firebase.json` has no Cloud Functions codebase. Do not run `firebase deploy --only functions`.
+Cloud Functions for other jobs are described in [FUNCTIONS.md](FUNCTIONS.md). None of them writes the boards.
 
 ## Pins saved before this change
 

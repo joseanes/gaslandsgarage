@@ -14,8 +14,7 @@ const ROLE_PATTERN = /^[A-Za-z][A-Za-z0-9 ]{0,62}$/;
 
 export const SELF_ROLE_REASON = 'You can\'t change your own role.';
 export const SELF_STATUS_REASON = 'You can\'t disable your own account.';
-export const DELETE_LATER_REASON =
-	'Deleting a user needs a Cloud Function on the Blaze plan. Disable the account instead.';
+export const DELETE_LATER_REASON = 'Deleting a user is not available. Disable the account instead.';
 
 export type RoleDocument = {
 	role: string;
@@ -30,8 +29,9 @@ export type AccountControlDocument = {
 };
 
 /**
- * Reserved for a Cloud Function once the project is on the Blaze plan.
- * The browser does not write this, and there is no deletion queue.
+ * Auth deletion is not implemented. The Cloud Function on adminUsers/{uid}
+ * only enables or disables the existing Auth user. The browser does not write
+ * this, and there is no deletion queue.
  */
 export type FutureAuthDeletion = {
 	type: 'deleteAuthUser';

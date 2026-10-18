@@ -50,6 +50,17 @@ jobs:
           distribution: temurin
           java-version: 21
 
+      - name: Cloud Functions
+        working-directory: functions
+        run: |
+          pnpm check
+          pnpm build
+          if grep -E 'FIREBASE_SERVICE_ACCOUNT|deleteUser|private_key' lib/index.js; then
+            echo "Built functions bundle still mentions a service account key or user deletion"
+            exit 1
+          fi
+          pnpm test
+
       - name: Typecheck admin bootstrap
         run: pnpm exec tsc -p scripts/tsconfig.json
 

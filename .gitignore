@@ -31,10 +31,9 @@ app/src/print-direct.js
 # Static app assets (if needed, remove this line)
 app/static/app/
 
-# Firebase Functions (if needed, remove this line)
-functions/
-
-# Firebase Admin private keys. Usage stats reads FIREBASE_SERVICE_ACCOUNT from GitHub secrets.
+# Firebase Admin private keys. The daily stats function does not use a key.
+# A local shell can still set FIREBASE_SERVICE_ACCOUNT for scripts/set-admin.ts
+# or a manual run of the usage-stats workflow.
 **/*firebase-adminsdk*.json
 **/service-account*.json
 
