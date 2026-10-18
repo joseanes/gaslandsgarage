@@ -27,6 +27,9 @@
 			team, a player profile, or a message uses an optional Google sign-in.
 		</p>
 		<p>
+			You need to be at least 13 years old to use the site, or 16 where the law requires that age.
+		</p>
+		<p>
 			The tool is unofficial and fan-made. It is not a substitute for the published game. A build the
 			site accepts can still be wrong. The published rules decide a legal team, not this website.
 		</p>

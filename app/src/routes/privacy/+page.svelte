@@ -48,10 +48,19 @@
 		</p>
 		<p>
 			Your settings are stored separately and are readable only by you. They include builder and print
-			preferences, whether you asked to be kept up to date, and whether you allow other players to
-			contact you about a game. Both of those choices are off until you turn them on. The “Keep me up to
-			date” choice is saved. The site does not send marketing or feature-update email from it.
+			preferences. Two email choices are off until you turn them on:
 		</p>
+		<ul class="list-disc pl-6 space-y-2">
+			<li>
+				“Keep me up to date” is opt-in consent for marketing and feature-update email. We do not send
+				that email unless you turn it on. You can turn it off in settings, or email us and ask us to
+				stop.
+			</li>
+			<li>
+				“Allow other players to contact me to setup a game” is a separate choice. It is the only
+				setting that allows a game-request email. Being open to games does not turn it on.
+			</li>
+		</ul>
 
 		<h2 class="text-xl font-bold mt-8 mb-3">Teams and vehicles</h2>
 		<p>
@@ -64,7 +73,7 @@
 			that build. The link is not an account, and it does not include your email.
 		</p>
 
-		<h2 class="text-xl font-bold mt-8 mb-3">Player profile and approximate location</h2>
+		<h2 class="text-xl font-bold mt-8 mb-3">Location, Nominatim, and the approximate point</h2>
 		<p>
 			A player profile is optional. The private profile can store a player name, a short bio, a place
 			label, where you like to play, whether you appear on the map, whether that pin is anonymous,
@@ -72,16 +81,20 @@
 			your account id. The profile does not store an email address.
 		</p>
 		<p>
-			The place label has to be a city and region, or a 5-digit US ZIP. Street addresses and ZIP+4 codes
-			are rejected. Text that contains an @ sign is rejected, so an email address cannot be saved in the
-			name, bio, place, or play-spot fields.
+			The place you enter has to be a city and region, or a 5-digit US ZIP. Street addresses and ZIP+4
+			codes are rejected. Text that contains an @ sign is rejected, so an email address cannot be saved
+			in the name, bio, place, or play-spot fields.
 		</p>
 		<p>
-			If you enter a city or region, the browser asks OpenStreetMap Nominatim for a coordinate once,
-			when you save a new place. A 5-digit US ZIP is looked up in a list shipped with the site and is
-			not sent to Nominatim. The coordinate that is stored is moved 2 to 8 kilometers in a random
-			direction and rounded to about one kilometer. The original point is not kept. Only that
-			approximate point can appear on the map.
+			A city or region is geocoded once, when you save a new place, by OpenStreetMap Nominatim
+			(<span class="break-all">nominatim.openstreetmap.org</span>). The browser sends that place name to
+			Nominatim and does not send your email or account id. A 5-digit US ZIP is looked up in a list
+			shipped with the site and is not sent to Nominatim.
+		</p>
+		<p>
+			Before anything is stored, the coordinate is moved 2 to 8 kilometers in a random direction and
+			rounded to about 1 kilometer (0.01 degrees). The original point is not kept. Only that approximate
+			point can appear on the map.
 		</p>
 
 		<h2 class="text-xl font-bold mt-8 mb-3">What is public, and what needs a sign-in</h2>
@@ -117,25 +130,20 @@
 			allow email.
 		</p>
 		<p>
-			Email is a separate setting, “Allow other players to contact me to setup a game.” It is off unless
-			you turn it on. If it is on, and someone creates a new game request to you, a server function
-			reads the email on your Firebase Authentication account and queues one message to that address.
-			The address is written only on that queued mail document. It is not copied onto the request, your
-			profile, or your settings. The message text does not include your email. The other player still
-			cannot see it.
+			Email is sent only if you turned on “Allow other players to contact me to setup a game.” When
+			someone creates a new request to you, the site reads the email on your Firebase Authentication
+			account and sends one message to that address through Twilio Email. The address is not copied onto
+			the request, your profile, or your settings, and the message body does not include it. The other
+			player cannot see it. We do not send that message through SendGrid.
 		</p>
 		<p>
-			No mail is queued if you have not allowed contact, if the account is disabled, if the account has
-			no email, or if the request is only being edited or replied to. A second queue for the same
-			request is ignored.
+			No email is sent if you have not allowed contact, if the account is disabled, if the account has
+			no email, or if the request is only being edited or replied to. A later reply does not send
+			another email.
 		</p>
 		<p>
-			The queued document includes an expiry time 30 days after it is written. A Firestore time-to-live
-			policy on that field is what deletes it. When the policy is on, deletion usually finishes within
-			about a day after the expiry time, not at the exact minute. The website cannot read the mail
-			queue. The queue is the document the Firebase Trigger Email extension uses. Installing that
-			extension is separate from publishing the website. Until the extension is in place, the queue
-			document is stored and the message is not sent.
+			The queued copy of that message, which is the copy that holds the email address, is kept for 30
+			days and then deleted. The website cannot read that queue.
 		</p>
 
 		<h2 class="text-xl font-bold mt-8 mb-3">Messages to us</h2>
@@ -155,13 +163,23 @@
 
 		<h2 class="text-xl font-bold mt-8 mb-3">Analytics, ads, and cookies</h2>
 		<p>
-			Each page loads Google Analytics, measurement id G-EKPMXMY097. Google Analytics uses cookies and
-			collects usage data such as pages visited, a client id, and browser details. The site does not
-			show a cookie banner. We do not sell personal information.
+			Every page loads Google Analytics 4, measurement id G-EKPMXMY097, from the tag in the site HTML.
+			Google Analytics sets first-party cookies whose names start with <span class="font-mono">_ga</span>,
+			including <span class="font-mono">_ga</span> and
+			<span class="font-mono">_ga_EKPMXMY097</span>. Those cookies recognize a browser and measure visits,
+			such as pages viewed and general browser details. We keep Google Analytics data for 2 months. The
+			site does not show a cookie banner. We do not sell personal information.
 		</p>
 		<p>
 			The site does not display advertisements, and it does not load an ad unit. A file named ads.txt is
 			published and names a Google AdSense publisher id. That file does not place an ad on the page.
+		</p>
+
+		<h2 class="text-xl font-bold mt-8 mb-3">Do Not Track and Global Privacy Control</h2>
+		<p>
+			The site does not change its behavior when a browser sends a Do Not Track signal or a Global
+			Privacy Control signal. Those signals do not turn off Google Analytics and do not stop the site
+			from storing the information described on this page. We still do not sell personal information.
 		</p>
 
 		<h2 class="text-xl font-bold mt-8 mb-3">Map tiles</h2>
@@ -174,8 +192,8 @@
 
 		<h2 class="text-xl font-bold mt-8 mb-3">Data stored in this browser</h2>
 		<p>
-			Besides the Google Analytics cookies above, the site stores preferences on your device. These are
-			not cookies.
+			Besides the Google Analytics <span class="font-mono">_ga</span> cookies above, the site stores
+			preferences on your device. These are not cookies.
 		</p>
 		<p>localStorage can hold:</p>
 		<ul class="list-disc pl-6 space-y-2">
@@ -185,13 +203,14 @@
 			<li>sponsorship and advanced-rules switches</li>
 			<li>a temporary copy of a team while you move between pages</li>
 		</ul>
-		<p>sessionStorage, which lasts for the tab, can hold:</p>
+		<p>sessionStorage, which lasts for this tab, can hold:</p>
 		<ul class="list-disc pl-6 space-y-2">
 			<li>the team you are editing</li>
 			<li>which team-menu action to run after a page change</li>
 			<li>
-				a copy of the players map and the open-to-games list, reused for five minutes and cleared when
-				you save your profile in the same tab
+				a directory cache of the players map and the open-to-games list. A repeat visit within five
+				minutes reuses that cache instead of reading it again. Saving your profile in the same tab
+				clears it.
 			</li>
 		</ul>
 		<p>Signing out does not clear those keys. Clearing site data in the browser does.</p>
@@ -221,36 +240,92 @@
 			button for a request. Contact Us messages have no automatic expiry.
 		</p>
 		<p>
-			Queued game-request mail is marked to expire 30 days after it is written. Public usage totals are
-			replaced when the daily job runs. They are counts, not a copy of your teams.
+			Game-request mail is kept for 30 days and then deleted. Google Analytics data is kept for 2
+			months. Public usage totals are replaced when the daily job runs. They are counts, not a copy of
+			your teams.
 		</p>
 
-		<h2 class="text-xl font-bold mt-8 mb-3">Asking us to delete information</h2>
+		<h2 class="text-xl font-bold mt-8 mb-3">Why we use this information</h2>
+		<p>If the GDPR or UK GDPR applies, we rely on these bases:</p>
+		<ul class="list-disc pl-6 space-y-2">
+			<li>
+				Contract: your account, saved teams, settings, and in-app game requests, so we can provide the
+				features you use.
+			</li>
+			<li>
+				Consent: a public or anonymous map pin, the open-to-games listing, game-request email, and
+				“Keep me up to date” marketing email. Each one stays off until you turn it on. You can withdraw
+				consent by turning it off or by emailing us. Withdrawal does not undo a message already sent.
+			</li>
+			<li>
+				Legitimate interests: securing the site, limiting abuse, publishing aggregate usage totals, and
+				measuring visits with Google Analytics. Analytics loads on every page without a separate
+				consent prompt. You can object by emailing us.
+			</li>
+			<li>Legal obligation: when the law requires us to keep or disclose information.</li>
+		</ul>
 		<p>
-			Email <a class={linkClass} href="mailto:jose.anes@gmail.com">jose.anes@gmail.com</a>, or use Contact
-			Us while signed in, and say what you want removed. We can delete the Gaslands Garage records we
-			hold for that account, including the account record, teams, profile, settings, game requests, and
-			messages to us. Disabling an account is not the same as deleting it. We cannot delete the Google
-			account itself.
+			The operator is in Florida, USA. Google (sign-in, the database, and Analytics), Twilio (email),
+			CARTO (map tiles), and OpenStreetMap Nominatim (city lookup) process information for the site,
+			including in the United States.
 		</p>
 
-		<h2 class="text-xl font-bold mt-8 mb-3">Children</h2>
+		<h2 class="text-xl font-bold mt-8 mb-3">Your rights</h2>
 		<p>
-			The site is not directed at children under 13, and we do not knowingly collect personal
-			information from a child under 13. The site does not ask for a date of birth. If you believe a
-			child under 13 has an account, email us and we will delete the Gaslands Garage data we hold for
-			it.
+			Email <a class={linkClass} href="mailto:jose.anes@gmail.com">jose.anes@gmail.com</a> to exercise a
+			right. We answer rights requests by email within 1 month. We may need to confirm that you control
+			the Google account. The app does not have a separate download button.
+		</p>
+		<p>If the GDPR or UK GDPR applies, you can ask us to:</p>
+		<ul class="list-disc pl-6 space-y-2">
+			<li>access the personal information we hold about you</li>
+			<li>correct it</li>
+			<li>delete it</li>
+			<li>restrict how we use it</li>
+			<li>provide a copy in a portable form</li>
+			<li>object to processing based on legitimate interests, including analytics</li>
+			<li>object to marketing, which you can also stop by turning “Keep me up to date” off</li>
+			<li>withdraw consent, where the processing was based on consent</li>
+		</ul>
+		<p>
+			You can complain to a regulator. In the UK, that is the Information Commissioner’s Office. In the
+			EU, it is the data protection authority in your country. You can do that whether or not you email
+			us first.
 		</p>
 
 		<h2 class="text-xl font-bold mt-8 mb-3">California residents</h2>
 		<p>
 			We do not sell personal information, and we do not share it for cross-context behavioral
-			advertising. There is no “Do Not Sell” switch because we do not sell it.
+			advertising. There is no “Do Not Sell or Share” switch because we do not sell or share it that
+			way. We do not offer a financial incentive for personal information.
 		</p>
 		<p>
-			You can ask what account data we hold, ask us to correct it, or ask us to delete it. Email
-			<a class={linkClass} href="mailto:jose.anes@gmail.com">jose.anes@gmail.com</a>. We may need to
-			confirm that you control the Google account. The app does not have a separate download button.
+			You can ask us to tell you the categories and specific pieces of personal information we hold, to
+			correct it, or to delete it. We will not discriminate against you for asking. Email
+			<a class={linkClass} href="mailto:jose.anes@gmail.com">jose.anes@gmail.com</a>. We answer within 1
+			month.
+		</p>
+		<p>
+			The information we hold can include identifiers (such as email, display name, and account id),
+			the teams and profile text you save, an approximate location if you add one, messages you send,
+			and internet activity collected by Google Analytics.
+		</p>
+
+		<h2 class="text-xl font-bold mt-8 mb-3">Children</h2>
+		<p>
+			The site is for people 13 and older, or 16 and older where the law requires that age before
+			someone can consent on their own. We do not knowingly collect personal information from anyone
+			younger. The site does not ask for a date of birth. If you believe we have information about
+			someone under that age, email us and we will delete the Gaslands Garage data we hold for them.
+		</p>
+
+		<h2 class="text-xl font-bold mt-8 mb-3">Asking us to delete information</h2>
+		<p>
+			Email <a class={linkClass} href="mailto:jose.anes@gmail.com">jose.anes@gmail.com</a>, or use Contact
+			Us while signed in, and say what you want removed. We answer within 1 month. We can delete the
+			Gaslands Garage records we hold for that account, including the account record, teams, profile,
+			settings, game requests, and messages to us. Disabling an account is not the same as deleting it.
+			We cannot delete the Google account itself.
 		</p>
 
 		<h2 class="text-xl font-bold mt-8 mb-3">Security</h2>
@@ -264,7 +339,7 @@
 		<h2 class="text-xl font-bold mt-8 mb-3">Changes</h2>
 		<p>
 			If this policy changes, the date at the top of this page will change. We do not email a notice of
-			that change. The site does not run a mailing list.
+			that change.
 		</p>
 
 		<h2 class="text-xl font-bold mt-8 mb-3">Contact</h2>

@@ -673,6 +673,14 @@
       <slot />
     </main>
   </div>
+
+  <footer class="print-hide print:hidden border-t border-stone-200 dark:border-gray-700">
+    <div class="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 py-4 text-sm text-stone-600 dark:text-gray-300">
+      <a href="/privacy" class="text-amber-600 dark:text-amber-400 hover:underline">Privacy Policy</a>
+      <span aria-hidden="true"> · </span>
+      <a href="/terms" class="text-amber-600 dark:text-amber-400 hover:underline">Terms and Conditions</a>
+    </div>
+  </footer>
 </div>
 
 {#if showSignInPrompt}
