@@ -98,7 +98,7 @@ export class GarageStack extends cdk.Stack {
     };
 
     const htmlHeaders = new ResponseHeadersPolicy(this, 'HtmlHeaders', {
-      comment: 'HTML and app routes must revalidate. Hashed files are a separate behavior.',
+      comment: 'index.html and app routes must revalidate. Hashed files are a separate behavior and stay cached.',
       securityHeadersBehavior: { strictTransportSecurity: hsts },
       customHeadersBehavior: {
         customHeaders: [{ header: 'Cache-Control', value: 'no-cache', override: true }]
