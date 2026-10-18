@@ -1,6 +1,7 @@
 // PrintService.ts - Comprehensive printing functionality
 import type { Draft } from '$lib/validate/model';
 import { draftToDataURL } from '$lib/draft/qr';
+import { teamHasVehicles } from '$lib/print/canPrintTeam';
 
 /** Team draft plus the extra fields the print window already receives. */
 interface PrintDraft extends Omit<Draft, 'sponsor' | 'vehicles'> {
@@ -2798,9 +2799,8 @@ export async function printTeamDashboard(draft: PrintDraft): Promise<void> {
     return;
   }
   
-  if (!draft.vehicles || !Array.isArray(draft.vehicles) || draft.vehicles.length === 0) {
+  if (!teamHasVehicles(draft)) {
     console.error("[PrintService] No vehicles in draft for dashboard print");
-    alert("Please add at least one vehicle to your team before printing.");
     return;
   }
   
@@ -2831,8 +2831,7 @@ export async function printTeamDashboard(draft: PrintDraft): Promise<void> {
     });
     
     // Basic validation
-    if (!draft || !draft.vehicles || !Array.isArray(draft.vehicles) || draft.vehicles.length === 0) {
-      alert("Cannot print: No vehicles found in team");
+    if (!teamHasVehicles(draft)) {
       return;
     }
     
@@ -2938,9 +2937,8 @@ export async function printTeam(printStyle: string, draft: PrintDraft): Promise<
     return;
   }
   
-  if (!draft.vehicles || !Array.isArray(draft.vehicles) || draft.vehicles.length === 0) {
+  if (!teamHasVehicles(draft)) {
     console.error("[PrintService] No vehicles in draft");
-    alert("Please add at least one vehicle to your team before printing.");
     return;
   }
   
@@ -3022,7 +3020,6 @@ export async function printTeam(printStyle: string, draft: PrintDraft): Promise<
       
     if (!hasValidVehicles) {
       console.error("[PrintService] No valid vehicles found in draft data", draft.vehicles);
-      alert('No vehicles found to print. Please add vehicles to your team.');
       return;
     }
 

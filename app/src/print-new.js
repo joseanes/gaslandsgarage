@@ -1,4 +1,8 @@
-// print-new.js - A new approach with pre-rendered HTML string
+// print-new.js - browser print override. Team sheets are opened by PrintService.
+// This path uses the same "is there a vehicle?" rule and does not alert on its own.
+import { teamHasVehicles } from '$lib/print/canPrintTeam';
+
+if (typeof document !== 'undefined') {
 (function() {
   document.addEventListener('DOMContentLoaded', function() {
     console.log('[print-new] Initializing dedicated print handler');
@@ -9,6 +13,11 @@
     // Override window.print
     window.print = function() {
       console.log('[print-new] Print requested, creating dedicated print page');
+
+      const cards = document.querySelectorAll('.vehicle-card');
+      if (!teamHasVehicles({ vehicles: window.vehicles }) && cards.length === 0) {
+        return;
+      }
       
       try {
         // Get the data needed for printing
@@ -388,3 +397,4 @@
     console.log('[print-new] Print handler initialized');
   });
 })();
+}
