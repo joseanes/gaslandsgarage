@@ -47,6 +47,19 @@ for (const viewport of [
 		await onScreen(page, '.players-menu-dropdown', viewport.width);
 	});
 
+	test(`Help hides Change Log and Upcoming Features at ${viewport.width}px`, async ({ page }) => {
+		await openBuilder(page, viewport.width, viewport.height);
+		await page.getByRole('button', { name: 'Help', exact: true }).click();
+		const help = page.locator('.help-menu-dropdown');
+		const labels = await help
+			.locator('button, a')
+			.evaluateAll((items) => items.map((item) => item.textContent?.replace(/\s+/g, ' ').trim()));
+		expect(labels).toEqual(['About Gaslands Garage', 'About Gaslands', 'Usage Stats', 'Contributors', 'Contact Us']);
+		await expect(page.getByText('Change Log', { exact: true })).toHaveCount(0);
+		await expect(page.getByText('Upcoming Features', { exact: true })).toHaveCount(0);
+		await onScreen(page, '.help-menu-dropdown', viewport.width);
+	});
+
 	test(`Share Team holds the share actions at ${viewport.width}px`, async ({ page }) => {
 		await openBuilder(page, viewport.width, viewport.height);
 		await page.getByRole('button', { name: 'Teams', exact: true }).click();

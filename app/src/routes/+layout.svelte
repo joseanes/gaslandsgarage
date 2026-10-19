@@ -28,6 +28,7 @@
   import { builderPathForTeamAction, rememberTeamMenuAction, type TeamMenuAction } from '$lib/teamMenu';
   import { openLayoutSettings, type SettingsTab } from '$lib/settings/layoutSettingsControl';
   import { wargamingEventsUrl } from '$lib/players/wargamingEvents';
+  import { SHOW_CHANGE_LOG, SHOW_UPCOMING_FEATURES } from '$lib/features/helpMenu';
   
   // Ad configuration variables
   let showAds = false; // Removed ads for now
@@ -764,12 +765,16 @@
               <a href="/stats" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600 block" on:click={() => showHelpMenu = false}>
                 Usage Stats
               </a>
-              <button type="button" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600" on:click={() => { openChangeLog(); showHelpMenu = false; }}>
-                Change Log
-              </button>
-              <button type="button" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600" on:click={() => { openUpcomingFeatures(); showHelpMenu = false; }}>
-                Upcoming Features
-              </button>
+              {#if SHOW_CHANGE_LOG}
+                <button type="button" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600" on:click={() => { openChangeLog(); showHelpMenu = false; }}>
+                  Change Log
+                </button>
+              {/if}
+              {#if SHOW_UPCOMING_FEATURES}
+                <button type="button" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600" on:click={() => { openUpcomingFeatures(); showHelpMenu = false; }}>
+                  Upcoming Features
+                </button>
+              {/if}
               <button type="button" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600" on:click={() => { openContributors(); showHelpMenu = false; }}>
                 Contributors
               </button>
