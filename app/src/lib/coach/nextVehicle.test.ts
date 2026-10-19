@@ -3,14 +3,12 @@ import { v3Vehicles } from '../../data/rules/v3/vehicles';
 import v2Raw from '../../data/rules/vehicles.json';
 import {
 	EMPTY_NEXT_VEHICLE_MESSAGE,
-	NEXT_VEHICLE_REASONS,
 	recommendNextVehicles,
 	type NextVehicleCatalogEntry,
 	type NextVehicleRequest
 } from './nextVehicle';
 
 const FORBIDDEN_PROSE = ['Ludicrous', 'Every vehicle', 'Roll Cage', 'Vengeful', 'Pyromania', 'perkText'];
-const REASONS = new Set<string>(Object.values(NEXT_VEHICLE_REASONS));
 
 function v2Catalog(): NextVehicleCatalogEntry[] {
 	return v2Raw.map((vehicle) => ({
@@ -23,7 +21,8 @@ function v2Catalog(): NextVehicleCatalogEntry[] {
 		crew: vehicle.crew,
 		weight: vehicle.weight,
 		advanced: vehicle.advanced,
-		sponsors: 'sponsors' in vehicle ? vehicle.sponsors : undefined
+		sponsors: 'sponsors' in vehicle ? vehicle.sponsors : undefined,
+		buildSlots: vehicle.buildSlots
 	}));
 }
 
@@ -40,19 +39,23 @@ function ask(partial: Partial<NextVehicleRequest> & Pick<NextVehicleRequest, 'ru
 	});
 }
 
-function expectPlainReasons(suggestions: { name: string; reason: string }[]) {
+function expectPlainReasons(suggestions: { name: string; reason: string; perCan: number; cost: number }[]) {
 	expect(suggestions.length).toBeLessThanOrEqual(3);
 	for (const suggestion of suggestions) {
-		expect(REASONS.has(suggestion.reason)).toBe(true);
+		expect(suggestion.reason.length).toBeGreaterThan(20);
+		expect(suggestion.reason).toMatch(/cans left after/);
 		for (const phrase of FORBIDDEN_PROSE) {
 			expect(suggestion.reason).not.toContain(phrase);
 			expect(suggestion.name).not.toContain(phrase);
 		}
 	}
+	for (let index = 1; index < suggestions.length; index += 1) {
+		expect(suggestions[index - 1].perCan).toBeGreaterThanOrEqual(suggestions[index].perCan);
+	}
 }
 
 describe('recommendNextVehicles v2', () => {
-	it('suggests a Rutherford-only tank when the cans cover it', () => {
+	it('ranks Rutherford additions by score gain per can', () => {
 		const suggestions = ask({
 			rulesVersion: 2,
 			sponsorId: 'rutherford',
@@ -62,9 +65,23 @@ describe('recommendNextVehicles v2', () => {
 		});
 
 		expectPlainReasons(suggestions);
-		expect(suggestions.map((suggestion) => suggestion.id)).toContain('tank');
-		expect(suggestions.find((suggestion) => suggestion.id === 'tank')?.reason).toBe(NEXT_VEHICLE_REASONS.synergy);
+		expect(suggestions[0]?.perCan).toBeGreaterThan(0);
+		expect(suggestions[0]?.id).not.toBe('tank');
 		expect(suggestions.every((suggestion) => suggestion.cost <= 48)).toBe(true);
+	});
+
+	it('names sponsor synergy when the only legal add is a Rutherford tank', () => {
+		const suggestions = ask({
+			rulesVersion: 2,
+			sponsorId: 'rutherford',
+			catalog: v2.filter((vehicle) => vehicle.id === 'car' || vehicle.id === 'tank'),
+			team: [{ type: 'car' }],
+			totalCans: 12,
+			maxCans: 60
+		});
+		expectPlainReasons(suggestions);
+		expect(suggestions.map((suggestion) => suggestion.id)).toContain('tank');
+		expect(suggestions.find((suggestion) => suggestion.id === 'tank')?.reason.toLowerCase()).toContain('sponsor');
 	});
 
 	it('keeps Rutherford-only vehicles off other sponsors', () => {
@@ -92,7 +109,7 @@ describe('recommendNextVehicles v2', () => {
 			maxCans: 12
 		});
 		expect(exact.map((suggestion) => suggestion.id)).toEqual(['car']);
-		expect(exact[0]?.reason).toBe(NEXT_VEHICLE_REASONS.cans);
+		expect(exact[0]?.reason).toMatch(/cans left after/);
 
 		const short = ask({
 			rulesVersion: 2,
@@ -141,8 +158,26 @@ describe('recommendNextVehicles v2', () => {
 			maxCans: 50
 		});
 		expectPlainReasons(suggestions);
-		expect(suggestions.some((suggestion) => suggestion.reason === NEXT_VEHICLE_REASONS.fast)).toBe(true);
+		expect(suggestions[0]?.id).toBe('bike');
+		expect(suggestions[0]?.reason).toMatch(/Mobility/);
+		expect(suggestions[0]?.reason).toMatch(/flanker/);
 		expect(suggestions.every((suggestion) => suggestion.cost <= 25)).toBe(true);
+	});
+
+	it('explains a bike as the best mobility gain per can for a slow car', () => {
+		const suggestions = ask({
+			rulesVersion: 2,
+			sponsorId: 'no_sponsor',
+			team: [{ type: 'car' }],
+			totalCans: 12,
+			maxCans: 50
+		});
+		expectPlainReasons(suggestions);
+		expect(suggestions[0]).toMatchObject({ id: 'bike', cost: 5 });
+		expect(suggestions[0]?.reason).toContain('Mobility 4.2 → 4.9');
+		expect(suggestions[0]?.reason).toContain('your team is slow (avg gear 5)');
+		expect(suggestions[0]?.reason).toContain('a bike adds a gear-6 flanker');
+		expect(suggestions[0]?.reason).toContain('33 cans left after');
 	});
 });
 
@@ -159,7 +194,7 @@ describe('recommendNextVehicles v3', () => {
 		expectPlainReasons(suggestions);
 		expect(suggestions.length).toBeGreaterThan(0);
 		expect(suggestions.every((suggestion) => gear6.has(suggestion.id))).toBe(true);
-		expect(suggestions.some((suggestion) => suggestion.reason === NEXT_VEHICLE_REASONS.synergy)).toBe(true);
+		expect(suggestions.some((suggestion) => /sponsor/i.test(suggestion.reason))).toBe(true);
 		expect(suggestions.map((suggestion) => suggestion.id)).not.toContain('buggy');
 	});
 
@@ -203,16 +238,16 @@ describe('recommendNextVehicles v3', () => {
 		expect(warden.every((suggestion) => (v3Vehicles.find((vehicle) => vehicle.id === suggestion.id)?.maxHull ?? 0) >= 10)).toBe(true);
 	});
 
-	it('suggests one hull 12+ vehicle for Beverly until the team has one', () => {
+	it('suggests a tougher chassis for Beverly when the team is already fast', () => {
 		const open = ask({
 			rulesVersion: 3,
 			sponsorId: 'beverly',
-			team: [{ type: 'buggy' }],
-			totalCans: 13,
+			team: [{ type: 'sports_car' }],
+			totalCans: 20,
 			maxCans: 50
 		});
 		expectPlainReasons(open);
-		expect(open.some((suggestion) => suggestion.reason === NEXT_VEHICLE_REASONS.synergy)).toBe(true);
+		expect(open[0]?.reason).toMatch(/Survivability/);
 		expect(
 			open.some((suggestion) => (v3Vehicles.find((vehicle) => vehicle.id === suggestion.id)?.maxHull ?? 0) >= 12)
 		).toBe(true);
@@ -326,7 +361,7 @@ describe('recommendNextVehicles v3', () => {
 			maxCans: 50
 		});
 		expectPlainReasons(suggestions);
-		expect(suggestions.some((suggestion) => suggestion.reason === NEXT_VEHICLE_REASONS.fast)).toBe(true);
+		expect(suggestions.some((suggestion) => /Mobility|flanker/.test(suggestion.reason))).toBe(true);
 	});
 });
 

@@ -120,3 +120,32 @@ export function waitForPrintImages(doc: { images: ArrayLike<PrintImage> }, timeo
 		setTimeout(finish, timeoutMs);
 	});
 }
+
+interface PrintSheetWindow {
+	closed?: boolean;
+	document?: { querySelector(selector: string): unknown };
+}
+
+/**
+ * Replacing the popup with a blob URL does not fire load.
+ * Poll until the team heading is in the new document.
+ */
+export function waitForPrintSheet(
+	target: PrintSheetWindow,
+	timeoutMs = 8000,
+	wait: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+): Promise<void> {
+	const started = Date.now();
+	const poll = async (): Promise<void> => {
+		if (target.closed) return;
+		try {
+			if (target.document?.querySelector('h1')) return;
+		} catch {
+			// The popup can be between documents while the sheet is opening.
+		}
+		if (Date.now() - started >= timeoutMs) return;
+		await wait(50);
+		return poll();
+	};
+	return poll();
+}
