@@ -62,6 +62,8 @@ declare global {
 
 	interface ImportMetaEnv {
 		readonly VITE_GOOGLE_MAPS_API_KEY?: string;
+		/** Optional CARTO Basemaps key. Without it the players map uses OpenStreetMap tiles. */
+		readonly VITE_CARTO_BASEMAPS_KEY?: string;
 	}
 }
 
