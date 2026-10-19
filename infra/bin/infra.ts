@@ -29,3 +29,24 @@ new GarageStack(app, 'InfraStack', {
   certificateArn: certificateStack.certificate.certificateArn
 });
 
+
+// Staging: its own certificate, bucket and distribution at staging.<domain>,
+// in the same hosted zone. noindex, no www, and the staging Firebase project.
+const stagingDomainName = `staging.${domainName}`;
+const stagingCertificateStack = new CertificateStack(app, 'StagingCertificateStack', {
+  domainName: stagingDomainName,
+  zoneName: domainName,
+  includeWww: false,
+  exportName: 'StagingSiteCertificateArn',
+  env: { account, region: 'us-east-1' }
+});
+
+new GarageStack(app, 'StagingInfraStack', {
+  domainName: stagingDomainName,
+  zoneName: domainName,
+  includeWww: false,
+  noindex: true,
+  firebaseProjectId: 'gaslandsgarage-staging',
+  env: { account, region },
+  certificateArn: stagingCertificateStack.certificate.certificateArn
+});

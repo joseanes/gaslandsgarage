@@ -4,6 +4,7 @@ import { browser } from '$app/environment';
 import type { FirebaseApp } from 'firebase/app';
 import type { Auth, User } from 'firebase/auth';
 import type { Firestore } from 'firebase/firestore';
+import { firebaseConfigFor } from './firebaseConfig';
 
 // Using dynamic imports to avoid SSR issues
 let app: FirebaseApp | undefined;
@@ -13,16 +14,8 @@ const user = writable<User | null>(null);
 
 type InitResult = { success: boolean; error?: unknown };
 
-// Your web app's Firebase configuration
-const firebaseConfig = {
-  apiKey: "AIzaSyAW7eGDsJwWtaj3I1lrcuzvFx8vkX5EaKI",
-  authDomain: "gaslandsgarage-74ce6.firebaseapp.com",
-  projectId: "gaslandsgarage-74ce6",
-  storageBucket: "gaslandsgarage-74ce6.firebasestorage.app",
-  messagingSenderId: "636098164916",
-  appId: "1:636098164916:web:b3586c38da2ebaf9c13fe1",
-  measurementId: "G-EKPMXMY097"
-};
+// Selected at build time: VITE_GG_ENV=staging (vite --mode staging) uses the staging project.
+const firebaseConfig = firebaseConfigFor(import.meta.env.VITE_GG_ENV);
 
 // Track initialization status
 let isInitialized = false;

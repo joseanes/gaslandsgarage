@@ -14,7 +14,7 @@ import {
 	isPhotoContentType,
 	libraryPhotoPath,
 	quotaMessage,
-	storageBucketName,
+	storageBucketForProject,
 	type PhotoAttachment,
 	type PhotoContentType,
 	type VehiclePhotoRecord
@@ -79,7 +79,10 @@ function asRecord(value: unknown): Record<string, unknown> {
 }
 
 function bucket() {
-	return getStorage().bucket(storageBucketName(process.env.FIREBASE_STORAGE_BUCKET ?? ''));
+	return getStorage().bucket(storageBucketForProject(
+		process.env.FIREBASE_STORAGE_BUCKET ?? '',
+		process.env.GCLOUD_PROJECT ?? process.env.GOOGLE_CLOUD_PROJECT ?? ''
+	));
 }
 
 function teamHasVehicle(team: Record<string, unknown> | undefined, vehicleId: string): boolean {

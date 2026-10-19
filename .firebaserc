@@ -1,5 +1,6 @@
 {
   "projects": {
-    "default": "gaslandsgarage-74ce6"
+    "default": "gaslandsgarage-74ce6",
+    "staging": "gaslandsgarage-staging"
   }
 }

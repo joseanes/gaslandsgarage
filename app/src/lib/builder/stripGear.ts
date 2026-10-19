@@ -47,9 +47,9 @@ export function withoutDisallowedGear<T extends GearVehicle>(vehicles: T[], opti
 			}
 		}
 
-		let weapons = vehicle.weapons;
-		let upgrades = vehicle.upgrades;
-		let perks = vehicle.perks;
+		let weapons = Array.isArray(vehicle.weapons) ? vehicle.weapons : [];
+		let upgrades = Array.isArray(vehicle.upgrades) ? vehicle.upgrades : [];
+		let perks = Array.isArray(vehicle.perks) ? vehicle.perks : [];
 		let facings = vehicle.weaponFacings;
 
 		if (!options.includeAdvanced) {

@@ -39,6 +39,14 @@ import { apexRedirectCode, viewerRequestCode } from './viewer-request';
 export interface GarageStackProps extends cdk.StackProps {
   domainName?: string;
   certificateArn?: string;
+  /** Hosted zone holding the records. Defaults to domainName. */
+  zoneName?: string;
+  /** Serve and redirect www.<domainName>. Defaults to true (production). */
+  includeWww?: boolean;
+  /** Send X-Robots-Tag: noindex, nofollow on every response (staging). */
+  noindex?: boolean;
+  /** Firebase project the CSP allows for auth and functions. */
+  firebaseProjectId?: string;
 }
 
 /**
@@ -71,7 +79,6 @@ for (const required of ['/builder', '/stats', '/admin/users', '/privacy', '/term
     );
   }
 }
-const VIEWER_REQUEST_CODE = viewerRequestCode(spaRoutes);
 
 export class GarageStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: GarageStackProps) {
@@ -79,6 +86,12 @@ export class GarageStack extends cdk.Stack {
     
     // Define domain name
     const domainName = props?.domainName || 'gaslandsgarage.com';
+    const zoneName = props?.zoneName ?? domainName;
+    const includeWww = props?.includeWww !== false;
+    const firebaseProjectId = props?.firebaseProjectId ?? 'gaslandsgarage-74ce6';
+    if (!/^[a-z0-9-]+$/.test(firebaseProjectId)) {
+      throw new Error(`Invalid Firebase project id: ${firebaseProjectId}`);
+    }
 
     /* ----------------------------------------------------------------
        S3 bucket for the static site.
@@ -124,8 +137,8 @@ export class GarageStack extends cdk.Stack {
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https://firebasestorage.googleapis.com https://tile.openstreetmap.org https://*.basemaps.cartocdn.com https://www.google-analytics.com https://www.googletagmanager.com https://maps.gstatic.com https://maps.googleapis.com https://mirrors.creativecommons.org",
       "font-src 'self' data:",
-      "connect-src 'self' https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com https://nominatim.openstreetmap.org https://maps.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://firebasestorage.googleapis.com https://firebase.googleapis.com https://firebaseinstallations.googleapis.com https://www.googleapis.com https://gaslandsgarage-74ce6.firebaseapp.com https://us-central1-gaslandsgarage-74ce6.cloudfunctions.net wss://*.firebaseio.com",
-      "frame-src 'self' https://gaslandsgarage-74ce6.firebaseapp.com https://accounts.google.com https://apis.google.com https://www.youtube.com https://www.youtube-nocookie.com",
+      `connect-src 'self' https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com https://nominatim.openstreetmap.org https://maps.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://firebasestorage.googleapis.com https://firebase.googleapis.com https://firebaseinstallations.googleapis.com https://www.googleapis.com https://${firebaseProjectId}.firebaseapp.com https://us-central1-${firebaseProjectId}.cloudfunctions.net wss://*.firebaseio.com`,
+      `frame-src 'self' https://${firebaseProjectId}.firebaseapp.com https://accounts.google.com https://apis.google.com https://www.youtube.com https://www.youtube-nocookie.com`,
       "worker-src 'self' blob:",
       "manifest-src 'self'"
     ].join('; ');
@@ -146,6 +159,9 @@ export class GarageStack extends cdk.Stack {
       value: 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
       override: true
     };
+    const robotsHeaders = props?.noindex
+      ? [{ header: 'X-Robots-Tag', value: 'noindex, nofollow', override: true }]
+      : [];
 
     const htmlHeaders = new ResponseHeadersPolicy(this, 'HtmlHeaders', {
       comment: 'index.html and app routes must revalidate. Hashed files are a separate behavior and stay cached.',
@@ -153,7 +169,8 @@ export class GarageStack extends cdk.Stack {
       customHeadersBehavior: {
         customHeaders: [
           { header: 'Cache-Control', value: 'no-cache', override: true },
-          permissionsPolicy
+          permissionsPolicy,
+          ...robotsHeaders
         ]
       }
     });
@@ -166,7 +183,7 @@ export class GarageStack extends cdk.Stack {
           header: 'Cache-Control',
           value: 'public, max-age=31536000, immutable',
           override: true
-        }, permissionsPolicy]
+        }, permissionsPolicy, ...robotsHeaders]
       }
     });
 
@@ -176,14 +193,18 @@ export class GarageStack extends cdk.Stack {
       customHeadersBehavior: {
         customHeaders: [
           { header: 'Cache-Control', value: 'public, max-age=86400', override: true },
-          permissionsPolicy
+          permissionsPolicy,
+          ...robotsHeaders
         ]
       }
     });
 
     const viewerRequest = new Function(this, 'ViewerRequest', {
       comment: 'Redirect www and / to the apex builder, and keep SPA routes on index.html.',
-      code: FunctionCode.fromInline(VIEWER_REQUEST_CODE),
+      code: FunctionCode.fromInline(viewerRequestCode(spaRoutes, {
+        canonicalHost: domainName,
+        redirectHost: includeWww ? `www.${domainName}` : ''
+      })),
       runtime: FunctionRuntime.JS_2_0
     });
 
@@ -236,7 +257,7 @@ export class GarageStack extends cdk.Stack {
        ---------------------------------------------------------------- */
     // Look up the hosted zone for the domain
     const hostedZone = route53.HostedZone.fromLookup(this, 'HostedZone', {
-      domainName: domainName,
+      domainName: zoneName,
     });
 
     /* ----------------------------------------------------------------
@@ -265,7 +286,7 @@ export class GarageStack extends cdk.Stack {
         // As a fallback, create a new certificate (this will only work in us-east-1)
         siteCertificate = new Certificate(this, 'SiteCertificate', {
           domainName: domainName,
-          subjectAlternativeNames: [`www.${domainName}`], // Include www subdomain
+          subjectAlternativeNames: includeWww ? [`www.${domainName}`] : undefined,
           validation: CertificateValidation.fromDns(hostedZone)
         });
       }
@@ -292,7 +313,7 @@ export class GarageStack extends cdk.Stack {
         '*.txt': staticBehavior(),
         '*.xml': staticBehavior()
       },
-      domainNames: [domainName, `www.${domainName}`],
+      domainNames: includeWww ? [domainName, `www.${domainName}`] : [domainName],
       certificate: siteCertificate,
       errorResponses: [
         {
@@ -333,11 +354,13 @@ export class GarageStack extends cdk.Stack {
     });
     
     // www must keep resolving to this distribution so the viewer function can 301 it.
-    new route53.CnameRecord(this, 'WWWRecord', {
-      recordName: `www.${domainName}`,
-      domainName: domainName,
-      zone: hostedZone
-    });
+    if (includeWww) {
+      new route53.CnameRecord(this, 'WWWRecord', {
+        recordName: `www.${domainName}`,
+        domainName: domainName,
+        zone: hostedZone
+      });
+    }
 
     /* ----------------------------------------------------------------
        Outputs
@@ -354,9 +377,11 @@ export class GarageStack extends cdk.Stack {
       value: `https://${domainName}`
     });
     
-    new cdk.CfnOutput(this, 'CustomDomainWWW', {
-      value: `https://www.${domainName}`
-    });
+    if (includeWww) {
+      new cdk.CfnOutput(this, 'CustomDomainWWW', {
+        value: `https://www.${domainName}`
+      });
+    }
   }
 }
 
