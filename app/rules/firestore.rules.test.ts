@@ -60,8 +60,8 @@ beforeEach(async () => {
 	await testEnv.clearFirestore();
 });
 
-function authed(uid: string): Firestore {
-	return testEnv.authenticatedContext(uid).firestore() as Firestore;
+function authed(uid: string, token?: Record<string, unknown>): Firestore {
+	return testEnv.authenticatedContext(uid, token).firestore() as Firestore;
 }
 
 function guest(): Firestore {
@@ -71,6 +71,12 @@ function guest(): Firestore {
 async function seed(write: (database: Firestore) => Promise<void>) {
 	await testEnv.withSecurityRulesDisabled(async (context) => {
 		await write(context.firestore() as Firestore);
+	});
+}
+
+async function seedPlacement(uid: string, latE2: number, lngE2: number) {
+	await seed(async (database) => {
+		await setDoc(doc(database, 'mapPlacements', uid), { latE2, lngE2, updatedAt: NOW });
 	});
 }
 
@@ -86,6 +92,8 @@ describe('existing access', () => {
 	it('lets a player manage only their own team and settings', async () => {
 		const player = authed('player');
 		await assertSucceeds(setDoc(doc(player, 'teams', 't1'), { userId: 'player', teamName: 'Racers' }));
+		await assertFails(setDoc(doc(player, 'teams', 'extra'), { userId: 'player', teamName: 'Racers', injected: true }));
+		await assertFails(setDoc(doc(player, 'teams', 'long'), { userId: 'player', teamName: 'x'.repeat(121) }));
 		await assertSucceeds(getDocs(query(collection(player, 'teams'), where('userId', '==', 'player'))));
 		await assertSucceeds(updateDoc(doc(player, 'teams', 't1'), { teamName: 'Racers 2' }));
 		await assertSucceeds(setDoc(doc(player, 'userSettings', 'player'), { darkMode: true }));
@@ -103,14 +111,20 @@ describe('existing access', () => {
 
 	it('lets a player create a message and blocks them from reading it', async () => {
 		await assertSucceeds(setDoc(doc(authed('player'), 'messages', 'm1'), { userId: 'player', subject: 'Hi' }));
+		await assertFails(setDoc(doc(authed('player'), 'messages', 'bad'), { userId: 'player', subject: 'Hi', injected: true }));
+		await assertFails(
+			setDoc(doc(authed('player'), 'messages', 'huge'), { userId: 'player', message: 'x'.repeat(5001) })
+		);
 		await assertFails(getDoc(doc(authed('player'), 'messages', 'm1')));
 	});
 });
 
 describe('profiles and roles', () => {
 	it('lets a player write their own profile and blocks self-promotion', async () => {
-		const player = authed('player');
+		const player = authed('player', { email: 'player@example.com' });
 		await assertSucceeds(setDoc(doc(player, 'users', 'player'), profile('player', 'player@example.com')));
+		await assertFails(setDoc(doc(player, 'users', 'player'), profile('player', 'planted@example.com')));
+		await assertSucceeds(setDoc(doc(authed('noemail'), 'users', 'noemail'), profile('noemail', '')));
 		await assertSucceeds(updateDoc(doc(player, 'users', 'player'), { displayName: 'Pat' }));
 		await assertFails(updateDoc(doc(player, 'users', 'player'), { createdAt: '2020-01-01T00:00:00.000Z' }));
 		await assertFails(setDoc(doc(player, 'users', 'player'), { ...profile('player', 'player@example.com'), role: 'Administrator' }));
@@ -175,6 +189,18 @@ describe('disabled accounts', () => {
 	it('rejects a disable written by a regular user', async () => {
 		await assertFails(setDoc(doc(authed('player'), 'adminUsers', 'other'), disabledBy('player')));
 	});
+
+	it('blocks writes from an account that is marked deleted and still allows everyone else', async () => {
+		await seed(async (database) => {
+			await setDoc(doc(database, 'teams', 't1'), { userId: 'player', teamName: 'Racers' });
+			await setDoc(doc(database, 'accountControl', 'player'), { deleted: true });
+		});
+		const player = authed('player');
+		await assertFails(getDoc(doc(player, 'teams', 't1')));
+		await assertFails(setDoc(doc(player, 'teams', 't2'), { userId: 'player', teamName: 'New' }));
+		await assertFails(setDoc(doc(player, 'accountControl', 'player'), { deleted: false }));
+		await assertSucceeds(setDoc(doc(authed('other'), 'teams', 'o1'), { userId: 'other', teamName: 'Still here' }));
+	});
 });
 
 const ENTRY = 'aaaaaaaaaaaaaaaaaaaa';
@@ -238,6 +264,32 @@ describe('player privacy', () => {
 	it('keeps the private profile to the owner and administrators', async () => {
 		const player = authed('player');
 		await assertSucceeds(setDoc(doc(player, 'playerProfiles', 'player'), playerProfile()));
+		await assertSucceeds(setDoc(doc(player, 'playerProfiles', 'player'), playerProfile({ locationLabel: 'Austin, TX' })));
+		await assertSucceeds(setDoc(doc(player, 'playerProfiles', 'player'), playerProfile({ locationLabel: '78701' })));
+		await assertFails(
+			setDoc(doc(player, 'playerProfiles', 'player'), playerProfile({ locationLabel: '221B Baker Street' }))
+		);
+		await assertFails(
+			setDoc(doc(player, 'playerProfiles', 'player'), playerProfile({ locationLabel: 'Main Street' }))
+		);
+		await assertFails(setDoc(doc(player, 'playerProfiles', 'player'), playerProfile({ locationLabel: 'Main St' })));
+		await assertSucceeds(setDoc(doc(player, 'playerProfiles', 'player'), playerProfile({ locationLabel: 'St. Louis' })));
+		await assertFails(
+			setDoc(doc(player, 'playerProfiles', 'player'), playerProfile({ latE2: 3011, lngE2: -9802, locationLabel: '78701' }))
+		);
+		await seedPlacement('player', 3011, -9802);
+		await assertSucceeds(
+			setDoc(doc(player, 'playerProfiles', 'player'), playerProfile({ latE2: 3011, lngE2: -9802, locationLabel: '78701' }))
+		);
+		await assertSucceeds(
+			setDoc(
+				doc(player, 'playerProfiles', 'player'),
+				playerProfile({ latE2: 3011, lngE2: -9802, locationLabel: '78701', bio: 'Hi' })
+			)
+		);
+		await assertFails(
+			setDoc(doc(player, 'playerProfiles', 'player'), playerProfile({ latE2: 1200, lngE2: -9802, locationLabel: '78701' }))
+		);
 		await assertSucceeds(getDoc(doc(player, 'playerProfiles', 'player')));
 		await assertFails(getDoc(doc(authed('other'), 'playerProfiles', 'player')));
 		await assertFails(getDoc(doc(guest(), 'playerProfiles', 'player')));
@@ -267,6 +319,9 @@ describe('player privacy', () => {
 			setDoc(doc(player, 'playerMapOwners', 'player'), { entryId: ENTRY, updatedAt: NOW })
 		);
 		await assertSucceeds(setDoc(doc(player, 'playerMapPrivate', ENTRY), { ownerUid: 'player' }));
+		await assertFails(setDoc(doc(player, 'playerMap', ENTRY), anonPin()));
+		await assertFails(setDoc(doc(player, 'mapPlacements', 'player'), { latE2: 3011, lngE2: -9802, updatedAt: NOW }));
+		await seedPlacement('player', anonPin().latE2, anonPin().lngE2);
 		await assertSucceeds(setDoc(doc(player, 'playerMap', ENTRY), anonPin()));
 
 		const pin = await getDoc(doc(guest(), 'playerMap', ENTRY));
@@ -294,8 +349,12 @@ describe('player privacy', () => {
 		const player = authed('player');
 		await assertSucceeds(setDoc(doc(player, 'playerMapOwners', 'player'), { entryId: ENTRY, updatedAt: NOW }));
 		await assertSucceeds(setDoc(doc(player, 'playerMapPrivate', ENTRY), { ownerUid: 'player' }));
+		await assertFails(setDoc(doc(player, 'playerMap', ENTRY), namedPin({ locationLabel: '221B Baker Street' })));
+		await seedPlacement('player', namedPin().latE2, namedPin().lngE2);
 		await assertSucceeds(setDoc(doc(player, 'playerMap', ENTRY), namedPin()));
-		expect((await getDoc(doc(guest(), 'playerMap', ENTRY))).data()).toEqual(namedPin());
+		await assertSucceeds(setDoc(doc(player, 'playerMap', ENTRY), namedPin({ bio: 'Veteran' })));
+		await assertFails(setDoc(doc(player, 'playerMap', ENTRY), namedPin({ latE2: 1200 })));
+		expect((await getDoc(doc(guest(), 'playerMap', ENTRY))).data()).toEqual(namedPin({ bio: 'Veteran' }));
 		await assertFails(setDoc(doc(player, 'playerMap', ENTRY), { ...namedPin(), email: 'ada@example.com', uid: 'player' }));
 		await assertFails(setDoc(doc(player, 'playerMap', ENTRY), namedPin({ playerName: '' })));
 	});
@@ -379,6 +438,7 @@ describe('player directory boards', () => {
 	it('publishes one public map board and rejects scans, spoofed pins, and deletion', async () => {
 		await claimPin('player', ENTRY);
 		const player = authed('player');
+		await seedPlacement('player', anonPin().latE2, anonPin().lngE2);
 		await assertSucceeds(setDoc(doc(player, 'playerMapBoard', 'public'), { markers: { [ENTRY]: anonPin() } }));
 		expect((await getDoc(doc(guest(), 'playerMapBoard', 'public'))).data()).toEqual({
 			markers: { [ENTRY]: anonPin() }
@@ -399,6 +459,7 @@ describe('player directory boards', () => {
 
 		await claimPin('other', otherEntry);
 		const other = authed('other');
+		await seedPlacement('other', namedPin().latE2, namedPin().lngE2);
 		await assertSucceeds(
 			setDoc(doc(other, 'playerMapBoard', 'public'), {
 				markers: { [ENTRY]: anonPin(), [otherEntry]: namedPin() }
@@ -432,6 +493,9 @@ describe('player directory boards', () => {
 		});
 		const player = authed('player');
 		const updated = { ...markers, [owned]: { ...anonPin(), latE2: 1200 } };
+		await seed(async (database) => {
+			await setDoc(doc(database, 'mapPlacements', 'player'), { latE2: 1200, lngE2: anonPin().lngE2, updatedAt: NOW });
+		});
 		await assertSucceeds(setDoc(doc(player, 'playerMapBoard', 'public'), { markers: updated }));
 
 		await claimPin('newbie', otherEntry);
@@ -507,6 +571,7 @@ describe('monthly email consent', () => {
 	it('lets only the owner write a typed opt-in and keeps everyone else out', async () => {
 		const player = authed('player');
 		await assertSucceeds(setDoc(doc(player, 'userSettings', 'player'), { darkMode: true }));
+		await assertFails(setDoc(doc(player, 'userSettings', 'player'), { darkMode: true, injected: true }));
 		await assertSucceeds(setDoc(doc(player, 'userSettings', 'player'), { ...NEWSLETTER_IN, darkMode: true }));
 		await assertSucceeds(
 			setDoc(doc(player, 'userSettings', 'player'), { ...NEWSLETTER_IN, newsletterSource: 'profile', darkMode: true })

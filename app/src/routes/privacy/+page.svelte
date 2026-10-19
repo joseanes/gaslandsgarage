@@ -125,12 +125,14 @@
 			The request does not include your email or account id, and the page does not ask the browser for
 			GPS. A suggestion is kept only when it is a city, region, or 5-digit US ZIP. Street addresses are
 			still rejected. Google’s precise place point is not stored. The coordinate saved with the profile
-			is still the approximate point from Nominatim or the local ZIP list.
+			is the approximate point the site issues after Nominatim or the local ZIP list.
 		</p>
 		<p>
-			Before anything is stored, the coordinate is moved 2 to 8 kilometers in a random direction and
-			rounded to about 1 kilometer (0.01 degrees). The original point is not kept. Only that approximate
-			point can appear on the map.
+			When you save a new place, a server function moves the coordinate 2 to 8 kilometers in a random
+			direction and rounds it to about 1 kilometer (0.01 degrees). The database accepts a new or moved
+			pin only when it matches that server-issued point. Street addresses are rejected before the point
+			is stored. An existing pin keeps its point until you save a new place. The original point is not
+			kept. Only that approximate point can appear on the map.
 		</p>
 
 		<h2 class="text-xl font-bold mt-8 mb-3">What is public, and what needs a sign-in</h2>
@@ -145,8 +147,9 @@
 		</ul>
 		<p>
 			The open-to-games list is not on the public map. Only a signed-in player whose account is not
-			disabled can read it. Each card shows a player name, bio, and where that person likes to play. It
-			does not include an email address or a coordinate.
+			disabled can read it. Each card shows a player name, bio, and where that person likes to play. The
+			list is keyed by account id, so a signed-in player can see that id. It does not include an email
+			address or a coordinate.
 		</p>
 		<p>
 			Your private profile, your settings, and your saved teams stay limited to you, plus an
@@ -292,7 +295,7 @@
 			including the hash of your own address, so that request still blocks a later invite.
 		</p>
 		<p>
-			Game requests stay until we delete them on request. The profile page does not include a delete
+			Game requests stay until an account deletion anonymizes them, or until we remove them on request. The profile page does not include a delete
 			button for a request. Contact Us messages have no automatic expiry.
 		</p>
 		<p>
@@ -391,7 +394,9 @@
 			<a class={linkClass} href="mailto:jose.anes@gmail.com">jose.anes@gmail.com</a>, or use
 			Contact Us while signed in, and say what you want removed. We answer email requests within 1
 			month. We can delete the Gaslands Garage records we hold for that account, including the account
-			record, teams, profile, settings, game requests, gaming buddy links, and the buddy invites you sent. A request not to receive buddy-invite email stays in place. Disabling an account is not
+			record, teams, profile, settings, and the buddy invites you sent. A game request is anonymized:
+			your name and note are cleared, and the request is removed only when the other player's account
+			is gone too. A request not to receive buddy-invite email stays in place. Disabling an account is not
 			the same as deleting it. We cannot delete the Google account itself.
 		</p>
 

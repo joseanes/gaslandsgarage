@@ -28,6 +28,7 @@ const MESSAGES = 'messages';
 const ROLES = 'roles';
 const ADMIN_USERS = 'adminUsers';
 const PLAYER_PROFILES = 'playerProfiles';
+const MAP_PLACEMENTS = 'mapPlacements';
 const PLAYER_MAP_OWNERS = 'playerMapOwners';
 const PLAYER_MAP_PRIVATE = 'playerMapPrivate';
 const PLAYER_MAP = 'playerMap';
@@ -48,6 +49,8 @@ const BUDDY_EMAIL_OPT_OUTS = 'buddyEmailOptOuts';
 const BUDDY_EMAIL_RATE = 'buddyEmailRate';
 const BUDDY_EMAIL_SUPPRESS = 'buddyEmailSuppress';
 const STATS = 'stats';
+const ACCOUNT_CONTROL = 'accountControl';
+const GAME_CONTACT_EMAIL_RATE = 'gameContactEmailRate';
 const BOARD_DOC = 'public';
 const TOMBSTONE = 'deleted';
 const DELETED_NAME = 'Deleted player';
@@ -332,6 +335,7 @@ async function deleteOwnedDocuments(uid: string, entryId: string | null): Promis
     db.doc(`${USER_SETTINGS}/${uid}`),
     db.doc(`${NEWSLETTER_TOKENS}/${uid}`),
     db.doc(`${PLAYER_PROFILES}/${uid}`),
+    db.doc(`${MAP_PLACEMENTS}/${uid}`),
     db.doc(`${PLAYER_MAP_OWNERS}/${uid}`),
     db.doc(`${OPEN_TO_GAMES}/${uid}`),
     db.doc(`${USERS}/${uid}`),
@@ -344,6 +348,14 @@ async function deleteOwnedDocuments(uid: string, entryId: string | null): Promis
   await deleteRefs(refs);
 }
 
+function sideUid(value: unknown, uid: string): string {
+  return value === uid ? TOMBSTONE : typeof value === 'string' ? value : '';
+}
+
+/**
+ * Replaces this account's id on a game request and clears this side's text.
+ * The document is removed only when both sides are already the tombstone.
+ */
 async function anonymizeContactsAndMessages(uid: string): Promise<string[]> {
   const db = getFirestore();
   const [sent, received, messages] = await Promise.all([
@@ -355,14 +367,23 @@ async function anonymizeContactsAndMessages(uid: string): Promise<string[]> {
   for (const item of [...sent.docs, ...received.docs]) contacts.set(item.id, item);
 
   const updates: { ref: DocumentReference; data: Record<string, string> }[] = [];
+  const removals: DocumentReference[] = [];
   for (const item of contacts.values()) {
     const data = item.data() ?? {};
+    const fromUid = sideUid(data.fromUid, uid);
+    const toUid = sideUid(data.toUid, uid);
+    if (fromUid === TOMBSTONE && toUid === TOMBSTONE) {
+      removals.push(item.ref);
+      continue;
+    }
     const patch: Record<string, string> = {};
     if (data.fromUid === uid) {
+      patch.fromUid = TOMBSTONE;
       patch.fromName = DELETED_NAME;
       patch.message = DELETED_TEXT;
     }
     if (data.toUid === uid) {
+      patch.toUid = TOMBSTONE;
       patch.toName = DELETED_NAME;
       patch.reply = '';
       patch.repliedAt = '';
@@ -385,7 +406,26 @@ async function anonymizeContactsAndMessages(uid: string): Promise<string[]> {
     for (const update of updates.slice(index, index + 400)) batch.update(update.ref, update.data);
     await batch.commit();
   }
+  await deleteRefs(removals);
   return [...contacts.keys()];
+}
+
+async function markErased(uid: string): Promise<void> {
+  await getFirestore().doc(`${ACCOUNT_CONTROL}/${uid}`).set({
+    deleted: true,
+    deletedAt: new Date().toISOString()
+  });
+}
+
+/** Stops new sessions. An ID token that is already issued is blocked by accountControl. */
+async function revokeSession(uid: string): Promise<void> {
+  const auth = getAuth();
+  try {
+    await auth.revokeRefreshTokens(uid);
+    await auth.updateUser(uid, { disabled: true });
+  } catch (error) {
+    if (!isUserNotFound(error)) throw error;
+  }
 }
 
 async function deleteQueuedMail(email: string, contactIds: string[]): Promise<void> {
@@ -403,15 +443,20 @@ async function deleteQueuedMail(email: string, contactIds: string[]): Promise<vo
 }
 
 /**
- * Erase one account. Board keys are removed in one transaction. The Auth user
- * is deleted last so a retry can still authenticate and finish leftover docs.
- * Shared gameContacts and contact-form messages are anonymized on this
- * account's side. The other person's text stays.
+ * Erase one account. The deletion marker is written first and is not removed,
+ * so a still-valid ID token cannot recreate data. Refresh tokens are revoked
+ * before the documents go. Game requests drop this account's id and text. The
+ * request document is removed only when both players are gone. A second pass
+ * runs after the Auth user is deleted.
  */
 export async function eraseAccount(uid: string): Promise<string[]> {
   assertUid(uid);
   const steps: string[] = [];
   const email = await authEmail(uid);
+  steps.push('marker');
+  await markErased(uid);
+  steps.push('revoke');
+  await revokeSession(uid);
   const entryId = await ownedMapEntry(uid);
   steps.push('boards');
   await removeBoardKeys(uid, entryId);
@@ -419,18 +464,25 @@ export async function eraseAccount(uid: string): Promise<string[]> {
   await deleteOwnedDocuments(uid, entryId);
   steps.push('anonymize');
   const contactIds = await anonymizeContactsAndMessages(uid);
-	steps.push('mail');
-	await deleteQueuedMail(email, contactIds);
-	steps.push('buddies');
-	await deleteBuddyLinks(uid, email);
-	steps.push('rate');
-	await getFirestore().doc(`${PRIVACY_RATE}/${uid}`).delete();
+  steps.push('mail');
+  await deleteQueuedMail(email, contactIds);
+  steps.push('buddies');
+  await deleteBuddyLinks(uid, email);
+  steps.push('rate');
+  const db = getFirestore();
+  await db.doc(`${PRIVACY_RATE}/${uid}`).delete();
+  await db.doc(`${GAME_CONTACT_EMAIL_RATE}/${uid}`).delete();
   steps.push('auth');
   try {
     await getAuth().deleteUser(uid);
   } catch (error) {
     if (!isUserNotFound(error)) throw error;
   }
+  steps.push('rescan');
+  const leftover = await ownedMapEntry(uid);
+  await removeBoardKeys(uid, leftover);
+  await deleteOwnedDocuments(uid, leftover);
+  await anonymizeContactsAndMessages(uid);
   return steps;
 }
 
@@ -462,6 +514,7 @@ export async function exportAccount(uid: string): Promise<Record<string, unknown
     settingsDoc,
     tokenDoc,
     profileDoc,
+    placementDoc,
     ownerDoc,
     openDoc,
     roleDoc,
@@ -479,6 +532,7 @@ export async function exportAccount(uid: string): Promise<Record<string, unknown
     db.doc(`${USER_SETTINGS}/${uid}`).get(),
     db.doc(`${NEWSLETTER_TOKENS}/${uid}`).get(),
     db.doc(`${PLAYER_PROFILES}/${uid}`).get(),
+    db.doc(`${MAP_PLACEMENTS}/${uid}`).get(),
     db.doc(`${PLAYER_MAP_OWNERS}/${uid}`).get(),
     db.doc(`${OPEN_TO_GAMES}/${uid}`).get(),
     db.doc(`${ROLES}/${uid}`).get(),
@@ -521,6 +575,7 @@ export async function exportAccount(uid: string): Promise<Record<string, unknown
       [USER_SETTINGS]: docJson(settingsDoc),
       [NEWSLETTER_TOKENS]: docJson(tokenDoc),
       [PLAYER_PROFILES]: docJson(profileDoc),
+      [MAP_PLACEMENTS]: docJson(placementDoc),
       [PLAYER_MAP_OWNERS]: docJson(ownerDoc),
       [PLAYER_MAP_PRIVATE]: ownsPin && privateDoc ? docJson(privateDoc) : null,
       [PLAYER_MAP]: ownsPin && mapDoc ? docJson(mapDoc) : null,

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
-import { getFirestore } from 'firebase-admin/firestore';
+import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { eraseAccount, exportAccount } from './accountPrivacy';
 import {
 	handleAcceptBuddyEmailInvite,
@@ -267,6 +267,7 @@ describe('buddy email invites', () => {
 			).rejects.toMatchObject({ code: 'internal' });
 			expect(lines.join('\n')).toContain('failed network');
 			expect((await getFirestore().collection('buddyEmailRate').get()).empty).toBe(true);
+			expect((await getFirestore().collection('buddyEmailInvites').get()).empty).toBe(true);
 			const retry = mailCapture();
 			await handleSendBuddyInvite('ada', { email: 'friend@example.com' }, runtime(retry.fetchImpl, now + 2));
 			expect(retry.posted).toHaveLength(1);
@@ -299,6 +300,7 @@ describe('buddy email invites', () => {
 		const invite = (await getFirestore().collection('buddyEmailInvites').get()).docs[0];
 		expect(invite.get('usedAt')).toBeNull();
 		expect(JSON.stringify(invite.data())).not.toContain('friend@example.com');
+		await invite.ref.update({ sentAt: FieldValue.delete() });
 
 		const accepted = await handleAcceptBuddyEmailInvite(
 			'friend',

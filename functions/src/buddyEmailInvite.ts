@@ -68,13 +68,30 @@ function newId(): string {
 const VERIFY_EMAIL =
 	'Verify your email address before accepting this invite. Google sign-in is already verified.';
 
+type PendingInvite = {
+	jti: string;
+	fromUid: string;
+	emailHash: string;
+	exp: number;
+	message: string;
+	createdAt: string;
+	optOutId: string;
+};
+
 /**
  * Claims the sender's daily slot and, when a message will actually be sent,
- * the address cooldown. Both writes are in one transaction, so two senders
- * cannot both pass the 7-day check. A suppressed or cooling address still
- * consumes a sender slot and returns "skip" so the caller can answer "sent".
+ * the address cooldown and the invite document. The invite exists before Twilio
+ * is called, so a token that was emailed can be accepted even if the "sent"
+ * mark has not landed yet. Two senders cannot both pass the 7-day check.
+ * A suppressed or cooling address still consumes a sender slot and returns
+ * "skip" so the caller can answer "sent".
  */
-async function reserveInvite(uid: string, hash: string, nowMs: number): Promise<'limited' | 'skip' | 'claimed'> {
+async function reserveInvite(
+	uid: string,
+	hash: string,
+	nowMs: number,
+	invite: PendingInvite
+): Promise<'limited' | 'skip' | 'claimed'> {
 	const db = getFirestore();
 	const rateRef = db.doc(`${BUDDY_COLLECTIONS.rate}/${uid}`);
 	const suppressRef = db.doc(`${BUDDY_COLLECTIONS.emailSuppress}/${hash}`);
@@ -93,16 +110,33 @@ async function reserveInvite(uid: string, hash: string, nowMs: number): Promise<
 		const sentAt = coolSnap.get('sentAt');
 		if (typeof sentAt === 'number' && nowMs - sentAt < BUDDY_EMAIL_RECIPIENT_WINDOW_MS) return 'skip';
 		tx.set(coolRef, { sentAt: nowMs, state: 'reserved' });
+		tx.set(db.doc(`${BUDDY_COLLECTIONS.emailInvites}/${invite.jti}`), {
+			fromUid: invite.fromUid,
+			emailHash: invite.emailHash,
+			exp: invite.exp,
+			message: invite.message,
+			usedAt: null,
+			createdAt: invite.createdAt
+		});
+		tx.set(db.doc(`${BUDDY_COLLECTIONS.emailOptOuts}/${invite.optOutId}`), {
+			emailHash: invite.emailHash,
+			fromUid: invite.fromUid,
+			inviteId: invite.jti,
+			createdAt: invite.createdAt
+		});
 		return 'claimed';
 	});
 }
 
-/** Drops a reservation after Twilio did not accept the message. A finished send is left in place. */
-async function releaseReservation(hash: string, nowMs: number): Promise<void> {
-	const ref = getFirestore().doc(`${BUDDY_COLLECTIONS.emailRate}/${hash}`);
-	await getFirestore().runTransaction(async (tx) => {
+/** Drops a reservation and the invite after Twilio did not accept the message. */
+async function releaseReservation(hash: string, nowMs: number, invite: PendingInvite): Promise<void> {
+	const db = getFirestore();
+	const ref = db.doc(`${BUDDY_COLLECTIONS.emailRate}/${hash}`);
+	await db.runTransaction(async (tx) => {
 		const snap = await tx.get(ref);
 		if (snap.get('state') === 'reserved' && snap.get('sentAt') === nowMs) tx.delete(ref);
+		tx.delete(db.doc(`${BUDDY_COLLECTIONS.emailInvites}/${invite.jti}`));
+		tx.delete(db.doc(`${BUDDY_COLLECTIONS.emailOptOuts}/${invite.optOutId}`));
 	});
 }
 
@@ -126,16 +160,26 @@ export async function handleSendBuddyInvite(
 	if (own && emailAddressHash(own, config.authToken) === hash) {
 		throw new HttpsError('failed-precondition', 'You cannot invite yourself.');
 	}
-	const slot = await reserveInvite(caller, hash, nowMs);
+	const jti = newId();
+	const exp = nowMs + BUDDY_EMAIL_INVITE_TTL_MS;
+	const acceptToken = signEmailInvite({ jti, exp, fromUid: caller }, config.authToken);
+	const optOutToken = randomBytes(32).toString('base64url');
+	const stamp = new Date(nowMs).toISOString();
+	const pending: PendingInvite = {
+		jti,
+		fromUid: caller,
+		emailHash: hash,
+		exp,
+		message,
+		createdAt: stamp,
+		optOutId: hashSecret(optOutToken)
+	};
+	const slot = await reserveInvite(caller, hash, nowMs, pending);
 	if (slot === 'limited') {
 		throw new HttpsError('resource-exhausted', 'You can send 10 email invites a day. Try again tomorrow.');
 	}
 	if (slot === 'skip') return SENT;
 
-	const jti = newId();
-	const exp = nowMs + BUDDY_EMAIL_INVITE_TTL_MS;
-	const acceptToken = signEmailInvite({ jti, exp, fromUid: caller }, config.authToken);
-	const optOutToken = randomBytes(32).toString('base64url');
 	const name = await publicBuddyName(caller);
 	const mail = buildInviteMail({
 		displayName: name,
@@ -157,31 +201,17 @@ export async function handleSendBuddyInvite(
 		);
 	} catch {
 		console.info('buddies email-invite failed network');
-		await releaseReservation(hash, nowMs);
+		await releaseReservation(hash, nowMs, pending);
 		throw new HttpsError('internal', 'Could not send that invite. Try again.');
 	}
 	if (!posted.ok) {
 		console.info(`buddies email-invite failed http ${posted.status}`);
-		await releaseReservation(hash, nowMs);
+		await releaseReservation(hash, nowMs, pending);
 		throw new HttpsError('internal', 'Could not send that invite. Try again.');
 	}
-	const stamp = new Date(nowMs).toISOString();
 	const db = getFirestore();
 	const batch = db.batch();
-	batch.set(db.doc(`${BUDDY_COLLECTIONS.emailInvites}/${jti}`), {
-		fromUid: caller,
-		emailHash: hash,
-		exp,
-		message,
-		usedAt: null,
-		createdAt: stamp
-	});
-	batch.set(db.doc(`${BUDDY_COLLECTIONS.emailOptOuts}/${hashSecret(optOutToken)}`), {
-		emailHash: hash,
-		fromUid: caller,
-		inviteId: jti,
-		createdAt: stamp
-	});
+	batch.update(db.doc(`${BUDDY_COLLECTIONS.emailInvites}/${jti}`), { sentAt: stamp });
 	batch.set(db.doc(`${BUDDY_COLLECTIONS.emailRate}/${hash}`), { sentAt: nowMs, state: 'sent' });
 	await batch.commit();
 	console.info('buddies email-invite sent');
