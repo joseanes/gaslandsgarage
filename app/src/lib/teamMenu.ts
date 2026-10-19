@@ -3,10 +3,10 @@
 export const TEAM_MENU_ACTION_KEY = 'gaslands-team-action';
 export const CURRENT_TEAM_KEY = 'gaslands-current-team';
 
-export const TEAM_MENU_ACTIONS = ['myteams', 'import', 'print', 'copy', 'share', 'qr'] as const;
+export const TEAM_MENU_ACTIONS = ['myteams', 'import', 'print', 'printphotos', 'copy', 'share', 'qr'] as const;
 export type TeamMenuAction = (typeof TEAM_MENU_ACTIONS)[number];
 
-const NEEDS_TEAM = new Set<TeamMenuAction>(['print', 'copy', 'share', 'qr']);
+const NEEDS_TEAM = new Set<TeamMenuAction>(['print', 'printphotos', 'copy', 'share', 'qr']);
 
 export function isTeamMenuAction(value: string | null | undefined): value is TeamMenuAction {
 	return TEAM_MENU_ACTIONS.includes(value as TeamMenuAction);

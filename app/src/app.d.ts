@@ -26,7 +26,8 @@ interface GarageWindow {
 	shareLinkFn?: () => void;
 	generateQRCodeFn?: () => void | Promise<void>;
 	importBuildFn?: () => void;
-	printTeamFn?: () => void | Promise<unknown>;
+	printTeamFn?: (options?: { withPhotos?: boolean }) => void | Promise<unknown>;
+	printTeamWithPhotosFn?: () => void | Promise<unknown>;
 	openSettingsFn?: (tab?: string) => void;
 	openSettings?: (tab?: string) => void;
 	copyDraft?: () => void | Promise<void>;

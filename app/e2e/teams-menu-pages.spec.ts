@@ -68,6 +68,7 @@ test('signed-out Teams actions from Usage Stats open the builder without an aler
 	const messages = watchDialogs(page);
 	const needsTeam: Array<[string, string]> = [
 		['Print Team', 'Add a vehicle to this team before printing.'],
+		['Print with photos', 'Add a vehicle to this team before printing with photos.'],
 		['Copy to Clipboard', 'Add a vehicle to this team before copying it.'],
 		['Share Link', 'Add a vehicle to this team before sharing a link.'],
 		['Generate QR Code', 'Add a vehicle to this team before generating a QR code.']

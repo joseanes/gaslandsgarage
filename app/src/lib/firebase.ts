@@ -61,6 +61,8 @@ const initializeFirebase = async () => {
       if (localStorage.getItem('gaslands-firebase-emulators') === '1') {
         firebaseAuth.connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
         firebaseFirestore.connectFirestoreEmulator(db, '127.0.0.1', 8080);
+        const firebaseStorage = await import('firebase/storage');
+        firebaseStorage.connectStorageEmulator(firebaseStorage.getStorage(app), '127.0.0.1', 9199);
         const firebaseFunctions = await import('firebase/functions');
         const functions = firebaseFunctions.getFunctions(app, 'us-central1');
         firebaseFunctions.connectFunctionsEmulator(functions, '127.0.0.1', 5001);

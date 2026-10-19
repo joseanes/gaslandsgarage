@@ -39,3 +39,4 @@ app/static/app/
 
 # Emulator logs
 firestore-debug.log
+firebase-debug.log

@@ -42,6 +42,8 @@ import SettingsMenu from '$lib/components/SettingsMenu.svelte';
 	import { user, signInWithGoogle } from '$lib/firebase';
 import { getUserSettings, saveUserSettings, DEFAULT_SETTINGS, type UserSettings } from '$lib/services/settings';
 import { saveTeam, getUserTeams } from '$lib/services/team';
+	import { deleteVehiclePhotos, photosForPrint } from '$lib/services/vehiclePhotos';
+	import { TEAM_ID_PATTERN } from '$lib/photos/model';
 	import { withoutDisallowedGear } from '$lib/builder/stripGear';
 	import { clearStaleChunkReload } from '$lib/staleChunk';
 	import { browser } from '$app/environment';
@@ -210,6 +212,27 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		upgradeFacings?: Record<string, string>;
 	};
 	let vehicles: Veh[] = [];
+	const SAVED_TEAM_KEY = 'gaslands-saved-team-id';
+	let savedTeamId: string | null = null;
+	if (typeof window !== 'undefined') {
+		try {
+			const storedTeamId = sessionStorage.getItem(SAVED_TEAM_KEY);
+			savedTeamId = storedTeamId && TEAM_ID_PATTERN.test(storedTeamId) ? storedTeamId : null;
+		} catch {
+			savedTeamId = null;
+		}
+	}
+
+	function rememberSavedTeam(id: string | null) {
+		savedTeamId = id && TEAM_ID_PATTERN.test(id) ? id : null;
+		if (typeof window === 'undefined') return;
+		try {
+			if (savedTeamId) sessionStorage.setItem(SAVED_TEAM_KEY, savedTeamId);
+			else sessionStorage.removeItem(SAVED_TEAM_KEY);
+		} catch {
+			/* storage can be blocked */
+		}
+	}
 	// Track hazard tokens for each vehicle
 	let vehicleHazards: Record<string, number> = {};
 	/** Bumps when a cancelled switch must put the rules select back. */
@@ -476,6 +499,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 	}
 
 	function removeVehicle(id: string) {
+		const photoTeamId = savedTeamId;
 		// Remove the vehicle
 		vehicles = vehicles.filter((v) => v.id !== id);
 
@@ -488,6 +512,12 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		
 		// Update draft to trigger automatic validation
 		updateCurrentDraft();
+		if (photoTeamId) {
+			void deleteVehiclePhotos(photoTeamId, id).catch((error) => {
+				console.error('[removeVehicle] photos', error);
+				alert('The vehicle was removed. Its photos could not be deleted. Delete the team, or your account, to remove them.');
+			});
+		}
 	}
 
 	function cloneVehicle(id: string) {
@@ -1081,8 +1111,9 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 	let teamActionNotice = '';
 	let pendingTeamAction: TeamMenuAction | null = null;
 	let pendingTeamSnapshot: unknown = null;
-	const teamActionMessages: Record<Extract<TeamMenuAction, 'print' | 'copy' | 'share' | 'qr'>, string> = {
+	const teamActionMessages: Record<Extract<TeamMenuAction, 'print' | 'printphotos' | 'copy' | 'share' | 'qr'>, string> = {
 		print: 'Add a vehicle to this team before printing.',
+		printphotos: 'Add a vehicle to this team before printing with photos.',
 		copy: 'Add a vehicle to this team before copying it.',
 		share: 'Add a vehicle to this team before sharing a link.',
 		qr: 'Add a vehicle to this team before generating a QR code.'
@@ -1213,7 +1244,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 	}
 
 	/** True when the action must stop. The notice is the existing on-page message. */
-	function stopIfTeamEmpty(action: 'print' | 'copy' | 'share' | 'qr') {
+	function stopIfTeamEmpty(action: 'print' | 'printphotos' | 'copy' | 'share' | 'qr') {
 		if (teamHasVehicles(editorTeam())) {
 			if (teamActionNotice === teamActionMessages[action]) teamActionNotice = '';
 			return false;
@@ -1291,11 +1322,12 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		}
 	}
 	
-	function printWithRulesCheck() {
+	function printWithRulesCheck(options?: { withPhotos?: boolean }) {
+		const withPhotos = options?.withPhotos === true;
 		console.log('[printWithRulesCheck] Called');
 		
 		// Same list the print sheet maps. Stop before the rules prompt or the window.
-		if (stopIfTeamEmpty('print')) {
+		if (stopIfTeamEmpty(withPhotos ? 'printphotos' : 'print')) {
 			console.log('[printWithRulesCheck] No vehicles to print');
 			return;
 		}
@@ -1329,7 +1361,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		}
 
 		isPrinting = true;
-		printTeam()
+		printTeam({ withPhotos })
 			.then(() => {
 				setTimeout(() => { isPrinting = false; }, 3000);
 			})
@@ -1433,9 +1465,10 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			};
 
 			// Save the team
-			const result = await saveTeam(draftData, teamName);
+			const result = await saveTeam(draftData, teamName, savedTeamId ?? undefined);
 
 			if (result.success) {
+				if (result.teamId) rememberSavedTeam(result.teamId);
 				alert("Team saved successfully!");
 			} else {
 				console.error("Failed to save team:", result.error);
@@ -1511,7 +1544,8 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		}
 	}
 
-	async function printTeam() {
+	async function printTeam(options?: { withPhotos?: boolean }) {
+		const withPhotos = options?.withPhotos === true;
 		console.log("[printTeam] Print function called");
 		
 		// Debug: Check for extra crewmember upgrade in vehicles
@@ -1522,10 +1556,31 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		});
 		
 		// Same guard as the menu. A second alert here used to fire and then the sheet still opened.
-		if (stopIfTeamEmpty('print')) {
+		if (stopIfTeamEmpty(withPhotos ? 'printphotos' : 'print')) {
 			console.log("[printTeam] No vehicles to print");
 			isPrinting = false;
 			return;
+		}
+
+		// Open before the awaits so the browser still treats this as the click.
+		let photoWindow: Window | null = null;
+		if (withPhotos) {
+			if (!$user) {
+				window.dispatchEvent(new CustomEvent('gaslands-request-sign-in'));
+				isPrinting = false;
+				return;
+			}
+			if (!savedTeamId) {
+				alert('Save this team before printing with photos.');
+				isPrinting = false;
+				return;
+			}
+			photoWindow = window.open('', '_blank', 'width=800,height=600');
+			if (!photoWindow) {
+				alert('Please allow popups to print your team');
+				isPrinting = false;
+				return;
+			}
 		}
 		
 		// First generate QR code for the team
@@ -1711,8 +1766,17 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			console.log("[printTeam] --- END DEBUG ---");
 			
 			// Load the print service on demand so it stays out of the initial bundle
-			const { printTeam: printServiceFunc, printTeamDashboard } = await import('$lib/components/printing/PrintService');
+			const { printTeam: printServiceFunc, printTeamDashboard, printTeamWithPhotos } = await import('$lib/components/printing/PrintService');
 			const finalPrintStyle = printStyle || enhancedDraft.printStyle || 'classic';
+			if (withPhotos && photoWindow) {
+				const grouped = await photosForPrint(savedTeamId || '');
+				for (const vehicle of enhancedDraft.vehicles) {
+					(vehicle as { printPhotos?: { src: string; caption?: string }[] }).printPhotos = grouped[vehicle.id] ?? [];
+				}
+				await printTeamWithPhotos(finalPrintStyle, enhancedDraft, photoWindow);
+				console.log("[printTeam] Photo print completed successfully");
+				return true;
+			}
 			if (finalPrintStyle === 'dashboard' || finalPrintStyle.includes('dashboard')) {
 				console.log("[printTeam] Using dedicated dashboard print function");
 				enhancedDraft.printStyle = 'dashboard'; // Ensure consistent naming
@@ -1726,6 +1790,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		} catch (error) {
 			console.error("[printTeam] Error calling print service:", error);
 			isPrinting = false;
+			photoWindow?.close();
 			alert("There was an error while printing. Please try again.");
 			return false;
 		}
@@ -1754,6 +1819,8 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		let onLoadTeam: ((event: Event) => void) | undefined;
 		let onTeamLoaded: ((event: Event) => void) | undefined;
 		let onPrintMessage: ((event: Event) => void) | undefined;
+		let onTeamSaved: ((event: Event) => void) | undefined;
+		let onTeamDeleted: ((event: Event) => void) | undefined;
 		if (typeof window !== 'undefined') {
 			// Set up a custom event listener for menu commands
 			// Listen for custom team loading events
@@ -1878,12 +1945,27 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 				} else if (action === 'printTeam') {
 					console.log('[Event] Printing team from event');
 					printWithRulesCheck();
+				} else if (action === 'printTeamWithPhotos') {
+					console.log('[Event] Printing team with photos from event');
+					printWithRulesCheck({ withPhotos: true });
 				} else if (action === 'openSettings') {
 					console.log('[Event] Opening settings from event with tab:', detail.tab || 'general');
 					openSettings(detail.tab || 'general');
 				}
 			};
 			window.addEventListener('gaslands-menu-action', onMenuAction);
+			onTeamSaved = (event: Event) => {
+				if (!(event instanceof CustomEvent)) return;
+				const teamId = event.detail && typeof event.detail === 'object' ? (event.detail as { teamId?: unknown }).teamId : null;
+				if (typeof teamId === 'string') rememberSavedTeam(teamId);
+			};
+			onTeamDeleted = (event: Event) => {
+				if (!(event instanceof CustomEvent)) return;
+				const teamId = event.detail && typeof event.detail === 'object' ? (event.detail as { teamId?: unknown }).teamId : null;
+				if (typeof teamId === 'string' && teamId === savedTeamId) rememberSavedTeam(null);
+			};
+			window.addEventListener('gaslands-team-saved', onTeamSaved);
+			window.addEventListener('gaslands-team-deleted', onTeamDeleted);
 			
 			// Make openSettings function globally available
 			window.openSettings = openSettings;
@@ -1945,6 +2027,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			window.generateQRCodeFn = generateQRCode;
 			window.importBuildFn = importBuild;
 			window.printTeamFn = printWithRulesCheck;
+			window.printTeamWithPhotosFn = () => printWithRulesCheck({ withPhotos: true });
 			// Make sure we use the direct function reference, not a wrapper
 			window.openSettingsFn = openSettings;
 
@@ -2028,6 +2111,8 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			// Clean up when component is destroyed
 			if (typeof window !== 'undefined') {
 				if (onMenuAction) window.removeEventListener('gaslands-menu-action', onMenuAction);
+				if (onTeamSaved) window.removeEventListener('gaslands-team-saved', onTeamSaved);
+				if (onTeamDeleted) window.removeEventListener('gaslands-team-deleted', onTeamDeleted);
 				if (onLoadTeam) document.removeEventListener('gaslands-load-team-data', onLoadTeam);
 				if (onTeamLoaded) window.removeEventListener('gaslands-team-loaded', onTeamLoaded);
 				if (onPrintMessage) window.removeEventListener('message', onPrintMessage);
@@ -2041,6 +2126,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 				window.generateQRCodeFn = undefined;
 				window.importBuildFn = undefined;
 				window.printTeamFn = undefined;
+				window.printTeamWithPhotosFn = undefined;
 				window.openSettings = undefined;
 				window.openSettingsFn = undefined;
 				window.openTeamsModalFn = undefined;
@@ -2085,6 +2171,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		}
 		if (stopIfTeamEmpty(action)) return;
 		if (action === 'print') printWithRulesCheck();
+		else if (action === 'printphotos') printWithRulesCheck({ withPhotos: true });
 		else if (action === 'copy') void copyDraft();
 		else if (action === 'share') shareLink();
 		else void generateQRCode();
@@ -2109,6 +2196,10 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		}
 		if (draft.maxCans) maxCans = draft.maxCans;
 		if (draft.darkMode !== undefined) darkMode = draft.darkMode;
+		if (raw && typeof raw === 'object' && 'savedTeamId' in raw) {
+			const incoming = (raw as { savedTeamId?: unknown }).savedTeamId;
+			rememberSavedTeam(typeof incoming === 'string' ? incoming : null);
+		}
 
 		totalCans = calculateTotalCansDirectly();
 		collapsedVehicles = new Set(vehicles.map((entry) => entry.id));
@@ -2132,6 +2223,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 	function importDraftString() {
 		const draft = decodeDraft(importString.trim());
 		if (draft && applyImportedDraft(draft)) {
+			rememberSavedTeam(null);
 			importString = '';
 			showImportModal = false;
 			showSharePanel = false;
@@ -2153,7 +2245,10 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		const encoded = url.searchParams.get('draft');
 		if (encoded) {
 			const imported = decodeDraft(encoded);
-			if (imported) applyImportedDraft(imported);
+			if (imported) {
+				applyImportedDraft(imported);
+				rememberSavedTeam(null);
+			}
 		}
 		// Capture before the empty-team reactive write replaces sessionStorage.
 		pendingTeamAction = takeTeamMenuAction();
@@ -3432,6 +3527,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 								<svelte:boundary>
 								<VehicleCard
 									{vehicle}
+									teamId={savedTeamId}
 									vehicleTypes={sortedVehicleTypes}
 									{weapons}
 									{upgrades}

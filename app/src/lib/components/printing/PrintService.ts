@@ -2,6 +2,7 @@
 import type { Draft } from '$lib/validate/model';
 import { draftToDataURL } from '$lib/draft/qr';
 import { teamHasVehicles } from '$lib/print/canPrintTeam';
+import { vehiclePhotoSectionHtml, waitForPrintImages } from '$lib/photos/printPhotos';
 
 /** Team draft plus the extra fields the print window already receives. */
 interface PrintDraft extends Omit<Draft, 'sponsor' | 'vehicles'> {
@@ -503,7 +504,7 @@ export function generatePrintableHtml(data: PrintHtmlData): string {
   <!DOCTYPE html>
   <html>
   <head>
-    <title>Gaslands Team: ${teamName}</title>
+    <title>Gaslands Team: ${escapeHtml(teamName)}</title>
     <meta charset="utf-8">
     <style>
       body {
@@ -928,7 +929,7 @@ function generateDashboardHtml(data: PrintHtmlData): string {
   <!DOCTYPE html>
   <html>
   <head>
-    <title>Gaslands Dashboard: ${teamName}</title>
+    <title>Gaslands Dashboard: ${escapeHtml(teamName)}</title>
     <meta charset="utf-8">
     <style>
       body {
@@ -1587,6 +1588,7 @@ function generateVehicleDashboardHtml(vehicle: any, sponsorName: string, rulesVe
           ${perksTableHtml}
         </tbody>
       </table>
+      ${vehiclePhotoSectionHtml(vehicle)}
     </div>
     `;
   } catch (error) {
@@ -1793,6 +1795,7 @@ function generateVehicleCardHtml(vehicle: any, rulesVersion?: number): string {
       ${weaponsHtml}
       ${upgradesHtml}
       ${perksHtml}
+      ${vehiclePhotoSectionHtml(vehicle)}
     </div>
     `;
   } catch (error) {
@@ -2532,6 +2535,7 @@ function generateRosterHtml(data: PrintHtmlData): string {
         </div>`;
       }
       
+      vehiclesHtml += vehiclePhotoSectionHtml(vehicle);
       // Close vehicle section. Vehicles share a page until one no longer fits.
       vehiclesHtml += `</div>`;
     });
@@ -2543,7 +2547,7 @@ function generateRosterHtml(data: PrintHtmlData): string {
   return `<!DOCTYPE html>
   <html>
   <head>
-    <title>${teamName} - Gaslands Roster</title>
+    <title>${escapeHtml(teamName)} - Gaslands Roster</title>
     <meta charset="utf-8">
     <style>
       body {
@@ -3220,6 +3224,58 @@ function addPrintButtons(printWindow: Window): void {
   printWindow.document.body.insertBefore(printButton, printWindow.document.body.firstChild);
   printWindow.document.body.insertBefore(settingsButton, printWindow.document.body.firstChild);
   printWindow.document.body.insertBefore(closeButton, printWindow.document.body.firstChild);
+}
+
+/**
+ * Print the same sheet as the other styles, with each vehicle's photos.
+ * The window is opened by the click handler before the download URLs are fetched.
+ * Photo captions and addresses are escaped. The document is a blob URL, and
+ * window.opener is cleared before any other script runs.
+ */
+export async function printTeamWithPhotos(printStyle: string, draft: PrintDraft, printWindow: Window): Promise<void> {
+  if (!draft || !teamHasVehicles(draft)) {
+    printWindow.close();
+    return;
+  }
+  const style = String(printStyle || draft.printStyle || 'classic');
+  const html = generatePrintableHtml({
+    teamName: draft.teamName || 'Gaslands Team',
+    totalCans: draft.totalCans || 0,
+    maxCans: draft.maxCans || 50,
+    sponsorName: draft.sponsorName || 'No Sponsor',
+    sponsor: draft.sponsor ?? null,
+    sponsorPerks: draft.sponsorPerks ?? null,
+    vehicles: draft.vehicles,
+    qrCode: draft.qrCode,
+    showEquipmentDescriptions: draft.showEquipmentDescriptions !== false,
+    showPerkDescriptions: draft.showPerkDescriptions !== false,
+    showSpecialRules: draft.showSpecialRules ?? true,
+    weaponAndUpgradeSpecialRules: draft.weaponAndUpgradeSpecialRules || [],
+    printStyle: style,
+    rulesVersion: draft.rulesVersion
+  });
+  const payload = html.includes('<head>')
+    ? html.replace('<head>', '<head><script>window.opener=null;</script>')
+    : html;
+  const url = URL.createObjectURL(new Blob([payload], { type: 'text/html' }));
+  await new Promise<void>((resolve) => {
+    const timer = window.setTimeout(resolve, 8000);
+    printWindow.addEventListener(
+      'load',
+      () => {
+        window.clearTimeout(timer);
+        resolve();
+      },
+      { once: true }
+    );
+    printWindow.location.replace(url);
+  });
+  if (printWindow.closed) return;
+  await waitForPrintImages(printWindow.document);
+  const printMediaStyle = printWindow.document.createElement('style');
+  printMediaStyle.textContent = '@media print { button { display: none !important; } }';
+  printWindow.document.head?.appendChild(printMediaStyle);
+  addPrintButtons(printWindow);
 }
 
 /**

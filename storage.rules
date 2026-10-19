@@ -1,0 +1,43 @@
+rules_version = '2';
+// Painted-car photos. The signed-in owner can read and write only their own
+// files. Buddies and public share links cannot. Anything outside this path is
+// denied. A matching metadata document is created by reserveVehiclePhoto
+// before the browser uploads.
+service firebase.storage {
+  match /b/{bucket}/o {
+    function owner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    function safeIds(teamId, vehicleId) {
+      return teamId.matches('^[A-Za-z0-9_-]{1,40}$')
+        && vehicleId.matches('^[A-Za-z0-9_-]{1,64}$');
+    }
+
+    function webpFile(fileName) {
+      return fileName.matches('^[A-Za-z0-9_-]{8,40}\\.webp$')
+        && request.resource.contentType == 'image/webp';
+    }
+
+    function jpegFile(fileName) {
+      return fileName.matches('^[A-Za-z0-9_-]{8,40}\\.jpe?g$')
+        && request.resource.contentType == 'image/jpeg';
+    }
+
+    match /users/{uid}/vehicle-photos/{teamId}/{vehicleId}/{fileName} {
+      allow read: if owner(uid) && safeIds(teamId, vehicleId);
+
+      // About 1.5 MiB. Delete is separate so a delete is not required to send a content type.
+      allow create, update: if owner(uid)
+        && safeIds(teamId, vehicleId)
+        && request.resource.size <= 1572864
+        && (webpFile(fileName) || jpegFile(fileName));
+
+      allow delete: if owner(uid);
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

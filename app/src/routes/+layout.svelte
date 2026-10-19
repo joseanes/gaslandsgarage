@@ -446,6 +446,25 @@
       openOnBuilder('print');
     }
   }
+
+  function printTeamWithPhotos() {
+    if (typeof window !== 'undefined' && window.location.pathname.includes('/builder')) {
+      try {
+        window.dispatchEvent(new CustomEvent('gaslands-menu-action', {
+          detail: { action: 'printTeamWithPhotos' }
+        }));
+        return;
+      } catch (err) {
+        console.error('[Layout] Error dispatching photo print:', err);
+      }
+      if (typeof window.printTeamWithPhotosFn === 'function') {
+        window.printTeamWithPhotosFn();
+        return;
+      }
+    } else {
+      openOnBuilder('printphotos');
+    }
+  }
   
   function openBuilderSettings(tab: SettingsTab) {
     if (typeof window === 'undefined') return;
@@ -609,7 +628,7 @@
 
             {#if showShareMenu}
           <div
-            class="absolute w-44 bg-black border-2 border-amber-500 shadow-xl rounded-lg overflow-visible z-30 py-2 share-menu-dropdown"
+            class="absolute w-52 bg-black border-2 border-amber-500 shadow-xl rounded-lg overflow-visible z-30 py-2 share-menu-dropdown"
             style="box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5); background-color: #000000 !important; top: 40px; left: 0;"
             transition:fade={{ duration: 150 }}
           >
@@ -618,6 +637,9 @@
             </button>
             <button type="button" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600" on:click={() => { printTeam(); showShareMenu = false; }}>
               Print Team
+            </button>
+            <button type="button" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600" data-testid="print-with-photos" on:click={() => { printTeamWithPhotos(); showShareMenu = false; }}>
+              Print with photos
             </button>
             <div class="share-team-group" role="presentation" on:mouseenter={onShareGroupEnter} on:mouseleave={onShareGroupLeave}>
               <button

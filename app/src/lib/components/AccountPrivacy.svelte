@@ -46,7 +46,7 @@
   <div class="p-4 rounded-lg bg-amber-50 dark:bg-amber-900/30 space-y-3" data-testid="account-privacy">
     <h4 class="font-medium text-stone-800 dark:text-white">Your data</h4>
     <p class="text-stone-600 dark:text-gray-200 text-sm">
-      Download a JSON file of the teams, settings, profile, messages, and map pin stored for this account.
+      Download a JSON file of the teams, settings, profile, messages, map pin, and painted-car photos stored for this account. The download lists your photos. The image files stay private on the site.
     </p>
     <button
       type="button"
@@ -60,7 +60,7 @@
 
     <h4 class="font-medium text-stone-800 dark:text-white pt-2">Delete my account</h4>
     <p class="text-stone-600 dark:text-gray-200 text-sm">
-      This removes your teams, settings, and profile, takes your pin off the players map, and anonymizes your side of
+      This removes your teams, settings, profile, and painted-car photos, takes your pin off the players map, and anonymizes your side of
       game requests and contact messages. It cannot be undone. You will be asked to sign in with Google again.
       Administrators can disable an account, and only you can delete yours.
     </p>

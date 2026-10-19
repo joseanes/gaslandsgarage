@@ -9,8 +9,9 @@ The functions are 2nd gen, Node.js 22, TypeScript, in `functions/`. Node.js 20 i
 | `publishUsageStats` | Cloud Scheduler `15 6 * * *` in `America/New_York` | Writes `stats/public` and upserts `users/{uid}`. Same job as `stats/job.ts`. |
 | `syncAuthDisabled` | `adminUsers/{uid}` write | Sets Firebase Auth `disabled` to match the document. On disable, revokes refresh tokens. Does not delete the user. |
 | `queueGameContactEmail` | `gameContacts/{contactId}` create | Queues one Trigger Email document when the recipient opted in. |
-| `exportMyData` | Callable, signed-in user | JSON of that account's Firestore data. |
-| `deleteMyAccount` | Callable, signed-in user | Deletes that account. Requires a fresh sign-in and the confirmation `DELETE`. |
+| `exportMyData` | Callable, signed-in user | JSON of that account's Firestore data, including a list of painted-car photos. |
+| `deleteMyAccount` | Callable, signed-in user | Deletes that account, including every Storage object under `users/{uid}/` and the photo metadata. Requires a fresh sign-in and the confirmation `DELETE`. |
+| `reserveVehiclePhoto` | Callable, signed-in user | Reserves one painted-car photo for a vehicle on the caller's saved team. Enforces 3 photos per vehicle and 100 per account. The browser uploads the file after this returns. |
 | `syncNewsletterToken` | `userSettings/{uid}` write | When `newsletterOptIn` is true, stores one random unsubscribe token. Does not send mail. |
 | `unsubscribeNewsletter` | Public HTTPS `GET` or `POST` | GET shows a confirm page and changes nothing. POST with the token sets `newsletterOptIn` to false. An RFC 8058 one-click POST is accepted on the same URL. No sign-in. |
 | `getBuddyInvite` | Callable, signed-in user | Returns or creates that account's invite code, and whether email invites are on. |
@@ -25,7 +26,7 @@ The functions are 2nd gen, Node.js 22, TypeScript, in `functions/`. Node.js 20 i
 | `removeBuddy` | Callable, signed-in user | Deletes the accepted link. Access ends immediately. |
 | `unblockBuddy` | Callable, signed-in user | Removes a block the caller created. |
 
-Region is `us-central1`. `publishUsageStats` uses 256MiB, a 300 second timeout, and one instance. `syncAuthDisabled`, `queueGameContactEmail`, and `syncNewsletterToken` retry on failure. `syncAuthDisabled` and `queueGameContactEmail` use the platform defaults. `syncNewsletterToken` uses the platform memory and timeout. `exportMyData`, `deleteMyAccount`, and the gaming-buddy callables use 256MiB, a 60 second timeout, and at most 10 instances. `unsubscribeNewsletter` and `suppressBuddyEmailInvites` use 256MiB, a 30 second timeout, at most 10 instances, and `invoker: public` so the email link works without a Google sign-in. None keep a warm instance.
+Region is `us-central1`. `publishUsageStats` uses 256MiB, a 300 second timeout, and one instance. `syncAuthDisabled`, `queueGameContactEmail`, and `syncNewsletterToken` retry on failure. `syncAuthDisabled` and `queueGameContactEmail` use the platform defaults. `syncNewsletterToken` uses the platform memory and timeout. `exportMyData`, `deleteMyAccount`, `reserveVehiclePhoto`, and the gaming-buddy callables use 256MiB, a 60 second timeout, and at most 10 instances. `unsubscribeNewsletter` and `suppressBuddyEmailInvites` use 256MiB, a 30 second timeout, at most 10 instances, and `invoker: public` so the email link works without a Google sign-in. None keep a warm instance.
 
 `getBuddyInvite`, `sendBuddyInvite`, `acceptBuddyEmailInvite`, `exportMyData`, and `deleteMyAccount` declare the Twilio secrets. The other buddy callables do not. Email sending stays off until both secrets look like real Twilio credentials (an Account SID starting with `AC`, and an auth token). The placeholder value `disabled` keeps the feature off. The buddies page still shows the copyable invite link and says email invites are coming soon.
 
