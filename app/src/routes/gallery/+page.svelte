@@ -4,6 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import GalleryCardFace from '$lib/components/GalleryCardFace.svelte';
+	import GalleryUploadDialog from '$lib/components/GalleryUploadDialog.svelte';
 	import LibraryPhotoEditor from '$lib/components/LibraryPhotoEditor.svelte';
 	import ShareCar from '$lib/components/ShareCar.svelte';
 	import { user } from '$lib/firebase';
@@ -30,7 +31,6 @@
 		cleanupMyPhotoOrphans,
 		listMyPhotos,
 		migrateMyPhotoLibrary,
-		uploadVehiclePhoto,
 		type VehiclePhoto
 	} from '$lib/services/vehiclePhotos';
 
@@ -53,8 +53,8 @@
 	let pageCursor: unknown = null;
 	let fixturePage = 0;
 	let fixtureDeck: GalleryPhoto[] | null = null;
-	let uploadCaption = '';
 	let appliedKey = '';
+	let addOpen = false;
 	let ticket = 0;
 	let keepNotice = false;
 	let density: 'photos' | 'details' = 'details';
@@ -165,7 +165,12 @@
 	}
 
 	function closeOnEscape(event: KeyboardEvent) {
-		if (event.key === 'Escape' && open) open = null;
+		if (event.key !== 'Escape') return;
+		if (addOpen) {
+			addOpen = false;
+			return;
+		}
+		if (open) open = null;
 	}
 
 	function rememberNames(photos: GalleryPhoto[]) {
@@ -345,27 +350,6 @@
 		}
 	}
 
-	async function onUpload(event: Event) {
-		const input = event.currentTarget;
-		if (!(input instanceof HTMLInputElement)) return;
-		const file = input.files?.[0];
-		input.value = '';
-		if (!file || busy) return;
-		const caption = uploadCaption;
-		busy = true;
-		notify('Uploading photo...', false);
-		try {
-			await uploadVehiclePhoto({ file, caption });
-			uploadCaption = '';
-			notify('', false);
-			await load(true);
-		} catch (error) {
-			notify(error instanceof Error ? error.message : 'That photo could not be uploaded.', true);
-		} finally {
-			busy = false;
-		}
-	}
-
 	function libraryMatches(photo: VehiclePhoto): boolean {
 		const types = attachmentVehicleTypes(photo.attachments, cars);
 		if (!matchesVehicleType(types, state.vehicleType)) return false;
@@ -411,7 +395,7 @@
 	<div class="relative mb-5 overflow-hidden rounded-2xl border border-orange-900/60 bg-stone-950 px-5 py-6 text-orange-50 shadow-xl shadow-orange-950/20">
 		<div class="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(234,88,12,0.42),transparent_46%),radial-gradient(circle_at_bottom_right,rgba(120,53,15,0.55),transparent_42%)]"></div>
 		<div class="pointer-events-none absolute inset-0 opacity-30 [background-image:repeating-linear-gradient(135deg,rgba(255,255,255,0.05)_0_1px,transparent_1px_8px)]"></div>
-		<div class="relative flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+			<div class="relative flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
 			<div>
 				<p class="text-xs font-bold uppercase tracking-[0.22em] text-orange-300">The wastes</p>
 				<h1 class="text-4xl font-black tracking-tight">Photos</h1>
@@ -419,7 +403,30 @@
 					Painted cars from the wastes. My photos is your own stack. Anyone else only sees a car a player published to the Gallery.
 				</p>
 			</div>
-			{#if !showingMine}
+			<div class="flex shrink-0 flex-col items-start gap-3 sm:items-end">
+				{#if $user}
+					<button
+						type="button"
+						class="rounded-full bg-orange-500 px-5 py-2.5 text-sm font-black uppercase tracking-wide text-stone-950 shadow-lg shadow-orange-950/40"
+						data-testid="add-photo"
+						on:click={() => {
+							open = null;
+							addOpen = true;
+						}}
+					>
+						Add photo
+					</button>
+				{:else}
+					<button
+						type="button"
+						class="rounded-full border border-orange-300 bg-stone-950/80 px-5 py-2.5 text-sm font-bold text-orange-50"
+						data-testid="add-photo-sign-in"
+						on:click={requestSignIn}
+					>
+						Sign in to add a photo
+					</button>
+				{/if}
+				{#if !showingMine}
 				<div class="inline-flex shrink-0 rounded-full border border-orange-800/80 bg-stone-950/80 p-1" role="group" aria-label="Gallery layout" data-testid="gallery-density">
 					<button
 						type="button"
@@ -440,7 +447,8 @@
 						With details
 					</button>
 				</div>
-			{/if}
+				{/if}
+			</div>
 		</div>
 	</div>
 	<p class="mb-4 max-w-2xl text-xs text-stone-500 dark:text-gray-400">
@@ -567,20 +575,6 @@
 	{:else}
 		{#if showingMine}
 			<p class="mb-4 text-sm font-medium" data-testid="photo-usage">{library.length} of {MAX_PHOTOS_PER_ACCOUNT} used</p>
-			<div class="mb-6 flex flex-col gap-2 sm:flex-row sm:items-end">
-				<label class="inline-flex cursor-pointer items-center justify-center rounded-md px-3 py-2 text-sm amber-button {busy ? 'pointer-events-none opacity-60' : ''}">
-					Upload a photo
-					<input type="file" accept="image/*" class="sr-only" data-testid="library-upload" disabled={busy} on:change={onUpload} />
-				</label>
-				<input
-					type="text"
-					maxlength="140"
-					bind:value={uploadCaption}
-					placeholder="Caption (optional)"
-					aria-label="Caption for a new photo"
-					class="w-full rounded-md border border-stone-300 bg-white px-2 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 sm:max-w-xs"
-				/>
-			</div>
 		{/if}
 
 		{#if sourceCount === 0}
@@ -718,6 +712,17 @@
 		opacity: 1;
 	}
 </style>
+
+{#if addOpen}
+	<GalleryUploadDialog
+		onClose={() => (addOpen = false)}
+		onSaved={(message) => {
+			addOpen = false;
+			notify(message, false);
+			void load(true);
+		}}
+	/>
+{/if}
 
 {#if open}
 	<div class="fixed inset-0 z-50 flex items-end justify-center bg-stone-950/80 p-3 sm:items-center" role="dialog" aria-modal="true" aria-label="Shared photo" data-testid="gallery-lightbox">

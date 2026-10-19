@@ -12,7 +12,7 @@ The functions are 2nd gen, Node.js 22, TypeScript, in `functions/`. Node.js 20 i
 | `exportMyData` | Callable, signed-in user | JSON of that account's Firestore data, including a list of painted-car photos. |
 | `deleteMyAccount` | Callable, signed-in user | Deletes that account, including every Storage object under `users/{uid}/`, the photo metadata, and any shared photo copies. Requires a fresh sign-in and the confirmation `DELETE`. |
 | `reserveVehiclePhoto` | Callable, signed-in user | Reserves one library file at `users/{uid}/photos-library/{photoId}.webp` (or `.jpg`). Counts library files toward 100 per account and attachments toward 3 per car. The same bytes attach to the existing photo instead of creating another file. The browser uploads only when this is a new file. |
-| `setPhotoSharing` | Callable, signed-in user | Turns sharing on or off for one of the caller's photos, including the Gallery and the vehicle stats snapshot. A shared photo is copied to `shared-photos/{photoId}`. The public document has no account id. Stats are copied from the car the photo is shared from. One attached car is used automatically. Several attached cars require `shareTeamId` and `shareVehicleId`. |
+| `setPhotoSharing` | Callable, signed-in user | Turns sharing on or off for one of the caller's photos, including the Gallery and the vehicle stats snapshot. A shared photo is copied to `shared-photos/{photoId}`. The public document has no account id. Stats are copied from the car the photo is shared from. One attached car is used automatically. Several attached cars require `shareTeamId` and `shareVehicleId`. A photo with no car can still be shown in the Gallery when `vehicleType` is one of the game's vehicle types. That card has no stats, no cans, and no team. Stats, Gaming Buddies, and the team share link still require a linked car. A caller-supplied type is ignored when a car is linked. |
 | `attachLibraryPhoto` | Callable, signed-in user | Attaches one library photo to a car on the caller's saved team. A car can show 3 photos. |
 | `detachLibraryPhoto` | Callable, signed-in user | Takes one photo off one car. The file stays. If that car was the share source, the shared copy is removed. |
 | `detachVehiclePhotos` | Callable, signed-in user | Takes every library photo off one car. Files stay in My Photos. |
@@ -157,6 +157,12 @@ The Photos page (Gallery under Players and Events, and My Photos in Settings, wh
 
 ```bash
 firebase deploy --only firestore:indexes --project=gaslandsgarage-74ce6
+```
+
+A photo added from the Photos page with no linked car is stored in that player's library and counts toward the same 100-photo limit. Publishing it to the Gallery uses `setPhotoSharing` with a vehicle type from the game list and no stats. Firestore rules are unchanged: clients still cannot write `sharedPhotos`. That gallery-only branch is not live until `setPhotoSharing` is deployed by hand:
+
+```bash
+firebase deploy --only functions:setPhotoSharing --project=gaslandsgarage-74ce6
 ```
 
 The car page markup and CSS live in `app/src/lib/photos/carPage.ts`. The function imports that module, so a header, hero, stat card, or share-icon change is not live until `renderSharedCar` is deployed by hand. CI does not deploy functions. Hosting stays on AWS. Deploy the function by hand, from the repository root, before the CloudFront change:

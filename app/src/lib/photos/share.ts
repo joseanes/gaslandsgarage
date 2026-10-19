@@ -33,22 +33,22 @@ export interface ShareFlags {
 
 export type ShareChoiceState = 'off' | 'on' | 'mixed';
 
-const SHARE_FLAG_KEYS = ['showToBuddies', 'showOnShareLink', 'showInGallery', 'shareVehicleStats'] as const;
+export const SHARE_FLAG_KEYS = ['showToBuddies', 'showOnShareLink', 'showInGallery', 'shareVehicleStats'] as const;
+export type ShareFlagKey = (typeof SHARE_FLAG_KEYS)[number];
 
-export function shareChoiceState(flags: ShareFlags): ShareChoiceState {
-	const on = SHARE_FLAG_KEYS.filter((key) => flags[key]).length;
+export function shareChoiceState(flags: ShareFlags, keys: readonly ShareFlagKey[] = SHARE_FLAG_KEYS): ShareChoiceState {
+	const active = keys.length > 0 ? keys : SHARE_FLAG_KEYS;
+	const on = active.filter((key) => flags[key]).length;
 	if (on === 0) return 'off';
-	if (on === SHARE_FLAG_KEYS.length) return 'on';
+	if (on === active.length) return 'on';
 	return 'mixed';
 }
 
-export function shareEverywhere(on: boolean): ShareFlags {
-	return {
-		showToBuddies: on,
-		showOnShareLink: on,
-		showInGallery: on,
-		shareVehicleStats: on
-	};
+/** Flags outside `keys` stay off. A gallery-only upload uses that so stats cannot turn on without a car. */
+export function shareEverywhere(on: boolean, keys: readonly ShareFlagKey[] = SHARE_FLAG_KEYS): ShareFlags {
+	const next = {} as ShareFlags;
+	for (const key of SHARE_FLAG_KEYS) next[key] = keys.includes(key) ? on : false;
+	return next;
 }
 
 /** Build snapshot stored on the public gallery card. No account id, email, or Google name. */

@@ -156,6 +156,15 @@ describe('photo sharing', () => {
 		expect(shareChoiceState(shareEverywhere(true))).toBe('on');
 		expect(shareChoiceState({ ...off, showInGallery: true })).toBe('mixed');
 		expect(shareChoiceState({ ...shareEverywhere(true), shareVehicleStats: false })).toBe('mixed');
+		const galleryOnly = shareEverywhere(true, ['showInGallery']);
+		expect(galleryOnly).toEqual({
+			showToBuddies: false,
+			showOnShareLink: false,
+			showInGallery: true,
+			shareVehicleStats: false
+		});
+		expect(shareChoiceState(galleryOnly, ['showInGallery'])).toBe('on');
+		expect(shareChoiceState(galleryOnly)).toBe('mixed');
 		expect(SHARE_EVERYWHERE_LABEL).toBe('Share everywhere');
 		expect(CUSTOMIZE_SHARING_LABEL).toBe('Customize sharing');
 		expect(SHARE_CHOICES_COPY.split('\n')).toHaveLength(1);
@@ -208,8 +217,27 @@ describe('photo sharing', () => {
 		expect(gallery).toContain('data-testid="car-page-link"');
 		expect(gallery).toContain('data-testid="photo-view"');
 		expect(gallery).toContain('ShareCar');
+		expect(gallery).toContain('data-testid="add-photo"');
+		expect(gallery).toContain('data-testid="add-photo-sign-in"');
+		expect(gallery).toContain('GalleryUploadDialog');
+		expect(gallery).toContain('Sign in to add a photo');
 		expect(gallery).not.toContain('ownerUid');
 		expect(gallery).not.toContain('email');
+		const upload = readFileSync(resolve(process.cwd(), 'src/lib/components/GalleryUploadDialog.svelte'), 'utf8');
+		expect(upload).toContain('data-testid="add-photo-drop"');
+		expect(upload).toContain('data-testid="add-photo-file"');
+		expect(upload).toContain('data-testid="add-photo-camera"');
+		expect(upload).toContain('capture="environment"');
+		expect(upload).toContain('data-testid="add-photo-caption"');
+		expect(upload).toContain('data-testid="add-photo-type"');
+		expect(upload).toContain('data-testid="add-photo-team"');
+		expect(upload).toContain('data-testid="add-photo-car"');
+		expect(upload).toContain('ShareChoices');
+		expect(upload).toContain('showInGallery: true');
+		expect(upload).toContain('shareVehicleStats: false');
+		expect(upload).toContain('MAX_PHOTOS_PER_ACCOUNT');
+		expect(upload).not.toContain('ownerUid');
+		expect(upload).not.toContain('email');
 		expect(menu).toContain('href="/gallery?view=mine"');
 		expect(readFileSync(resolve(process.cwd(), 'src/routes/photos/+page.ts'), 'utf8')).toContain('/gallery?view=mine');
 		expect(page).toContain('never use them for advertising');

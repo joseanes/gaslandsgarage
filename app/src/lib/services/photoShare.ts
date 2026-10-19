@@ -95,11 +95,12 @@ async function call<T>(name: string, data: unknown, fallback: string): Promise<T
 export async function setPhotoSharing(
 	photoId: string,
 	flags: ShareFlags,
-	source?: { teamId: string; vehicleId: string }
-): Promise<void> {
-	await call(
+	source?: { teamId: string; vehicleId: string },
+	vehicleType?: string
+): Promise<{ shared: boolean; published: boolean; hidden: boolean }> {
+	return call(
 		'setPhotoSharing',
-		{ photoId, ...flags, shareTeamId: source?.teamId, shareVehicleId: source?.vehicleId },
+		{ photoId, ...flags, shareTeamId: source?.teamId, shareVehicleId: source?.vehicleId, vehicleType },
 		'That sharing choice could not be saved.'
 	);
 }

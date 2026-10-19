@@ -3,6 +3,12 @@ import { expect, test } from '@playwright/test';
 test('the gallery is the photos page and /photos opens My photos', async ({ page }) => {
 	await page.goto('/gallery?fixture=1', { waitUntil: 'domcontentloaded' });
 	await expect(page.getByRole('heading', { name: 'Photos' })).toBeVisible();
+	await expect(page.getByTestId('add-photo-sign-in')).toBeVisible();
+	await expect(page.getByTestId('add-photo')).toHaveCount(0);
+	await page.getByTestId('add-photo-sign-in').click();
+	await expect(page.getByRole('dialog', { name: 'Sign in to save' })).toBeVisible();
+	await page.getByRole('button', { name: 'Not now' }).click();
+	await expect(page.getByTestId('add-photo-dialog')).toHaveCount(0);
 	await expect(page.getByTestId('photo-view')).toHaveValue('all');
 	await expect(page.getByTestId('photo-usage')).toHaveCount(0);
 	await expect(page.getByTestId('gallery-sort')).toContainText('Cans, high');

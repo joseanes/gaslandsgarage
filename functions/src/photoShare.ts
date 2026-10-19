@@ -8,6 +8,7 @@ import {
 	PHOTO_ID_PATTERN,
 	TEAM_ID_PATTERN,
 	UID_PATTERN,
+	VEHICLE_ID_PATTERN,
 	isPhotoContentType,
 	storageBucketForProject,
 	type PhotoContentType
@@ -27,6 +28,7 @@ import {
 	sharedPhotoObjectPath,
 	vehicleTypeLabel
 } from '../../app/src/lib/photos/share.ts';
+import { galleryVehicleTypes } from '../../app/src/lib/photos/galleryQuery.ts';
 import { vehicleStatsSnapshot } from '../../app/src/lib/photos/vehicleStats.ts';
 
 const REGION = 'us-central1';
@@ -185,6 +187,7 @@ export async function setPhotoSharingForUser(
 		shareVehicleStats?: unknown;
 		shareTeamId?: unknown;
 		shareVehicleId?: unknown;
+		vehicleType?: unknown;
 	}
 ): Promise<{ shared: boolean; published: boolean; hidden: boolean }> {
 	if (!UID_PATTERN.test(uid)) throw new Error('Sign in again before sharing a photo.');
@@ -215,18 +218,40 @@ export async function setPhotoSharingForUser(
 		return { shared: false, published: false, hidden: false };
 	}
 
-	const source = shareSource(attachmentsFromData(photo.data()), input.shareTeamId, input.shareVehicleId);
-	const teamId = source.teamId;
-	const vehicleId = source.vehicleId;
-	if (!TEAM_ID_PATTERN.test(teamId)) throw new Error('Save this team before sharing a photo.');
-	const team = await db.doc(`teams/${teamId}`).get();
-	if (!team.exists || team.get('userId') !== uid) throw new Error('Save this team before sharing a photo.');
-	const vehicle = vehicleOnTeam(team.data(), vehicleId);
-	if (!vehicle) throw new Error('That vehicle is not on this team.');
 	const contentType = photo.get('contentType');
 	if (!isPhotoContentType(contentType)) throw new Error('That photo could not be shared.');
 	const createdAt = String(photo.get('createdAt') ?? '');
 	if (!createdAt || createdAt.length > 40) throw new Error('That photo could not be shared.');
+
+	const attachments = attachmentsFromData(photo.data());
+	const askedTeam = String(input.shareTeamId ?? '');
+	const askedVehicle = String(input.shareVehicleId ?? '');
+	const askedForCar = TEAM_ID_PATTERN.test(askedTeam) && VEHICLE_ID_PATTERN.test(askedVehicle);
+	const unlinked = attachments.length === 0 && !askedForCar;
+	let teamId = '';
+	let vehicleId = '';
+	let vehicleType = '';
+	let teamName = '';
+	let vehicleStats: ReturnType<typeof vehicleStatsSnapshot> | undefined;
+	if (unlinked) {
+		if (flags.showToBuddies || flags.showOnShareLink || flags.shareVehicleStats) {
+			throw new Error('Link this photo to one of your cars before sharing its stats or team.');
+		}
+		vehicleType = listedGalleryType(input.vehicleType);
+	} else {
+		const source = shareSource(attachments, input.shareTeamId, input.shareVehicleId);
+		teamId = source.teamId;
+		vehicleId = source.vehicleId;
+		if (!TEAM_ID_PATTERN.test(teamId)) throw new Error('Save this team before sharing a photo.');
+		const team = await db.doc(`teams/${teamId}`).get();
+		if (!team.exists || team.get('userId') !== uid) throw new Error('Save this team before sharing a photo.');
+		const vehicle = vehicleOnTeam(team.data(), vehicleId);
+		if (!vehicle) throw new Error('That vehicle is not on this team.');
+		vehicleType = vehicleTypeLabel(vehicle.type);
+		teamName = cleanTeamName(team.get('teamName'));
+		const teamData = asRecord(team.get('teamData'));
+		vehicleStats = flags.shareVehicleStats ? vehicleStatsSnapshot(vehicle, teamData.rulesVersion) : undefined;
+	}
 
 	const privateRef = db.doc(`sharedPhotoPrivate/${photoId}`);
 	const existing = await privateRef.get();
@@ -237,11 +262,7 @@ export async function setPhotoSharingForUser(
 		published: existing.get('published') === true
 	});
 	const displayName = await displayNameFor(uid);
-	const vehicleType = vehicleTypeLabel(vehicle.type);
-	const teamName = cleanTeamName(team.get('teamName'));
 	const caption = typeof photo.get('caption') === 'string' ? photo.get('caption') : '';
-	const teamData = asRecord(team.get('teamData'));
-	const vehicleStats = flags.shareVehicleStats ? vehicleStatsSnapshot(vehicle, teamData.rulesVersion) : undefined;
 	const publicDoc = publicSharedPhoto({
 		photoId,
 		displayName,
@@ -274,12 +295,27 @@ export async function setPhotoSharingForUser(
 	};
 
 	await copySharedObject(String(photo.get('path')), photoId, contentType);
+	const photoPatch: Record<string, unknown> = { ...flags };
+	if (!unlinked) {
+		photoPatch.shareTeamId = teamId;
+		photoPatch.shareVehicleId = vehicleId;
+		photoPatch.teamId = teamId;
+		photoPatch.vehicleId = vehicleId;
+	}
 	const batch = db.batch();
 	batch.set(db.doc(`sharedPhotos/${photoId}`), publicDoc);
 	batch.set(privateRef, privateDoc);
-	batch.set(photoRef, { ...flags, shareTeamId: teamId, shareVehicleId: vehicleId, teamId, vehicleId }, { merge: true });
+	batch.set(photoRef, photoPatch, { merge: true });
 	await batch.commit();
 	return { shared: true, published, hidden };
+}
+
+/** A gallery upload with no car may name a game vehicle type. Anything else is rejected. */
+function listedGalleryType(value: unknown): string {
+	if (typeof value !== 'string') throw new Error('Choose a vehicle type.');
+	const label = value.replace(/[\u0000-\u001f]/g, '').trim().replace(/\s+/g, ' ');
+	if (!galleryVehicleTypes().includes(label)) throw new Error('Choose a vehicle type.');
+	return label;
 }
 
 function visibleCard(item: QueryDocumentSnapshot): VisibleTeamPhoto | null {
@@ -484,7 +520,8 @@ async function shareCall(request: CallableRequest): Promise<{ shared: boolean; p
 		showInGallery: data.showInGallery,
 		shareVehicleStats: data.shareVehicleStats,
 		shareTeamId: data.shareTeamId,
-		shareVehicleId: data.shareVehicleId
+		shareVehicleId: data.shareVehicleId,
+		vehicleType: data.vehicleType
 	});
 }
 

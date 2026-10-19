@@ -60,7 +60,7 @@
 		return item.attachments.find((attachment) => attachment.teamId === teamId && attachment.vehicleId === vehicleId) ?? null;
 	}
 
-	async function run(task: () => Promise<void>, pending: string, fallback: string) {
+	async function run(task: () => Promise<unknown>, pending: string, fallback: string) {
 		if (busy) return;
 		setBusy(true);
 		notify(pending, false);
