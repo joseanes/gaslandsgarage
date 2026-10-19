@@ -2,7 +2,7 @@
 import type { Draft } from '$lib/validate/model';
 import { draftToDataURL } from '$lib/draft/qr';
 import { teamHasVehicles } from '$lib/print/canPrintTeam';
-import { vehiclePhotoSectionHtml, waitForPrintImages } from '$lib/photos/printPhotos';
+import { revokePrintPhotosWhenClosed, vehiclePhotoSectionHtml, waitForPrintImages } from '$lib/photos/printPhotos';
 
 /** Team draft plus the extra fields the print window already receives. */
 interface PrintDraft extends Omit<Draft, 'sponsor' | 'vehicles'> {
@@ -3228,13 +3228,22 @@ function addPrintButtons(printWindow: Window): void {
 
 /**
  * Print the same sheet as the other styles, with each vehicle's photos.
- * The window is opened by the click handler before the download URLs are fetched.
+ * The window is opened by the click handler before the photos are fetched.
+ * Photos are object URLs from bytes loaded with the signed-in account.
+ * releasePhotos revokes those URLs when the print window closes.
  * Photo captions and addresses are escaped. The document is a blob URL, and
  * window.opener is cleared before any other script runs.
  */
-export async function printTeamWithPhotos(printStyle: string, draft: PrintDraft, printWindow: Window): Promise<void> {
+export async function printTeamWithPhotos(
+  printStyle: string,
+  draft: PrintDraft,
+  printWindow: Window,
+  releasePhotos?: () => void
+): Promise<void> {
+  const release = () => releasePhotos?.();
   if (!draft || !teamHasVehicles(draft)) {
     printWindow.close();
+    release();
     return;
   }
   const style = String(printStyle || draft.printStyle || 'classic');
@@ -3264,13 +3273,17 @@ export async function printTeamWithPhotos(printStyle: string, draft: PrintDraft,
       'load',
       () => {
         window.clearTimeout(timer);
+        revokePrintPhotosWhenClosed(printWindow, release);
         resolve();
       },
       { once: true }
     );
     printWindow.location.replace(url);
   });
-  if (printWindow.closed) return;
+  if (printWindow.closed) {
+    release();
+    return;
+  }
   await waitForPrintImages(printWindow.document);
   const printMediaStyle = printWindow.document.createElement('style');
   printMediaStyle.textContent = '@media print { button { display: none !important; } }';

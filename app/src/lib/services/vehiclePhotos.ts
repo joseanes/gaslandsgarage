@@ -10,7 +10,7 @@ import {
 	quotaMessage,
 	type VehiclePhotoRecord
 } from '../photos/model';
-import type { PrintPhoto } from '../photos/printPhotos';
+import type { PrintPhotoBlob } from '../photos/printPhotos';
 
 export { PHOTO_PRIVACY_SHORT };
 
@@ -91,14 +91,22 @@ export async function listMyPhotos(): Promise<VehiclePhoto[]> {
 	return photos;
 }
 
-export async function photosForPrint(teamId: string): Promise<Record<string, PrintPhoto[]>> {
-	const photos = await listMyPhotos();
-	const grouped: Record<string, PrintPhoto[]> = {};
-	for (const photo of photos) {
-		if (photo.teamId !== teamId || !photo.url) continue;
-		const list = grouped[photo.vehicleId] ?? [];
-		list.push({ src: photo.url, caption: photo.caption });
-		grouped[photo.vehicleId] = list;
+/** Loads each photo with the signed-in user's Storage access. The caller turns the bytes into an object URL. */
+export async function photosForPrint(teamId: string): Promise<Record<string, PrintPhotoBlob[]>> {
+	const { app } = await readyUser();
+	const docs = (await listPhotoDocs()).filter((photo) => photo.teamId === teamId);
+	const { getStorage, ref, getBlob } = await import('firebase/storage');
+	const storage = getStorage(app);
+	const grouped: Record<string, PrintPhotoBlob[]> = {};
+	for (const photo of docs) {
+		try {
+			const blob = await getBlob(ref(storage, photo.path));
+			const list = grouped[photo.vehicleId] ?? [];
+			list.push({ blob, caption: photo.caption });
+			grouped[photo.vehicleId] = list;
+		} catch {
+			// A missing file is skipped. The rest of the sheet still prints.
+		}
 	}
 	return grouped;
 }

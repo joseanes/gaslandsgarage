@@ -43,6 +43,7 @@ import SettingsMenu from '$lib/components/SettingsMenu.svelte';
 import { getUserSettings, saveUserSettings, DEFAULT_SETTINGS, type UserSettings } from '$lib/services/settings';
 import { saveTeam, getUserTeams } from '$lib/services/team';
 	import { deleteVehiclePhotos, photosForPrint } from '$lib/services/vehiclePhotos';
+	import { localPrintPhotos } from '$lib/photos/printPhotos';
 	import { TEAM_ID_PATTERN } from '$lib/photos/model';
 	import { withoutDisallowedGear } from '$lib/builder/stripGear';
 	import { clearStaleChunkReload } from '$lib/staleChunk';
@@ -1770,10 +1771,21 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			const finalPrintStyle = printStyle || enhancedDraft.printStyle || 'classic';
 			if (withPhotos && photoWindow) {
 				const grouped = await photosForPrint(savedTeamId || '');
+				const releases: Array<() => void> = [];
 				for (const vehicle of enhancedDraft.vehicles) {
-					(vehicle as { printPhotos?: { src: string; caption?: string }[] }).printPhotos = grouped[vehicle.id] ?? [];
+					const local = localPrintPhotos(grouped[vehicle.id] ?? []);
+					releases.push(local.revoke);
+					(vehicle as { printPhotos?: { src: string; caption?: string }[] }).printPhotos = local.photos;
 				}
-				await printTeamWithPhotos(finalPrintStyle, enhancedDraft, photoWindow);
+				const releasePhotos = () => {
+					for (const release of releases) release();
+				};
+				try {
+					await printTeamWithPhotos(finalPrintStyle, enhancedDraft, photoWindow, releasePhotos);
+				} catch (error) {
+					releasePhotos();
+					throw error;
+				}
 				console.log("[printTeam] Photo print completed successfully");
 				return true;
 			}

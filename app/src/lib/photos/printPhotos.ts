@@ -5,6 +5,42 @@ export interface PrintPhoto {
 	caption?: string;
 }
 
+/** Bytes already fetched with the signed-in user's Storage access. */
+export interface PrintPhotoBlob {
+	blob: Blob;
+	caption?: string;
+}
+
+/**
+ * Turns fetched photo bytes into object URLs for the print sheet.
+ * The returned revoke drops those URLs. Call it when the print window closes.
+ */
+export function localPrintPhotos(
+	photos: PrintPhotoBlob[],
+	createObjectURL: (blob: Blob) => string = (blob) => URL.createObjectURL(blob)
+): { photos: PrintPhoto[]; revoke: () => void } {
+	const urls: string[] = [];
+	const mapped = photos.map((photo) => {
+		const src = createObjectURL(photo.blob);
+		urls.push(src);
+		return { src, caption: photo.caption };
+	});
+	let revoked = false;
+	return {
+		photos: mapped,
+		revoke() {
+			if (revoked) return;
+			revoked = true;
+			for (const url of urls) URL.revokeObjectURL(url);
+		}
+	};
+}
+
+/** Revokes the object URLs when the print document goes away, including after print. */
+export function revokePrintPhotosWhenClosed(target: { addEventListener: Window['addEventListener'] }, revoke: () => void): void {
+	target.addEventListener('pagehide', () => revoke(), { once: true });
+}
+
 export function escapeHtml(value: unknown): string {
 	return String(value ?? '')
 		.replace(/&/g, '&amp;')
@@ -14,15 +50,15 @@ export function escapeHtml(value: unknown): string {
 		.replace(/'/g, '&#39;');
 }
 
-/** Download URLs from this site's bucket, plus local previews. SVG data URLs are left out. */
+/**
+ * Object URLs created for this print, plus safe local image data.
+ * Storage download URLs are left out: they are bearer tokens.
+ */
 export function printablePhotoSrc(value: unknown): string | null {
 	if (typeof value !== 'string') return null;
 	const src = value.trim();
 	if (src.length === 0 || src.length > 2000) return null;
 	if (/[\u0000-\u001f\s]/.test(src)) return null;
-	if (src.startsWith('https://firebasestorage.googleapis.com/')) return src;
-	// Storage emulator download URLs, so a local print preview can load the same photo.
-	if (/^https?:\/\/(?:127\.0\.0\.1|localhost):9199\/v0\/b\//.test(src)) return src;
 	if (src.startsWith('blob:')) return src;
 	if (/^data:image\/(?:webp|jpeg|jpg|png);base64,[a-z0-9+/=]+$/i.test(src)) return src;
 	return null;
