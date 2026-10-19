@@ -130,13 +130,13 @@ test('builder listeners stay at one after repeated client navigations', async ({
 		await expect(page).toHaveURL(/\/builder$/);
 	}
 
-	await page.getByRole('button', { name: 'Players', exact: true }).click();
+	await page.getByRole('button', { name: 'Players and Events', exact: true }).click();
 	await page.getByRole('link', { name: 'Players Map' }).click();
 	await expect(page).toHaveURL(/\/players$/);
 	await page.getByRole('link', { name: 'Gaslands Garage home' }).click();
 	await expect(page).toHaveURL(/\/builder$/);
 
-	await page.getByRole('button', { name: 'Players', exact: true }).click();
+	await page.getByRole('button', { name: 'Players and Events', exact: true }).click();
 	await page.getByRole('link', { name: 'My Profile' }).click();
 	await expect(page).toHaveURL(/\/profile$/);
 	await page.getByRole('link', { name: 'Gaslands Garage home' }).click();

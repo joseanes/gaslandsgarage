@@ -39,13 +39,13 @@ async function openPlayers(page: Page, width: number, height: number) {
 	await page.addStyleTag({ content: tileHits });
 }
 
-/** Scroll the map up under the sticky Help menu until Upcoming Features sits on it. */
-async function scrollMapUnderUpcoming(page: Page) {
+/** Scroll the map up under the sticky Help menu until Usage Stats sits on it. */
+async function scrollMapUnderUsageStats(page: Page) {
 	await page.evaluate(() => {
 		const menu = document.querySelector('.help-menu-dropdown');
 		const map = document.querySelector('.leaflet-container');
 		if (!menu || !map) return;
-		const item = [...menu.querySelectorAll('button, a')].find((el) => el.textContent?.trim() === 'Upcoming Features');
+		const item = [...menu.querySelectorAll('button, a')].find((el) => el.textContent?.trim() === 'Usage Stats');
 		if (!item) return;
 		const delta = map.getBoundingClientRect().top - item.getBoundingClientRect().top;
 		if (delta > 1) window.scrollBy(0, delta);
@@ -101,8 +101,8 @@ async function hitAt(page: Page, point: { x: number; y: number }) {
 
 const headerMenus = [
 	['Teams', '.share-menu-dropdown'],
+	['Players and Events', '.players-menu-dropdown'],
 	['Settings', '.settings-menu-dropdown'],
-	['Players', '.players-menu-dropdown'],
 	['Help', '.help-menu-dropdown']
 ] as const;
 
@@ -148,8 +148,8 @@ for (const viewport of [
 			viewport.width
 		);
 
-		await scrollMapUnderUpcoming(page);
-		for (const label of ['Upcoming Features', 'Contributors', 'Contact Us']) {
+		await scrollMapUnderUsageStats(page);
+		for (const label of ['Usage Stats', 'Contributors', 'Contact Us']) {
 			const point = await overlapMenuItem(page, label);
 			expect(point, `${label} should overlap the map`).not.toBeNull();
 			const hit = await hitAt(page, point!);
