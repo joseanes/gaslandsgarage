@@ -1668,6 +1668,9 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 				isPrinting = false;
 				return;
 			}
+			// Static placeholder. The sheet replaces it after the photos download.
+			photoWindow.document.write('<!DOCTYPE html><html><head><title>Print</title></head><body><p>Preparing your sheet…</p></body></html>');
+			photoWindow.document.close();
 		}
 		
 		// First generate QR code for the team

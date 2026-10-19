@@ -6,7 +6,8 @@ import {
 	printablePhotoSrc,
 	revokePrintPhotosWhenClosed,
 	vehiclePhotoSectionHtml,
-	waitForPrintImages
+	waitForPrintImages,
+	waitForPrintSheet
 } from './printPhotos';
 
 const photoSrc = 'blob:http://127.0.0.1:4173/8c1a0b5e-1111-2222-3333-444455556666';
@@ -109,5 +110,16 @@ describe('print photo html', () => {
 		};
 		const ready = { complete: true, addEventListener() {} };
 		await expect(waitForPrintImages({ images: [ready, pending] })).resolves.toBeUndefined();
+	});
+
+	it('sees the sheet without a load event', async () => {
+		const target = {
+			closed: false,
+			document: { querySelector: () => null as unknown }
+		};
+		const pending = waitForPrintSheet(target, 1000, async () => {
+			target.document.querySelector = () => ({ tagName: 'H1' });
+		});
+		await expect(pending).resolves.toBeUndefined();
 	});
 });

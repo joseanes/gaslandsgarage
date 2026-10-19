@@ -2,7 +2,7 @@
 import type { Draft } from '$lib/validate/model';
 import { draftToDataURL } from '$lib/draft/qr';
 import { teamHasVehicles } from '$lib/print/canPrintTeam';
-import { revokePrintPhotosWhenClosed, vehiclePhotoSectionHtml, waitForPrintImages } from '$lib/photos/printPhotos';
+import { revokePrintPhotosWhenClosed, vehiclePhotoSectionHtml, waitForPrintImages, waitForPrintSheet } from '$lib/photos/printPhotos';
 
 /** Team draft plus the extra fields the print window already receives. */
 interface PrintDraft extends Omit<Draft, 'sponsor' | 'vehicles'> {
@@ -3204,7 +3204,8 @@ function addPrintButtons(printWindow: Window): void {
  * Photos are object URLs from bytes loaded with the signed-in account.
  * releasePhotos revokes those URLs when the print window closes.
  * Photo captions and addresses are escaped. The document is a blob URL, and
- * window.opener is cleared before any other script runs.
+ * window.opener is cleared before any other script runs. That navigation does
+ * not fire load, so the sheet is detected from its heading.
  */
 export async function printTeamWithPhotos(
   printStyle: string,
@@ -3239,23 +3240,13 @@ export async function printTeamWithPhotos(
     ? html.replace('<head>', '<head><script>window.opener=null;</script>')
     : html;
   const url = URL.createObjectURL(new Blob([payload], { type: 'text/html' }));
-  await new Promise<void>((resolve) => {
-    const timer = window.setTimeout(resolve, 8000);
-    printWindow.addEventListener(
-      'load',
-      () => {
-        window.clearTimeout(timer);
-        revokePrintPhotosWhenClosed(printWindow, release);
-        resolve();
-      },
-      { once: true }
-    );
-    printWindow.location.replace(url);
-  });
+  printWindow.location.replace(url);
+  await waitForPrintSheet(printWindow);
   if (printWindow.closed) {
     release();
     return;
   }
+  revokePrintPhotosWhenClosed(printWindow, release);
   await waitForPrintImages(printWindow.document);
   const printMediaStyle = printWindow.document.createElement('style');
   printMediaStyle.textContent = '@media print { button { display: none !important; } }';
