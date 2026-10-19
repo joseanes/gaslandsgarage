@@ -38,7 +38,7 @@
 		for (const marker of markers) {
 			const icon = api.divIcon({
 				className: 'player-marker',
-				html: `<span class="player-marker-dot ${marker.anonymous ? 'is-anon' : 'is-named'}"></span>`,
+				html: `<span class="player-marker-dot ${marker.anonymous ? 'is-anon' : 'is-named'}" data-player-name="${marker.anonymous ? '' : escapeText(marker.playerName)}"></span>`,
 				iconSize: [18, 18],
 				iconAnchor: [9, 9]
 			});

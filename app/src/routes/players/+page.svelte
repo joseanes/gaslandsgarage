@@ -1,8 +1,11 @@
 <script lang="ts">
 	import { accountSessionReady } from '$lib/admin/session';
+	import JoinMapPrompt from '$lib/components/JoinMapPrompt.svelte';
 	import PlayersMap from '$lib/components/PlayersMap.svelte';
 	import { signInWithGoogle, user } from '$lib/firebase';
-	import type { MapMarker } from '$lib/players/profile';
+	import { withJoinedMarker } from '$lib/players/joinBanner';
+	import { MAP_PIN_EXPLANATION } from '$lib/players/mapCopy';
+	import type { MapMarker, StoredProfile } from '$lib/players/profile';
 	import {
 		loadMapMarkers,
 		loadOpenPlayers,
@@ -14,6 +17,7 @@
 	let status: 'loading' | 'ready' | 'error' = 'loading';
 	let markers: MapMarker[] = [];
 	let openPlayers: OpenPlayer[] = [];
+	let ownProfile: StoredProfile | null = null;
 	let senderName = '';
 	let seen: string | null = null;
 	let asking = '';
@@ -30,15 +34,18 @@
 			const nextMarkers = await loadMapMarkers();
 			let nextOpen: OpenPlayer[] = [];
 			let nextName = '';
+			let nextProfile: StoredProfile | null = null;
 			if (uid) {
 				const [players, profile] = await Promise.all([loadOpenPlayers(), loadOwnProfile(uid)]);
 				nextOpen = players.filter((player) => player.uid !== uid);
 				nextName = profile?.playerName ?? '';
+				nextProfile = profile;
 			}
 			if (($user?.uid ?? '') !== uid) return;
 			markers = nextMarkers;
 			openPlayers = nextOpen;
 			senderName = nextName;
+			ownProfile = nextProfile;
 			status = 'ready';
 		} catch (error) {
 			console.error('Could not load the players map', error);
@@ -53,6 +60,18 @@
 			seen = uid;
 			status = 'loading';
 			void load(uid);
+		}
+	}
+
+	async function onJoined(event: CustomEvent<StoredProfile>) {
+		const profile = event.detail;
+		ownProfile = profile;
+		senderName = profile.playerName;
+		markers = withJoinedMarker(markers, profile);
+		try {
+			markers = await loadMapMarkers();
+		} catch (error) {
+			console.error('Could not refresh the players map', error);
 		}
 	}
 
@@ -94,9 +113,7 @@
 	<div class="mb-4 flex flex-wrap items-end justify-between gap-3">
 		<div>
 			<h1 class="text-3xl font-bold mb-2">Players map</h1>
-			<p class="max-w-3xl text-stone-600 dark:text-gray-300">
-				Only players who opt in are shown. Pins are approximate. Amber pins include a name. Gray pins are anonymous and carry no name.
-			</p>
+			<p class="max-w-3xl text-stone-600 dark:text-gray-300">{MAP_PIN_EXPLANATION}</p>
 		</div>
 		<a href="/profile" class="text-amber-700 underline dark:text-amber-300">Edit your profile</a>
 	</div>
@@ -106,6 +123,9 @@
 	{:else if status === 'error'}
 		<p role="alert" data-testid="players-error">The players map is not available yet.</p>
 	{:else}
+		{#if $user}
+			<JoinMapPrompt uid={$user.uid} profile={ownProfile} on:joined={onJoined} />
+		{/if}
 		<PlayersMap {markers} />
 		<p class="mt-2 text-sm text-stone-500 dark:text-gray-400">
 			Map data &copy; OpenStreetMap contributors. The tile credit is in the corner of the map. Saving a city still looks it up through OpenStreetMap. The profile location field can ask Google Places for city suggestions.

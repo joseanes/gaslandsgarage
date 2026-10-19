@@ -4,6 +4,7 @@
 	import LocationField from '$lib/components/LocationField.svelte';
 	import MonthlyEmailChoice from '$lib/components/MonthlyEmailChoice.svelte';
 	import { hundredthsToDegrees } from '$lib/players/location';
+	import { ANONYMOUS_ON_MAP_LABEL, LOCATION_HELP, SHOW_ON_MAP_LABEL } from '$lib/players/mapCopy';
 	import { emptyForm, type PlayerForm, type StoredProfile } from '$lib/players/profile';
 	import {
 		loadContacts,
@@ -175,11 +176,7 @@
 
 			<div>
 				<LocationField bind:value={form.locationLabel} inputClass={fieldClass} />
-				<p class="mt-1 text-sm text-stone-600 dark:text-gray-300">
-					City, region, or US ZIP only — not a street address. City suggestions, when they load, come from Google Places.
-					A ZIP stays in your browser. A city is looked up once, when you save, through OpenStreetMap.
-					The stored pin is shifted a few miles and rounded, so the exact spot cannot be recovered.
-				</p>
+				<p class="mt-1 text-sm text-stone-600 dark:text-gray-300">{LOCATION_HELP}</p>
 				{#if pin}
 					<p class="mt-1 text-sm text-stone-500" data-testid="profile-pin">
 						Approximate pin on file: {pin.lat.toFixed(2)}, {pin.lng.toFixed(2)}
@@ -203,11 +200,11 @@
 				<legend class="px-1 font-medium">Players map</legend>
 				<label class="mt-2 flex items-start gap-2">
 					<input type="checkbox" bind:checked={form.showOnMap} on:change={onMapToggle} data-testid="profile-show-on-map" />
-					<span>Show me on the players map. Off unless you turn this on.</span>
+					<span>{SHOW_ON_MAP_LABEL}</span>
 				</label>
 				<label class="mt-3 flex items-start gap-2">
 					<input type="checkbox" bind:checked={form.anonymousOnMap} disabled={!form.showOnMap} data-testid="profile-anonymous" />
-					<span>Appear as anonymous. The pin stays, and your name, bio, and play spots are not published.</span>
+					<span>{ANONYMOUS_ON_MAP_LABEL}</span>
 				</label>
 			</fieldset>
 
