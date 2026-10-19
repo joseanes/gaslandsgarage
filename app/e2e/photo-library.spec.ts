@@ -37,6 +37,7 @@ test('a library photo survives deleting one car and is removed when the photo is
 	const first = page.locator('.vehicle-card').nth(0);
 	await first.getByRole('button', { name: 'Expand vehicle' }).click();
 	await first.getByLabel('Vehicle Name').fill('First Car');
+	await first.getByTestId('vehicle-photos').locator('summary').click();
 	await page.getByRole('button', { name: 'Teams', exact: true }).click();
 	await page.getByRole('button', { name: 'Save/Load Team', exact: true }).click();
 	const saving = page.getByRole('dialog', { name: 'My Teams' });
@@ -64,6 +65,10 @@ test('a library photo survives deleting one car and is removed when the photo is
 	await saving.getByRole('button', { name: 'Close teams modal' }).click();
 	const expandSecond = second.getByRole('button', { name: 'Expand vehicle' });
 	if (await expandSecond.count()) await expandSecond.click();
+	const secondPhotos = second.getByTestId('vehicle-photos');
+	if ((await secondPhotos.locator('summary').count()) && !(await second.getByTestId('choose-library-photo').isVisible())) {
+		await secondPhotos.locator('summary').click();
+	}
 
 	await second.getByTestId('choose-library-photo').click();
 	await second.getByTestId('library-pick').click();
@@ -71,6 +76,7 @@ test('a library photo survives deleting one car and is removed when the photo is
 
 	await first.getByRole('button', { name: 'Remove vehicle' }).click();
 	await expect(page.locator('.vehicle-card')).toHaveCount(1);
+	await page.getByTestId('vehicle-photos').locator('summary').click();
 	await expect(page.getByRole('img', { name: 'Painted car' })).toBeVisible();
 
 	await page.getByRole('button', { name: 'Settings', exact: true }).click();
@@ -91,5 +97,5 @@ test('a library photo survives deleting one car and is removed when the photo is
 	await loaded.getByText('Photo Library', { exact: true }).locator('xpath=ancestor::div[contains(@class,"rounded-lg")][1]').getByRole('button', { name: 'Load' }).click();
 	await expect(loaded).toHaveCount(0);
 	await page.getByRole('button', { name: 'Expand vehicle' }).first().click();
-	await expect(page.getByRole('img', { name: 'Painted car' })).toHaveCount(0);
+	await expect(page.locator('img[alt="Painted car"]')).toHaveCount(0);
 });

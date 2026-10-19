@@ -577,142 +577,27 @@
     
     console.log("Prepared normalized team data for import:", normalizedTeamData);
     
-    // Try direct page replacement approach
+    // Apply during the click. A deferred load lands after the player has
+    // kept editing the restored draft and would wipe that work.
+    closeModal();
     try {
-      console.log("Using direct vehicle injection technique");
-      
-      // Simulate a user selecting a sponsor and adding vehicles
       if (typeof document !== 'undefined') {
-        // 1. First close the modal to get back to the main view
-        closeModal();
-        
-        // 2. Find the sponsor selection dropdown and set it to the team's sponsor
-        setTimeout(() => {
-          try {
-            // Find and select the sponsor
-            const sponsorSelects = document.querySelectorAll('select');
-            for (const select of sponsorSelects) {
-              if (select.id && select.id.toLowerCase().includes('sponsor')) {
-                // Set the sponsor value
-                select.value = normalizedTeamData.sponsor;
-                // Trigger change event
-                const event = new Event('change', { bubbles: true });
-                select.dispatchEvent(event);
-                console.log("Set sponsor to:", normalizedTeamData.sponsor);
-                break;
-              }
-            }
-            
-            // 3. Use the "Add Vehicle" button to add vehicles
-            const buttons = document.querySelectorAll('button');
-            let addVehicleButton = null;
-            
-            for (const button of buttons) {
-              if (button.textContent && button.textContent.toLowerCase().includes('add vehicle')) {
-                addVehicleButton = button;
-                break;
-              }
-            }
-            
-            // Add the vehicles one by one
-            if (addVehicleButton) {
-              const vehicleCount = normalizedTeamData.vehicles.length;
-              console.log(`Adding ${vehicleCount} vehicles...`);
-              
-              // Remove existing vehicles first (find and click 'Remove' buttons)
-              const removeButtons = document.querySelectorAll('button');
-              for (const button of removeButtons) {
-                if (button.textContent && button.textContent.toLowerCase().includes('remove') && 
-                    !button.textContent.toLowerCase().includes('remove weapon') &&
-                    !button.textContent.toLowerCase().includes('remove upgrade') &&
-                    !button.textContent.toLowerCase().includes('remove perk')) {
-                  button.click();
-                }
-              }
-              
-              // Add new vehicles and also set up a custom event to provide full vehicle details
-              for (let i = 0; i < vehicleCount; i++) {
-                addVehicleButton.click();
-              }
-              
-              console.log("Team loaded with basic structure");
-              
-              // Create and dispatch a custom event with the full team data
-              // This allows any listener to pick up the complete team data
-              try {
-                const teamDataEvent = new CustomEvent('gaslands-load-team-data', {
-                  detail: normalizedTeamData,
-                  bubbles: true
-                });
-                document.dispatchEvent(teamDataEvent);
-                console.log("Dispatched team data event with full details");
-              } catch (e) {
-                console.error("Failed to dispatch team data event:", e);
-              }
-              
-              // Find the team name input and set it
-              setTimeout(() => {
-                const teamNameInputs = document.querySelectorAll('input');
-                for (const input of teamNameInputs) {
-                  if (input.id && input.id.toLowerCase().includes('team')) {
-                    input.value = normalizedTeamData.teamName || "My Gaslands Team";
-                    const event = new Event('input', { bubbles: true });
-                    input.dispatchEvent(event);
-                    break;
-                  }
-                }
-                
-                // Dispatch window event as fallback - do this in a timeout
-                // to avoid any jQuery event conflicts
-                if (typeof window !== 'undefined') {
-                  try {
-                    // Use a timeout to ensure this runs in a clean JS event cycle
-                    // This helps avoid jQuery conflicts
-                    setTimeout(() => {
-                      try {
-                        const event = new CustomEvent('gaslands-team-loaded', {
-                          detail: normalizedTeamData,
-                          bubbles: false // Avoid bubbling to prevent jQuery interference
-                        });
-                        window.dispatchEvent(event);
-                        console.log("Dispatched window team loaded event");
-                      } catch (innerError) {
-                        console.error("Error in delayed event dispatch:", innerError);
-                      }
-                    }, 10);
-                  } catch (e) {
-                    console.error("Failed to dispatch window event:", e);
-                  }
-                }
-              }, 200);
-            } else {
-              console.error("Could not find Add Vehicle button");
-              
-              // Fallback - just try the prop method
-              importDraft(normalizedTeamData);
-            }
-          } catch (e) {
-            console.error("Error during direct vehicle injection:", e);
-            
-            // Final fallback - use the prop-based approach
-            closeModal();
-            setTimeout(() => {
-              importDraft(normalizedTeamData);
-            }, 100);
-          }
-        }, 100);
+        const teamDataEvent = new CustomEvent('gaslands-load-team-data', {
+          detail: normalizedTeamData,
+          bubbles: true,
+          cancelable: true
+        });
+        document.dispatchEvent(teamDataEvent);
+        if (!teamDataEvent.defaultPrevented) importDraft(normalizedTeamData);
       } else {
-        // If document is not available, fall back to prop method
         importDraft(normalizedTeamData);
-        closeModal();
       }
     } catch (error) {
-      console.error("Error importing team:", error);
-      alert("Error loading team. Please try again.");
-      closeModal();
+      console.error('Error importing team:', error);
+      alert('Error loading team. Please try again.');
     }
   }
-  
+
   // Delete team
   async function removeTeam(teamId: string) {
     if (!confirm('Delete this team? Its photos are deleted too.')) return;

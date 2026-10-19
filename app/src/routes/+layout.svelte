@@ -406,6 +406,14 @@
     }
   }
   
+  function startNewTeam() {
+    if (onBuilderPage() && typeof window.startNewTeamFn === 'function') {
+      window.startNewTeamFn();
+      return;
+    }
+    openOnBuilder('new');
+  }
+
   function printTeam() {
     console.log('[Layout] Printing team');
     if (typeof window !== 'undefined' && window.location.pathname.includes('/builder')) {
@@ -637,6 +645,9 @@
             style="box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5); background-color: #000000 !important; top: 40px; left: 0;"
             transition:fade={{ duration: 150 }}
           >
+            <button type="button" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600" on:click={() => { startNewTeam(); showShareMenu = false; }}>
+              New
+            </button>
             <button type="button" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600" on:click={() => { openTeamsModal(); showShareMenu = false; }}>
               Save/Load Team
             </button>

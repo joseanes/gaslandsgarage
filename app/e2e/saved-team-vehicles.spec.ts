@@ -134,8 +134,8 @@ test('a failed vehicle card download shows an error and can be retried', async (
 	await expect(page.getByText('Your team has no vehicles yet')).toHaveCount(0);
 
 	await page.unroute('**/*VehicleCard*');
+	page.on('dialog', (dialog) => dialog.accept());
 	await page.getByRole('button', { name: 'Try again' }).click();
-	await page.getByRole('button', { name: '+ Add Vehicle' }).click();
 	await expect(page.getByTestId('vehicle-list-error')).toHaveCount(0);
 	await expect(page.getByTestId('vehicle-summary')).toHaveCount(1);
 });
@@ -151,4 +151,50 @@ test('two saved vehicles that share an id both render', async ({ page }) => {
 	await expect(page.getByTestId('vehicle-summary').nth(0)).toContainText('Anchor');
 	await expect(page.getByTestId('vehicle-summary').nth(1)).toContainText('Outrider');
 	await expect(page.getByTestId('vehicle-limit')).toContainText('2/2 toward the limit');
+});
+
+const legacyBeverly = {
+	teamName: 'My Gaslands Team 2',
+	sponsorId: 'ber',
+	maxCans: 50,
+	rulesVersion: 3,
+	vehicles: [
+		{
+			id: 'FxwR9U',
+			vehicleType: 'Tank',
+			name: 'New Vehicle',
+			weapons: [
+				{ weaponId: 'Machine_Gun_UZI5', facing: 'Front' },
+				{ id: 'machine_gun_lkhF', facing: 'any' }
+			],
+			upgrades: { 0: 'Big Tyres' },
+			perks: 'Battlehammer',
+			driverArchetype: 'arsonist',
+			driverName: 'Foo',
+			secondPerkClass: 'aggression'
+		},
+		{ id: 'uYK5nm', type: 'Bike', name: 'New Vehicle' }
+	]
+};
+
+test('a legacy Beverly save with old type keys and gear shapes renders', async ({ page }) => {
+	const errors: string[] = [];
+	page.on('pageerror', (error) => errors.push(error.message));
+	await importBuild(page, legacyBeverly);
+
+	await expect(page.locator('#rules-version')).toHaveValue('3');
+	await expect(page.locator('#sponsor-select')).toHaveValue('beverly');
+	await expect(page.getByTestId('vehicle-list-error')).toHaveCount(0);
+	await expect(page.getByText('could not be drawn')).toHaveCount(0);
+	await expect(page.getByTestId('vehicle-summary')).toHaveCount(2);
+	await expect(page.getByTestId('vehicle-summary').nth(0)).toContainText('Tank');
+	await expect(page.getByTestId('vehicle-summary').nth(0)).toContainText('45 cans');
+	await expect(page.getByTestId('vehicle-summary').nth(0)).toContainText('Arsonist');
+	await expect(page.getByTestId('vehicle-summary').nth(1)).toContainText('Bike');
+	await expect(page.getByTestId('vehicle-summary').nth(1)).toContainText('12 cans');
+	await expect(page.getByText('57/50 cans')).toBeVisible();
+
+	await page.getByRole('button', { name: 'Expand vehicle' }).first().click();
+	await expect(page.locator('.vehicle-card').first().getByText('Battlehammer', { exact: true })).toBeVisible();
+	expect(errors).toEqual([]);
 });

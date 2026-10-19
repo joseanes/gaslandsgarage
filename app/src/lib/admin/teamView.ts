@@ -41,6 +41,7 @@ export type TeamCatalogs = {
 };
 
 function findItem(items: CatalogItem[], id: string): CatalogItem | undefined {
+	if (typeof id !== 'string' || !id) return undefined;
 	const direct = items.find((item) => item.id === id);
 	if (direct) return direct;
 	const parts = id.split('_');
@@ -60,17 +61,20 @@ export function summarizeVehicle(vehicle: ViewVehicle, catalogs: TeamCatalogs): 
 	const type = findItem(catalogs.vehicles, vehicle.type);
 	let cans = type?.baseCost ?? 0;
 	let usedSlots = 0;
-	for (const id of vehicle.weapons) {
+	const weaponIds = Array.isArray(vehicle.weapons) ? vehicle.weapons.filter((id): id is string => typeof id === 'string') : [];
+	const upgradeIds = Array.isArray(vehicle.upgrades) ? vehicle.upgrades.filter((id): id is string => typeof id === 'string') : [];
+	const perkIds = Array.isArray(vehicle.perks) ? vehicle.perks.filter((id): id is string => typeof id === 'string') : [];
+	for (const id of weaponIds) {
 		const weapon = findItem(catalogs.weapons, id);
 		cans += weapon?.cost ?? 0;
 		usedSlots += weapon?.slots ?? 0;
 	}
-	for (const id of vehicle.upgrades) {
+	for (const id of upgradeIds) {
 		const upgrade = findItem(catalogs.upgrades, id);
 		cans += upgrade?.cost ?? 0;
 		usedSlots += upgrade?.slots ?? 0;
 	}
-	for (const id of vehicle.perks) {
+	for (const id of perkIds) {
 		cans += perkCost(findItem(catalogs.perks, id));
 	}
 	return {
@@ -81,9 +85,9 @@ export function summarizeVehicle(vehicle: ViewVehicle, catalogs: TeamCatalogs): 
 		cans,
 		usedSlots,
 		maxSlots: type?.buildSlots ?? 0,
-		weapons: names(vehicle.weapons, catalogs.weapons),
-		upgrades: names(vehicle.upgrades, catalogs.upgrades),
-		perks: names(vehicle.perks, catalogs.perks)
+		weapons: names(weaponIds, catalogs.weapons),
+		upgrades: names(upgradeIds, catalogs.upgrades),
+		perks: names(perkIds, catalogs.perks)
 	};
 }
 
