@@ -1349,6 +1349,138 @@
   />
 {/if}
 
+<!-- Contact Us Modal -->
+{#if showContactUsModal}
+  <div
+    class="fixed inset-0 bg-black z-50"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Contact Us"
+    tabindex="-1"
+    transition:fade={{ duration: 150 }}
+  >
+    <!-- Background overlay -->
+    <button
+      class="absolute inset-0 w-full h-full border-0 cursor-pointer"
+      on:click={() => showContactUsModal = false}
+      on:keydown={e => e.key === 'Escape' && (showContactUsModal = false)}
+      aria-label="Close modal background"
+    ></button>
+
+    <!-- Modal content -->
+    <div
+      class="bg-white dark:bg-gray-800 rounded-xl shadow-[0_0_25px_rgba(0,0,0,0.3)] w-11/12 sm:w-4/5 md:w-4/5 lg:w-4/5 mx-auto relative z-10 border-2 border-amber-500"
+      role="document"
+      style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); max-height: 90vh; overflow-y: auto; box-shadow: 0 0 0 1px rgba(0,0,0,0.1), 0 0 0 4px rgba(245,158,11,0.4), 0 10px 25px -5px rgba(0,0,0,0.4); background-color: var(--modal-bg-color, white); padding: 1.5rem;"
+    >
+      <div class="flex justify-between items-center mb-6">
+        <h3 class="text-xl font-bold text-stone-800 dark:text-white modal-heading">Contact Us</h3>
+        <button
+          class="py-0.25 px-2 h-[2rem] flex items-center justify-center rounded transition-colors text-sm amber-button"
+          on:click={() => showContactUsModal = false}
+          aria-label="Close contact us modal"
+        >
+          <span>Close</span>
+        </button>
+      </div>
+
+      <div class="space-y-6 text-stone-700 dark:text-gray-200 modal-text">
+        {#if $user}
+          <!-- Contact form for authenticated users -->
+          <div class="max-w-2xl mx-auto">
+            <p class="mb-4">We'd love to hear from you! Please fill out the form below and we'll get back to you as soon as possible.</p>
+
+            <form class="space-y-4" on:submit|preventDefault={handleContactFormSubmit}>
+              <div>
+                <label for="contact-subject" class="block text-sm font-medium mb-1">Subject</label>
+                <input
+                  type="text"
+                  id="contact-subject"
+                  bind:value={contactSubject}
+                  required
+                  class="w-full px-3 py-2 border border-stone-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white dark:bg-gray-700 text-stone-800 dark:text-white"
+                  placeholder="How can we help you?"
+                />
+              </div>
+
+              <div>
+                <label for="contact-message" class="block text-sm font-medium mb-1">Message</label>
+                <textarea
+                  id="contact-message"
+                  bind:value={contactMessage}
+                  required
+                  rows="5"
+                  class="w-full px-3 py-2 border border-stone-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white dark:bg-gray-700 text-stone-800 dark:text-white"
+                  placeholder="Please provide details about your question or feedback..."
+                ></textarea>
+              </div>
+
+              <div class="flex justify-end gap-3">
+                <button
+                  type="button"
+                  class="px-4 py-2 border border-stone-300 dark:border-gray-600 rounded-lg text-stone-700 dark:text-gray-300 hover:bg-stone-100 dark:hover:bg-gray-700 transition-colors"
+                  on:click={() => {
+                    contactSubject = '';
+                    contactMessage = '';
+                    showContactUsModal = false;
+                  }}
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  class="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors"
+                  disabled={contactSubmitting}
+                >
+                  {#if contactSubmitting}
+                    Sending...
+                  {:else}
+                    Send Message
+                  {/if}
+                </button>
+              </div>
+
+              {#if contactError}
+                <div class="p-3 bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300 rounded-lg">
+                  {contactError}
+                </div>
+              {/if}
+
+              {#if contactSuccess}
+                <div class="p-3 bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 rounded-lg">
+                  Your message has been sent successfully! We'll get back to you soon.
+                </div>
+              {/if}
+            </form>
+          </div>
+        {:else}
+          <!-- Message for unauthenticated users -->
+          <div class="p-6 bg-stone-100 dark:bg-gray-700 rounded-lg text-center">
+            <div class="text-amber-600 dark:text-amber-400 text-5xl mb-4">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mx-auto" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+              </svg>
+            </div>
+            <h4 class="text-lg font-bold mb-2">Authentication Required</h4>
+            <p class="mb-4">You need to be logged in to contact us. This helps us prevent spam and provide better support.</p>
+            <button
+              class="py-2 px-4 bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition-colors"
+              on:click={() => {
+                showContactUsModal = false;
+                // Add logic here to open sign-in dialog if needed
+              }}
+            >
+              Sign In to Continue
+            </button>
+          </div>
+        {/if}
+      </div>
+    </div>
+  </div>
+{/if}
+{/if}
+
 <style>
 :root {
   --modal-bg-color: white;
@@ -1501,135 +1633,3 @@
 
 /* Print styles moved to separate print.css file */
 </style>
-
-<!-- Contact Us Modal -->
-{#if showContactUsModal}
-  <div
-    class="fixed inset-0 bg-black z-50"
-    role="dialog"
-    aria-modal="true"
-    aria-label="Contact Us"
-    tabindex="-1"
-    transition:fade={{ duration: 150 }}
-  >
-    <!-- Background overlay -->
-    <button
-      class="absolute inset-0 w-full h-full border-0 cursor-pointer"
-      on:click={() => showContactUsModal = false}
-      on:keydown={e => e.key === 'Escape' && (showContactUsModal = false)}
-      aria-label="Close modal background"
-    ></button>
-
-    <!-- Modal content -->
-    <div
-      class="bg-white dark:bg-gray-800 rounded-xl shadow-[0_0_25px_rgba(0,0,0,0.3)] w-11/12 sm:w-4/5 md:w-4/5 lg:w-4/5 mx-auto relative z-10 border-2 border-amber-500"
-      role="document"
-      style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); max-height: 90vh; overflow-y: auto; box-shadow: 0 0 0 1px rgba(0,0,0,0.1), 0 0 0 4px rgba(245,158,11,0.4), 0 10px 25px -5px rgba(0,0,0,0.4); background-color: var(--modal-bg-color, white); padding: 1.5rem;"
-    >
-      <div class="flex justify-between items-center mb-6">
-        <h3 class="text-xl font-bold text-stone-800 dark:text-white modal-heading">Contact Us</h3>
-        <button
-          class="py-0.25 px-2 h-[2rem] flex items-center justify-center rounded transition-colors text-sm amber-button"
-          on:click={() => showContactUsModal = false}
-          aria-label="Close contact us modal"
-        >
-          <span>Close</span>
-        </button>
-      </div>
-
-      <div class="space-y-6 text-stone-700 dark:text-gray-200 modal-text">
-        {#if $user}
-          <!-- Contact form for authenticated users -->
-          <div class="max-w-2xl mx-auto">
-            <p class="mb-4">We'd love to hear from you! Please fill out the form below and we'll get back to you as soon as possible.</p>
-
-            <form class="space-y-4" on:submit|preventDefault={handleContactFormSubmit}>
-              <div>
-                <label for="contact-subject" class="block text-sm font-medium mb-1">Subject</label>
-                <input
-                  type="text"
-                  id="contact-subject"
-                  bind:value={contactSubject}
-                  required
-                  class="w-full px-3 py-2 border border-stone-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white dark:bg-gray-700 text-stone-800 dark:text-white"
-                  placeholder="How can we help you?"
-                />
-              </div>
-
-              <div>
-                <label for="contact-message" class="block text-sm font-medium mb-1">Message</label>
-                <textarea
-                  id="contact-message"
-                  bind:value={contactMessage}
-                  required
-                  rows="5"
-                  class="w-full px-3 py-2 border border-stone-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white dark:bg-gray-700 text-stone-800 dark:text-white"
-                  placeholder="Please provide details about your question or feedback..."
-                ></textarea>
-              </div>
-
-              <div class="flex justify-end gap-3">
-                <button
-                  type="button"
-                  class="px-4 py-2 border border-stone-300 dark:border-gray-600 rounded-lg text-stone-700 dark:text-gray-300 hover:bg-stone-100 dark:hover:bg-gray-700 transition-colors"
-                  on:click={() => {
-                    contactSubject = '';
-                    contactMessage = '';
-                    showContactUsModal = false;
-                  }}
-                >
-                  Cancel
-                </button>
-
-                <button
-                  type="submit"
-                  class="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors"
-                  disabled={contactSubmitting}
-                >
-                  {#if contactSubmitting}
-                    Sending...
-                  {:else}
-                    Send Message
-                  {/if}
-                </button>
-              </div>
-
-              {#if contactError}
-                <div class="p-3 bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300 rounded-lg">
-                  {contactError}
-                </div>
-              {/if}
-
-              {#if contactSuccess}
-                <div class="p-3 bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 rounded-lg">
-                  Your message has been sent successfully! We'll get back to you soon.
-                </div>
-              {/if}
-            </form>
-          </div>
-        {:else}
-          <!-- Message for unauthenticated users -->
-          <div class="p-6 bg-stone-100 dark:bg-gray-700 rounded-lg text-center">
-            <div class="text-amber-600 dark:text-amber-400 text-5xl mb-4">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mx-auto" viewBox="0 0 20 20" fill="currentColor">
-                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
-              </svg>
-            </div>
-            <h4 class="text-lg font-bold mb-2">Authentication Required</h4>
-            <p class="mb-4">You need to be logged in to contact us. This helps us prevent spam and provide better support.</p>
-            <button
-              class="py-2 px-4 bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition-colors"
-              on:click={() => {
-                showContactUsModal = false;
-                // Add logic here to open sign-in dialog if needed
-              }}
-            >
-              Sign In to Continue
-            </button>
-          </div>
-        {/if}
-      </div>
-    </div>
-  </div>
-{/if}
-{/if}
