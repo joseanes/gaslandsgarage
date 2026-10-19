@@ -124,6 +124,23 @@ export async function listMyPhotos(): Promise<VehiclePhoto[]> {
 	return photos;
 }
 
+/** A blocked download is retried by the Storage SDK for about two minutes. Give up sooner so the sheet can still open. */
+const PRINT_PHOTO_FETCH_MS = 20_000;
+
+async function blobWithin(work: Promise<Blob>, ms: number): Promise<Blob> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	try {
+		return await Promise.race([
+			work,
+			new Promise<Blob>((_, reject) => {
+				timer = setTimeout(() => reject(new Error('Photo download timed out.')), ms);
+			})
+		]);
+	} finally {
+		if (timer !== undefined) clearTimeout(timer);
+	}
+}
+
 /** Loads each photo with the signed-in user's Storage access. The caller turns the bytes into an object URL. */
 export async function photosForPrint(teamId: string): Promise<Record<string, PrintPhotoBlob[]>> {
 	const { app } = await readyUser();
@@ -133,7 +150,7 @@ export async function photosForPrint(teamId: string): Promise<Record<string, Pri
 	const grouped: Record<string, PrintPhotoBlob[]> = {};
 	for (const photo of docs) {
 		try {
-			const blob = await getBlob(ref(storage, photo.path));
+			const blob = await blobWithin(getBlob(ref(storage, photo.path)), PRINT_PHOTO_FETCH_MS);
 			const targets = photo.attachments.filter((item) => item.teamId === teamId);
 			const vehicles = targets.length > 0 ? targets : photo.teamId === teamId ? [{ teamId, vehicleId: photo.vehicleId }] : [];
 			for (const target of vehicles) {
