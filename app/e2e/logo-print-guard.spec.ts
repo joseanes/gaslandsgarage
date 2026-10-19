@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { addGear } from './addGear';
 
 const vehicleAlert = /need to add at least one vehicle|add a vehicle to this team/i;
 
@@ -26,7 +27,7 @@ async function addUnnamedCarWithBazooka(page: Page) {
 	await page.getByRole('button', { name: '+ Add Vehicle' }).click();
 	await page.getByRole('button', { name: 'Expand vehicle' }).click();
 	await page.getByLabel('Vehicle Name').fill('');
-	await page.locator('select[id^="add-weapon-"]').selectOption('bazooka');
+	await addGear(page, 'Add a weapon', 'bazooka', /^Bazooka\b/);
 	await expect(page.getByText('16/50 cans').first()).toBeVisible();
 }
 

@@ -179,6 +179,29 @@ export async function saveTeam(teamData: TeamSavePayload, teamName: string, exis
 }
 
 /**
+ * Vehicles stored on one of the signed-in player's teams.
+ * Null means the saved team could not be read.
+ */
+export async function getSavedTeamVehicles(teamId: string): Promise<unknown[] | null> {
+  if (!browser || !teamId) return null;
+  const currentAuth = auth;
+  const database = db;
+  if (!currentAuth?.currentUser || !database) return null;
+  try {
+    const { doc, getDoc } = await import('firebase/firestore');
+    const snap = await getDoc(doc(database, TEAMS_COLLECTION, teamId));
+    if (!snap.exists() || snap.data().userId !== currentAuth.currentUser.uid) return null;
+    const teamData = snap.data().teamData;
+    if (!teamData || typeof teamData !== 'object') return [];
+    const vehicles = (teamData as { vehicles?: unknown }).vehicles;
+    return Array.isArray(vehicles) ? vehicles : [];
+  } catch (error) {
+    console.error('Could not read the saved team:', error);
+    return null;
+  }
+}
+
+/**
  * Get all teams for the current user
  */
 export async function getUserTeams(): Promise<GetTeamsResult> {

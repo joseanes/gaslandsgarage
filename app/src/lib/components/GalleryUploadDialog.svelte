@@ -1,6 +1,8 @@
 <script lang="ts">
-	import { onDestroy, onMount } from 'svelte';
+	import { getContext, onDestroy, onMount } from 'svelte';
 	import SharingControl from '$lib/components/SharingControl.svelte';
+	import { PHOTO_SAVE_GATE, type PhotoSaveGate } from '$lib/photos/photoSaveGate';
+	import { reasonVehicleNotOnSavedTeam } from '$lib/photos/saveBeforePhoto';
 	import { galleryVehicleTypes } from '$lib/photos/galleryQuery';
 	import { MAX_CAPTION_LENGTH, MAX_PHOTOS_PER_ACCOUNT, quotaMessage } from '$lib/photos/model';
 	import { SHARE_FLAG_KEYS, anyShareFlag, vehicleTypeLabel, type ShareFlagKey, type ShareFlags } from '$lib/photos/share';
@@ -42,6 +44,10 @@
 	let fileInput: HTMLInputElement | null = null;
 	let cameraInput: HTMLInputElement | null = null;
 	let flags: ShareFlags = galleryFlags();
+	let listenedVehicle = '';
+	let stopGate = () => {};
+
+	const photoSaveGate = getContext<PhotoSaveGate | undefined>(PHOTO_SAVE_GATE);
 
 	$: types = galleryVehicleTypes();
 	$: teams = teamChoices(cars);
@@ -56,8 +62,22 @@
 	});
 
 	onDestroy(() => {
+		stopGate();
 		if (preview) URL.revokeObjectURL(preview);
 	});
+
+	function watchGate(id: string) {
+		if (id === listenedVehicle) return;
+		stopGate();
+		listenedVehicle = id;
+		stopGate =
+			photoSaveGate?.listen(id, (request) => {
+				if (request.vehicleId !== id || request.intent !== 'file') return;
+				void submit();
+			}) ?? (() => {});
+	}
+
+	$: watchGate(vehicleId);
 
 	function galleryFlags(): ShareFlags {
 		return { showToBuddies: false, showOnShareLink: false, showInGallery: true, shareVehicleStats: false };
@@ -175,6 +195,30 @@
 			return;
 		}
 		const linked = Boolean(linkedCar);
+		if (linked && photoSaveGate?.reason(vehicleId)) {
+			photoSaveGate.request({
+				vehicleId,
+				intent: 'file',
+				file,
+				caption,
+				uploadGallery: flags.showInGallery,
+				uploadStats: flags.shareVehicleStats,
+				uploadFlags: flags,
+				paintingUrl
+			});
+			return;
+		}
+		if (
+			linked &&
+			reasonVehicleNotOnSavedTeam({
+				savedTeamId: teamId,
+				vehicleId,
+				savedVehicleIds: teamCars.map((car) => car.vehicleId)
+			})
+		) {
+			error = 'Save your team to add photos';
+			return;
+		}
 		const nextFlags: ShareFlags = linked
 			? flags
 			: { ...flags, showToBuddies: false, showOnShareLink: false, shareVehicleStats: false };
