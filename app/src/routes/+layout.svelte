@@ -8,7 +8,8 @@
   import "../dark-override.css"; /* This must be imported last to override other styles */
   import "../inline-fixes.js"; /* JavaScript fixes for element heights */
   import "../print-new.js"; /* Print handler */
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
+  import { clampToViewport } from '$lib/clampToViewport';
   import { fade } from 'svelte/transition';
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
@@ -30,6 +31,14 @@
   // Ad configuration variables
   let showAds = false; // Removed ads for now
   
+  const headerMenus = ['.share-menu-dropdown', '.settings-menu-dropdown', '.players-menu-dropdown', '.help-menu-dropdown'];
+
+  async function clampHeaderMenus() {
+    await tick();
+    if (typeof document === 'undefined') return;
+    for (const selector of headerMenus) clampToViewport(document.querySelector(selector));
+  }
+
   // Menu state
   let showShareMenu = false;
   let showHelpMenu = false;
@@ -460,7 +469,9 @@
 <!-- Main layout with ad space -->
 <div class="app-container min-h-screen flex flex-col">
   <!-- Top Navigation Bar -->
-  <header class="w-full print:hidden">
+  <!-- Sticky on the header, not only the bar: the bar fills the header, so a
+       sticky bar has no room to stick and the open menu scrolls away with the page. -->
+  <header class="sticky top-0 z-10 w-full print:hidden">
     <nav class="menu-bar print:hidden">
       <div class="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 w-full flex justify-between items-center">
         <div class="flex flex-col justify-start">
@@ -477,7 +488,7 @@
             <button
               type="button"
               class="menu-item flex items-center share-menu-trigger"
-              on:click={() => showShareMenu = !showShareMenu}
+              on:click={() => { showShareMenu = !showShareMenu; void clampHeaderMenus(); }}
               aria-haspopup="true"
               aria-expanded={showShareMenu}
               style="height: auto !important; min-height: auto !important;"
@@ -490,7 +501,7 @@
 
             {#if showShareMenu}
           <div
-            class="absolute w-44 bg-black border-2 border-amber-500 shadow-xl rounded-lg overflow-hidden z-20 py-2 share-menu-dropdown"
+            class="absolute w-44 bg-black border-2 border-amber-500 shadow-xl rounded-lg overflow-hidden z-30 py-2 share-menu-dropdown"
             style="box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5); background-color: #000000 !important; top: 40px; left: 0;"
             transition:fade={{ duration: 150 }}
           >
@@ -519,7 +530,7 @@
             <button
               type="button"
               class="menu-item flex items-center settings-menu-trigger"
-              on:click={() => showSettingsMenu = !showSettingsMenu}
+              on:click={() => { showSettingsMenu = !showSettingsMenu; void clampHeaderMenus(); }}
               aria-haspopup="true"
               aria-expanded={showSettingsMenu}
               style="height: auto !important; min-height: auto !important;"
@@ -532,7 +543,7 @@
 
             {#if showSettingsMenu}
             <div
-              class="absolute w-56 bg-black border-2 border-amber-500 shadow-xl rounded-lg overflow-hidden z-20 py-2 settings-menu-dropdown"
+              class="absolute w-56 bg-black border-2 border-amber-500 shadow-xl rounded-lg overflow-hidden z-30 py-2 settings-menu-dropdown"
               style="box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5); background-color: #000000 !important; top: 40px; left: 0;"
               transition:fade={{ duration: 150 }}
             >
@@ -549,7 +560,7 @@
             <button
               type="button"
               class="menu-item flex items-center players-menu-trigger"
-              on:click={() => showPlayersMenu = !showPlayersMenu}
+              on:click={() => { showPlayersMenu = !showPlayersMenu; void clampHeaderMenus(); }}
               aria-haspopup="true"
               aria-expanded={showPlayersMenu}
               style="height: auto !important; min-height: auto !important;"
@@ -562,7 +573,7 @@
 
             {#if showPlayersMenu}
             <div
-              class="absolute w-44 bg-black border-2 border-amber-500 shadow-xl rounded-lg overflow-hidden z-20 py-2 players-menu-dropdown"
+              class="absolute w-44 bg-black border-2 border-amber-500 shadow-xl rounded-lg overflow-hidden z-30 py-2 players-menu-dropdown"
               style="box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5); background-color: #000000 !important; top: 40px; left: 0;"
               transition:fade={{ duration: 150 }}
             >
@@ -582,7 +593,7 @@
             <button
               type="button"
               class="menu-item flex items-center help-menu-trigger"
-              on:click={() => showHelpMenu = !showHelpMenu}
+              on:click={() => { showHelpMenu = !showHelpMenu; void clampHeaderMenus(); }}
               aria-haspopup="true"
               aria-expanded={showHelpMenu}
               style="height: auto !important; min-height: auto !important;"
@@ -595,7 +606,7 @@
 
             {#if showHelpMenu}
             <div
-              class="absolute w-56 bg-black border-2 border-amber-500 shadow-xl rounded-lg overflow-hidden z-20 py-2 help-menu-dropdown"
+              class="absolute w-56 bg-black border-2 border-amber-500 shadow-xl rounded-lg overflow-hidden z-30 py-2 help-menu-dropdown"
               style="box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5); background-color: #000000 !important; top: 40px; left: 0;"
               transition:fade={{ duration: 150 }}
             >
@@ -1168,7 +1179,17 @@
   margin-bottom: 12px;
   position: sticky;
   top: 0;
+  /* Above the map's stacking context (z-index 0). Dialogs start at 50. */
   z-index: 10;
+}
+
+/* Dropdowns stack inside the sticky bar, above the account button.
+   The account menu uses z-index 50 inside that same bar. */
+:global(.share-menu-dropdown),
+:global(.settings-menu-dropdown),
+:global(.players-menu-dropdown),
+:global(.help-menu-dropdown) {
+  z-index: 30;
 }
 
 /* Removed the menu-container class as we're using the max-w-7xl class directly in the HTML */

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { user, signInWithGoogle, signOutUser } from '$lib/firebase';
-  import { onMount } from 'svelte';
+  import { clampToViewport } from '$lib/clampToViewport';
+  import { onMount, tick } from 'svelte';
   import { fade } from 'svelte/transition';
   
   let showDropdown = false;
@@ -51,7 +52,11 @@
     <button 
       type="button" 
       class="auth-button signed-in"
-      on:click={() => showDropdown = !showDropdown}
+      on:click={async () => {
+        showDropdown = !showDropdown;
+        await tick();
+        clampToViewport(document.querySelector('.auth-container .dropdown'));
+      }}
       aria-haspopup="true"
       aria-expanded={showDropdown}
     >

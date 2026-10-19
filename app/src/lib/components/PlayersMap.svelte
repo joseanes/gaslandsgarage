@@ -103,6 +103,15 @@
 		background: #57534e;
 	}
 
+	/* Leaflet panes use z-index 200–700 and controls use 1000. Trap them here
+	   so header menus and dialogs (z-index 10–70) stay above the map. */
+	.players-map,
+	.players-map :global(.leaflet-container) {
+		position: relative;
+		z-index: 0;
+		isolation: isolate;
+	}
+
 	:global(.leaflet-container) {
 		font: inherit;
 		background: #e7e5e4;
