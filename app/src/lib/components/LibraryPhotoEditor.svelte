@@ -1,6 +1,6 @@
 <script lang="ts">
 	import ShareCar from '$lib/components/ShareCar.svelte';
-	import ShareChoices from '$lib/components/ShareChoices.svelte';
+	import SharingControl from '$lib/components/SharingControl.svelte';
 	import { ownCarName, type SavedCar } from '$lib/photos/browser';
 	import { type ShareFlags } from '$lib/photos/share';
 	import { setPhotoSharing } from '$lib/services/photoShare';
@@ -206,7 +206,7 @@
 			</label>
 		{/if}
 		<div class="mt-2">
-			<ShareChoices
+			<SharingControl
 				flags={{
 					showToBuddies: photo.showToBuddies,
 					showOnShareLink: photo.showOnShareLink,

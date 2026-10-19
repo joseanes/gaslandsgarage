@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { PHOTO_PRIVACY_SHORT } from '$lib/photos/model';
-	import { GALLERY_SHARE_COPY, SHARE_GALLERY_LABEL, SHARE_STATS_LABEL, STATS_SHARE_COPY } from '$lib/photos/share';
+	import { GALLERY_SHARE_COPY, SHARE_BUDDIES_LABEL, SHARE_GALLERY_LABEL, SHARE_LINK_LABEL, SHARE_STATS_LABEL, STATS_SHARE_COPY } from '$lib/photos/share';
 	const linkClass = 'text-amber-600 dark:text-amber-400 hover:underline';
 </script>
 
@@ -78,7 +78,7 @@
 			that link only when you turn on "Show on my team share link" for that photo.
 		</p>
 
-		<h2 class="text-xl font-bold mt-8 mb-3">Photos of your cars</h2>
+		<h2 id="photos" class="text-xl font-bold mt-8 mb-3">Photos of your cars</h2>
 		<p>{PHOTO_PRIVACY_SHORT}</p>
 		<p>We never use them for advertising, and we never use them to train models.</p>
 		<p>
@@ -91,8 +91,9 @@
 			we store.
 		</p>
 		<p>
-			Sharing is off until you turn it on for that photo. Adding a photo asks "{SHARE_GALLERY_LABEL}" and
-			"{SHARE_STATS_LABEL}". Both start off, and you can change them later. "Show to my Gaming Buddies"
+			Sharing is off until you turn it on for that photo. Adding a photo asks the same four choices:
+			"{SHARE_BUDDIES_LABEL}", "{SHARE_LINK_LABEL}", "{SHARE_GALLERY_LABEL}", and "{SHARE_STATS_LABEL}".
+			All four start off, and you can change them later. "Show to my Gaming Buddies"
 			lets a buddy who can already see that team see the photo. "Show on my team share link" shows it to
 			anyone who opens that link. "{SHARE_GALLERY_LABEL}" puts it on the Gallery page, which is under
 			Players and Events. Other players who open the Gallery only see photos published there that are

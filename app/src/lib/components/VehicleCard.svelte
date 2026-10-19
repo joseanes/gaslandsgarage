@@ -1542,6 +1542,7 @@
         {/if}
 
         <svelte:boundary>
+            <!-- ensureSavedTeam stays unset until a Quick Save guard owns the unsaved-team photo path. -->
             <VehiclePhotos {teamId} vehicleId={vehicle.id} {playMode} viewOnly={photoViewOnly} viewPhotos={sharedPhotos} />
             {#snippet failed()}
                 <p class="mt-4 text-sm text-stone-600 dark:text-gray-300" data-testid="vehicle-photos-error">Photos could not be shown on this vehicle.</p>

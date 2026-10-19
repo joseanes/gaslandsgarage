@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
-	import ShareChoices from '$lib/components/ShareChoices.svelte';
+	import SharingControl from '$lib/components/SharingControl.svelte';
 	import { galleryVehicleTypes } from '$lib/photos/galleryQuery';
 	import { MAX_CAPTION_LENGTH, MAX_PHOTOS_PER_ACCOUNT, quotaMessage } from '$lib/photos/model';
 	import { SHARE_FLAG_KEYS, anyShareFlag, vehicleTypeLabel, type ShareFlagKey, type ShareFlags } from '$lib/photos/share';
@@ -314,7 +314,7 @@
 					</label>
 				{/if}
 			</fieldset>
-			<ShareChoices
+			<SharingControl
 				{flags}
 				{activeKeys}
 				everywhereTestId="add-share-everywhere"

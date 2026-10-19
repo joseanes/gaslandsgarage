@@ -45,25 +45,34 @@ test('a signed-in player can upload, view, print, and delete a vehicle photo', a
 	const photos = page.getByTestId('vehicle-photos');
 	await expect(photos).toBeVisible();
 	await photos.locator('summary').first().click();
-	const uploadEverywhere = photos.getByTestId('upload-share-everywhere');
-	await expect(uploadEverywhere).not.toBeChecked();
-	await expect(uploadEverywhere).toHaveJSProperty('indeterminate', false);
-	await expect(photos.getByTestId('upload-share-gallery')).toBeHidden();
-	await expect(photos.getByTestId('upload-share-gallery')).not.toBeChecked();
-	await expect(photos.getByTestId('upload-share-stats')).not.toBeChecked();
+	await expect(photos.getByText('Photos on this car (0/3)')).toBeVisible();
+	await expect(photos.getByRole('heading', { name: 'Add a photo' })).toBeVisible();
+	await expect(photos.getByText('When this photo is added')).toHaveCount(0);
+	await expect(photos.getByRole('link', { name: 'Learn more' })).toHaveAttribute('href', '/privacy#photos');
+	await expect(photos.getByTestId('upload-share-everywhere')).toHaveCount(0);
 
 	await photos.getByTestId('vehicle-photo-input').setInputFiles({
 		name: 'painted-car.png',
 		mimeType: 'image/png',
 		buffer: TINY_PNG
 	});
+	const uploadDialog = photos.getByTestId('car-upload-dialog');
+	await expect(uploadDialog).toBeVisible();
+	const uploadEverywhere = uploadDialog.getByTestId('upload-share-everywhere');
+	await expect(uploadEverywhere).not.toBeChecked();
+	await expect(uploadEverywhere).toHaveJSProperty('indeterminate', false);
+	await expect(uploadDialog.getByTestId('upload-share-gallery')).toBeHidden();
+	await expect(uploadDialog.getByTestId('upload-share-gallery')).not.toBeChecked();
+	await expect(uploadDialog.getByTestId('upload-share-stats')).not.toBeChecked();
+	await uploadDialog.getByTestId('confirm-car-upload').click();
+
 	const thumbnail = photos.getByRole('img', { name: 'Painted car' });
 	await expect(thumbnail).toBeVisible({ timeout: 30_000 });
 	await expect(photos.getByRole('alert')).toHaveCount(0);
-	await expect(photos.getByTestId('upload-share-gallery')).not.toBeChecked();
-	await expect(photos.getByTestId('upload-share-stats')).not.toBeChecked();
-
-	const saved = photos.locator('li').filter({ has: page.getByRole('img', { name: 'Painted car' }) });
+	await expect(photos.getByTestId('share-status')).toHaveText('Private');
+	await photos.getByTestId('car-photo-thumb').click();
+	const saved = photos.getByTestId('car-photo-editor');
+	await expect(saved).toBeVisible();
 	const everywhere = saved.getByTestId('share-everywhere');
 	await expect(everywhere).not.toBeChecked();
 	await expect(everywhere).toHaveJSProperty('indeterminate', false);
@@ -88,6 +97,8 @@ test('a signed-in player can upload, view, print, and delete a vehicle photo', a
 	await expect(saved.getByTestId('share-gallery')).not.toBeChecked();
 	await expect(everywhere).not.toBeChecked();
 	await expect(everywhere).toHaveJSProperty('indeterminate', false);
+	await saved.getByRole('button', { name: 'Close' }).click();
+	await expect(saved).toHaveCount(0);
 
 	await page.getByRole('button', { name: 'Teams', exact: true }).click();
 	const popupPromise = page.waitForEvent('popup');
@@ -98,7 +109,9 @@ test('a signed-in player can upload, view, print, and delete a vehicle photo', a
 	await expect.poll(async () => printed.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBeTruthy();
 	await popup.close();
 
-	await photos.getByRole('button', { name: 'Remove from this car' }).click();
+	await photos.getByTestId('car-photo-thumb').click();
+	await expect(saved).toBeVisible();
+	await saved.getByRole('button', { name: 'Remove from this car' }).click();
 	await expect.poll(() => messages.some((message) => message.includes('Remove this photo from this car?'))).toBeTruthy();
 	await expect(thumbnail).toHaveCount(0);
 	await expect(photos.getByRole('alert')).toHaveCount(0);

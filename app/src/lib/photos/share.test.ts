@@ -172,7 +172,7 @@ describe('photo sharing', () => {
 
 	it('asks before sharing and explains the gallery on the privacy page', () => {
 		const card = readFileSync(resolve(process.cwd(), 'src/lib/components/VehiclePhotos.svelte'), 'utf8');
-		const choices = readFileSync(resolve(process.cwd(), 'src/lib/components/ShareChoices.svelte'), 'utf8');
+		const choices = readFileSync(resolve(process.cwd(), 'src/lib/components/SharingControl.svelte'), 'utf8');
 		const library = readFileSync(resolve(process.cwd(), 'src/lib/components/LibraryPhotoEditor.svelte'), 'utf8');
 		const page = readFileSync(resolve(process.cwd(), 'src/routes/privacy/+page.svelte'), 'utf8');
 		const admin = readFileSync(resolve(process.cwd(), 'src/routes/admin/gallery/+page.svelte'), 'utf8');
@@ -193,12 +193,19 @@ describe('photo sharing', () => {
 		expect(choices).not.toContain('checked="checked"');
 		expect(choices).not.toContain('{GALLERY_SHARE_COPY}');
 		expect(choices).not.toContain('{STATS_SHARE_COPY}');
-		expect(card).toContain('ShareChoices');
+		expect(card).toContain('SharingControl');
+		expect(card).not.toContain('ShareChoices');
+		expect(card).not.toContain('When this photo is added');
+		expect(card).toContain('Photos on this car');
+		expect(card).toContain('Add a photo');
+		expect(card).toContain('Learn more');
+		expect(card).toContain('href="/privacy#photos"');
 		expect(card).toContain('galleryTestId="upload-share-gallery"');
 		expect(card).toContain('statsTestId="upload-share-stats"');
 		expect(card).toContain('shareEverywhere(false)');
 		expect(card).not.toContain('checked="checked"');
-		expect(library).toContain('ShareChoices');
+		expect(library).toContain('SharingControl');
+		expect(library).not.toContain('ShareChoices');
 		expect(library).toContain('linkTestId="library-share-link"');
 		expect(page).toContain('GALLERY_SHARE_COPY');
 		expect(page).toContain('STATS_SHARE_COPY');
@@ -232,7 +239,8 @@ describe('photo sharing', () => {
 		expect(upload).toContain('data-testid="add-photo-type"');
 		expect(upload).toContain('data-testid="add-photo-team"');
 		expect(upload).toContain('data-testid="add-photo-car"');
-		expect(upload).toContain('ShareChoices');
+		expect(upload).toContain('SharingControl');
+		expect(upload).not.toContain('ShareChoices');
 		expect(upload).toContain('showInGallery: true');
 		expect(upload).toContain('shareVehicleStats: false');
 		expect(upload).toContain('MAX_PHOTOS_PER_ACCOUNT');

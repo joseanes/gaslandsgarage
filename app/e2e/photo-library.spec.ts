@@ -50,6 +50,7 @@ test('a library photo survives deleting one car and is removed when the photo is
 		mimeType: 'image/png',
 		buffer: TINY_PNG
 	});
+	await first.getByTestId('confirm-car-upload').click();
 	await expect(first.getByRole('img', { name: 'Painted car' })).toBeVisible({ timeout: 30_000 });
 
 	await page.getByRole('button', { name: '+ Add Vehicle' }).click();

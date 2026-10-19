@@ -4,10 +4,10 @@
 		SHARE_BUDDIES_LABEL,
 		SHARE_CHOICES_COPY,
 		SHARE_EVERYWHERE_LABEL,
+		SHARE_FLAG_KEYS,
 		SHARE_GALLERY_LABEL,
 		SHARE_LINK_LABEL,
 		SHARE_STATS_LABEL,
-		SHARE_FLAG_KEYS,
 		shareChoiceState,
 		shareEverywhere,
 		type ShareFlagKey,
@@ -66,7 +66,7 @@
 	}
 </script>
 
-<fieldset class="space-y-1" {disabled}>
+<fieldset class="space-y-1" {disabled} data-testid="sharing-control">
 	<legend class="sr-only">Sharing for this photo</legend>
 	<label class="flex items-start gap-2 text-xs font-medium text-stone-800 dark:text-gray-100">
 		<input
