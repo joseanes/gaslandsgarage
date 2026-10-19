@@ -136,7 +136,7 @@ test('an empty team can switch versions without a confirm', async ({ page }) => 
 	await expect(page.getByText('Your team has low attack power')).toHaveCount(0);
 	await page.getByRole('button', { name: 'Show details' }).click();
 	await expect(page.getByText(/counted vehicles/)).toBeVisible();
-	await expect(page.getByText('Attack dice per can.')).toBeVisible();
+	await expect(page.getByText(/Dice per can 0 vs about 0\.3 typical/)).toBeVisible();
 	expect(dialogs).toBe(0);
 });
 

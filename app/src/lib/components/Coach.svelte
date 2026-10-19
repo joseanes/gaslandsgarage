@@ -274,6 +274,11 @@
     {/if}
 
     {#if detailsOpen}
+    {#if rulesVersion === 3}
+        <p class="mt-3 text-sm text-stone-800 dark:text-gray-100" data-testid="coach-counted">
+            Version 3: {countedVehicleTotal(vehicles.map((vehicle) => vehicle.type))} of {maxCountedVehicles(Number(maxCans) || 50)} counted vehicles (the first bike is free, 3 max).
+        </p>
+    {/if}
     <div class="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
         <div class="bg-stone-200 dark:bg-gray-600 p-3 rounded-lg">
             <h4 class="text-sm font-bold text-stone-800 dark:text-white mb-2 pb-2 border-b border-stone-300 dark:border-gray-500">Combat Analysis</h4>
