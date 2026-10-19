@@ -490,7 +490,7 @@
 
             {#if showShareMenu}
           <div
-            class="absolute w-44 bg-black border-2 border-amber-500 shadow-xl rounded-lg overflow-hidden z-20 py-2 share-menu-dropdown"
+            class="absolute w-44 bg-black border-2 border-amber-500 shadow-xl rounded-lg overflow-hidden z-30 py-2 share-menu-dropdown"
             style="box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5); background-color: #000000 !important; top: 40px; left: 0;"
             transition:fade={{ duration: 150 }}
           >
@@ -532,7 +532,7 @@
 
             {#if showSettingsMenu}
             <div
-              class="absolute w-56 bg-black border-2 border-amber-500 shadow-xl rounded-lg overflow-hidden z-20 py-2 settings-menu-dropdown"
+              class="absolute w-56 bg-black border-2 border-amber-500 shadow-xl rounded-lg overflow-hidden z-30 py-2 settings-menu-dropdown"
               style="box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5); background-color: #000000 !important; top: 40px; left: 0;"
               transition:fade={{ duration: 150 }}
             >
@@ -562,7 +562,7 @@
 
             {#if showPlayersMenu}
             <div
-              class="absolute w-44 bg-black border-2 border-amber-500 shadow-xl rounded-lg overflow-hidden z-20 py-2 players-menu-dropdown"
+              class="absolute w-44 bg-black border-2 border-amber-500 shadow-xl rounded-lg overflow-hidden z-30 py-2 players-menu-dropdown"
               style="box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5); background-color: #000000 !important; top: 40px; left: 0;"
               transition:fade={{ duration: 150 }}
             >
@@ -595,7 +595,7 @@
 
             {#if showHelpMenu}
             <div
-              class="absolute w-56 bg-black border-2 border-amber-500 shadow-xl rounded-lg overflow-hidden z-20 py-2 help-menu-dropdown"
+              class="absolute w-56 bg-black border-2 border-amber-500 shadow-xl rounded-lg overflow-hidden z-30 py-2 help-menu-dropdown"
               style="box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5); background-color: #000000 !important; top: 40px; left: 0;"
               transition:fade={{ duration: 150 }}
             >
@@ -1168,7 +1168,17 @@
   margin-bottom: 12px;
   position: sticky;
   top: 0;
+  /* Above the map's stacking context (z-index 0). Dialogs start at 50. */
   z-index: 10;
+}
+
+/* Dropdowns stack inside the sticky bar, above the account button.
+   The account menu uses z-index 50 inside that same bar. */
+:global(.share-menu-dropdown),
+:global(.settings-menu-dropdown),
+:global(.players-menu-dropdown),
+:global(.help-menu-dropdown) {
+  z-index: 30;
 }
 
 /* Removed the menu-container class as we're using the max-w-7xl class directly in the HTML */

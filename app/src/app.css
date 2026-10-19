@@ -33,6 +33,14 @@ textarea::placeholder {
   opacity: 1;
 }
 
+/* Leaflet panes and controls use z-index 200–1000. A stacking context on the
+   map keeps that inside the map, under header menus and dialogs. */
+.leaflet-container {
+  position: relative;
+  z-index: 0;
+  isolation: isolate;
+}
+
 /* Ensure modal padding */
 [role="document"] {
   padding: 1.5rem !important;
