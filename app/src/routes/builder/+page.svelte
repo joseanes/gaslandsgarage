@@ -24,7 +24,7 @@
 	import type { Draft, Validation } from '$lib/validate/model';
 	import { encodeDraft, decodeDraft } from '$lib/draft/io';
 	import { normalizeIncomingDraft, withUpgradePerks } from '$lib/draft/importTeam';
-	import { readHeldDraft, writeHeldDraft } from '$lib/draft/hold';
+	import { heldDraftSignature, readHeldDraft, writeHeldDraft } from '$lib/draft/hold';
 	import { countedVehicleTotal, defaultRulesVersion, maxCountedVehicles, normalizeRulesVersion, type RulesVersion } from '$lib/rules/version';
 	import { resolveById } from '$lib/validate/v3/lookup';
 	import { v3BuildSlots } from '$lib/validate/v3/slots';
@@ -1256,9 +1256,9 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 	let holdReady = false;
 
 	function teamSignature() {
-		return JSON.stringify({
+		return heldDraftSignature({
 			teamName,
-			sponsorId,
+			sponsor: sponsorId,
 			maxCans,
 			rulesVersion,
 			vehicles
