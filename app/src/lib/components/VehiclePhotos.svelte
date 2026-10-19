@@ -12,7 +12,7 @@
 		type ShareFlags
 	} from '$lib/photos/share';
 	import { setPhotoSharing } from '$lib/services/photoShare';
-	import { deleteVehiclePhoto, listMyPhotos, uploadVehiclePhoto, type VehiclePhoto } from '$lib/services/vehiclePhotos';
+	import { attachLibraryPhoto, detachLibraryPhoto, listMyPhotos, photoOnVehicle, uploadVehiclePhoto, type VehiclePhoto } from '$lib/services/vehiclePhotos';
 
 	export let teamId: string | null = null;
 	export let vehicleId: string;
@@ -24,6 +24,8 @@
 	let caption = '';
 	let uploadGallery = false;
 	let uploadStats = false;
+	let showLibrary = false;
+	let library: VehiclePhoto[] = [];
 	let loading = false;
 	let busy = false;
 	let error = '';
@@ -42,7 +44,8 @@
 		error = '';
 		try {
 			const all = await listMyPhotos();
-			photos = all.filter((photo) => photo.teamId === teamId && photo.vehicleId === vehicleId);
+			photos = all.filter((photo) => photoOnVehicle(photo, teamId, vehicleId));
+			library = all.filter((photo) => !photoOnVehicle(photo, teamId, vehicleId));
 		} catch (caught) {
 			error = caught instanceof Error ? caught.message : 'Photos could not be loaded.';
 		} finally {
@@ -82,12 +85,16 @@
 			uploadStats = false;
 			if (showInGallery || shareVehicleStats) {
 				status = 'Saving sharing...';
-				await setPhotoSharing(uploaded.photoId, {
-					showToBuddies: false,
-					showOnShareLink: false,
-					showInGallery,
-					shareVehicleStats
-				});
+				await setPhotoSharing(
+					uploaded.photoId,
+					{
+						showToBuddies: false,
+						showOnShareLink: false,
+						showInGallery,
+						shareVehicleStats
+					},
+					{ teamId, vehicleId }
+				);
 			}
 			status = '';
 			await refresh();
@@ -99,19 +106,69 @@
 		}
 	}
 
+	function shareSource(photo: VehiclePhoto): { teamId: string; vehicleId: string } {
+		const chosen = photo.attachments.find((item) => item.teamId === photo.shareTeamId && item.vehicleId === photo.shareVehicleId);
+		if (chosen) return chosen;
+		const here = photo.attachments.find((item) => item.teamId === teamId && item.vehicleId === vehicleId);
+		return here ?? photo.attachments[0] ?? { teamId, vehicleId };
+	}
+
 	async function remove(photo: VehiclePhoto) {
-		if (busy || playMode) return;
-		if (!confirm('Delete this photo?')) return;
+		if (busy || playMode || !teamId) return;
+		if (!confirm('Remove this photo from this car? It stays in My Photos.')) return;
 		busy = true;
 		error = '';
-		status = 'Deleting photo...';
+		status = 'Removing photo from this car...';
 		try {
-			await deleteVehiclePhoto(photo);
+			await detachLibraryPhoto(photo.photoId, teamId, vehicleId);
 			status = '';
 			await refresh();
 		} catch (caught) {
 			status = '';
-			error = caught instanceof Error ? caught.message : 'That photo could not be deleted.';
+			error = caught instanceof Error ? caught.message : 'That photo could not be removed from this car.';
+		} finally {
+			busy = false;
+		}
+	}
+
+	async function attach(photo: VehiclePhoto) {
+		if (busy || !teamId) return;
+		busy = true;
+		error = '';
+		status = 'Attaching photo...';
+		try {
+			await attachLibraryPhoto(photo.photoId, teamId, vehicleId);
+			showLibrary = false;
+			status = '';
+			await refresh();
+		} catch (caught) {
+			status = '';
+			error = caught instanceof Error ? caught.message : 'That photo could not be attached.';
+		} finally {
+			busy = false;
+		}
+	}
+
+	async function changeShareCar(photo: VehiclePhoto, source: { teamId: string; vehicleId: string }) {
+		busy = true;
+		error = '';
+		status = 'Saving sharing...';
+		try {
+			await setPhotoSharing(
+				photo.photoId,
+				{
+					showToBuddies: photo.showToBuddies,
+					showOnShareLink: photo.showOnShareLink,
+					showInGallery: photo.showInGallery,
+					shareVehicleStats: photo.shareVehicleStats
+				},
+				source
+			);
+			status = '';
+			await refresh();
+		} catch (caught) {
+			status = '';
+			error = caught instanceof Error ? caught.message : 'That sharing choice could not be saved.';
 		} finally {
 			busy = false;
 		}
@@ -138,7 +195,7 @@
 		error = '';
 		status = 'Saving sharing...';
 		try {
-			await setPhotoSharing(photo.photoId, next);
+			await setPhotoSharing(photo.photoId, next, shareSource(photo));
 			status = '';
 			await refresh();
 		} catch (caught) {
@@ -196,12 +253,40 @@
 							<button
 								type="button"
 								class="mt-1 text-xs text-red-800 underline dark:text-red-200"
-								aria-label="Delete photo"
+								aria-label="Remove from this car"
 								disabled={busy}
 								on:click={() => remove(photo)}
 							>
-								Delete
+								Remove from this car
 							</button>
+							{#if photo.attachments.length > 1}
+								<label class="mt-2 block text-xs text-stone-700 dark:text-gray-200">
+									Share this photo from
+									<select
+										class="mt-1 block w-full rounded border border-stone-300 bg-white px-2 py-1 dark:border-gray-600 dark:bg-gray-800"
+										data-testid="share-from-car"
+										value="{shareSource(photo).teamId}/{shareSource(photo).vehicleId}"
+										on:change={(event) => {
+											const value = event.currentTarget instanceof HTMLSelectElement ? event.currentTarget.value : '';
+											const [nextTeam, nextVehicle] = value.split('/');
+											const match = photo.attachments.find((item) => item.teamId === nextTeam && item.vehicleId === nextVehicle);
+											if (!match) return;
+											photo.shareTeamId = match.teamId;
+											photo.shareVehicleId = match.vehicleId;
+											photos = photos;
+											if (photo.showToBuddies || photo.showOnShareLink || photo.showInGallery) {
+												void changeShareCar(photo, match);
+											}
+										}}
+									>
+										{#each photo.attachments as attachment (attachment.teamId + attachment.vehicleId)}
+											<option value="{attachment.teamId}/{attachment.vehicleId}">
+												{attachment.teamId === teamId && attachment.vehicleId === vehicleId ? 'This car' : attachment.vehicleId}
+											</option>
+										{/each}
+									</select>
+								</label>
+							{/if}
 							<fieldset class="mt-2 space-y-1" disabled={busy}>
 								<legend class="sr-only">Sharing for this photo</legend>
 								<label class="flex items-start gap-2 text-xs text-stone-700 dark:text-gray-200">
@@ -315,9 +400,35 @@
 				class="w-full rounded-md border border-stone-300 bg-white px-2 py-2 text-sm text-stone-800 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 sm:max-w-xs"
 			/>
 		</div>
-		<p class="mt-1 text-xs text-stone-500 dark:text-gray-400">Up to 3 photos on this vehicle. They are resized before upload.</p>
+		<p class="mt-1 text-xs text-stone-500 dark:text-gray-400">Up to 3 photos on this vehicle. They are resized before upload. Removing one leaves it in My Photos.</p>
+		<button
+			type="button"
+			class="mt-2 text-sm text-amber-800 underline dark:text-amber-200"
+			data-testid="choose-library-photo"
+			disabled={busy}
+			on:click={() => (showLibrary = !showLibrary)}
+		>
+			Choose from My Photos
+		</button>
+		{#if showLibrary}
+			<ul class="mt-2 space-y-2" data-testid="library-picker">
+				{#if library.length === 0}
+					<li class="text-xs text-stone-600 dark:text-gray-300">No other photos are in My Photos.</li>
+				{/if}
+				{#each library as item (item.photoId)}
+					<li class="flex items-center gap-2">
+						{#if item.url}
+							<img src={item.url} alt="" class="h-12 w-12 rounded object-cover" />
+						{/if}
+						<button type="button" class="text-sm text-amber-800 underline dark:text-amber-200" data-testid="library-pick" disabled={busy} on:click={() => attach(item)}>
+							Use this photo
+						</button>
+					</li>
+				{/each}
+			</ul>
+		{/if}
 	{:else if photos.length >= 3 && !playMode}
-		<p class="mt-3 text-sm text-stone-700 dark:text-gray-200">This vehicle already has 3 photos. Delete one to add another.</p>
+		<p class="mt-3 text-sm text-stone-700 dark:text-gray-200">This vehicle already has 3 photos. Detach one to add another.</p>
 	{/if}
 	{/if}
 </details>

@@ -95,6 +95,25 @@ service firebase.storage {
         && firestore.get(record).data.contentType == request.resource.contentType;
     }
 
+    function reservedLibraryPhoto(uid, fileName) {
+      let photoId = fileName.split('\\.')[0];
+      let record = photoRecord(uid, photoId);
+      return photoId.matches('^[A-Za-z0-9_-]{8,40}$')
+        && firestore.exists(record)
+        && firestore.get(record).data.userId == uid
+        && firestore.get(record).data.path == 'users/' + uid + '/photos-library/' + fileName
+        && firestore.get(record).data.contentType == request.resource.contentType;
+    }
+
+    match /users/{uid}/photos-library/{fileName} {
+      allow read: if owner(uid);
+      allow create, update: if owner(uid)
+        && request.resource.size <= 1572864
+        && (webpFile(fileName) || jpegFile(fileName))
+        && reservedLibraryPhoto(uid, fileName);
+      allow delete: if owner(uid);
+    }
+
     match /users/{uid}/vehicle-photos/{teamId}/{vehicleId}/{fileName} {
       allow read: if owner(uid) && safeIds(teamId, vehicleId);
 

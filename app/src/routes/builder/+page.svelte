@@ -44,7 +44,7 @@ import SettingsMenu from '$lib/components/SettingsMenu.svelte';
 	import { user, signInWithGoogle } from '$lib/firebase';
 import { getUserSettings, saveUserSettings, DEFAULT_SETTINGS, type UserSettings } from '$lib/services/settings';
 import { saveTeam, getUserTeams } from '$lib/services/team';
-	import { deleteVehiclePhotos, photosForPrint } from '$lib/services/vehiclePhotos';
+	import { detachVehiclePhotos, photosForPrint } from '$lib/services/vehiclePhotos';
 	import { listVisibleTeamPhotos, type SharedVehiclePhoto } from '$lib/services/photoShare';
 	import { localPrintPhotos } from '$lib/photos/printPhotos';
 	import { TEAM_ID_PATTERN } from '$lib/photos/model';
@@ -535,9 +535,9 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		// Update draft to trigger automatic validation
 		updateCurrentDraft();
 		if (photoTeamId) {
-			void deleteVehiclePhotos(photoTeamId, id).catch((error) => {
+			void detachVehiclePhotos(photoTeamId, id).catch((error) => {
 				console.error('[removeVehicle] photos', error);
-				alert('The vehicle was removed. Its photos could not be deleted. Delete the team, or your account, to remove them.');
+				alert('The vehicle was removed. Its photos could not be detached. They are still in My Photos.');
 			});
 		}
 	}

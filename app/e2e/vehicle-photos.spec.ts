@@ -68,8 +68,8 @@ test('a signed-in player can upload, view, print, and delete a vehicle photo', a
 	await expect.poll(async () => printed.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBeTruthy();
 	await popup.close();
 
-	await photos.getByRole('button', { name: 'Delete photo' }).click();
-	await expect.poll(() => messages.some((message) => message.includes('Delete this photo?'))).toBeTruthy();
+	await photos.getByRole('button', { name: 'Remove from this car' }).click();
+	await expect.poll(() => messages.some((message) => message.includes('Remove this photo from this car?'))).toBeTruthy();
 	await expect(thumbnail).toHaveCount(0);
 	await expect(photos.getByRole('alert')).toHaveCount(0);
 });
