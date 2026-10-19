@@ -23,6 +23,16 @@ function emulatorLog() {
 	return fs.existsSync(logFile) ? fs.readFileSync(logFile, 'utf8').slice(-4000) : '';
 }
 
+async function waitForPortsClosed() {
+	const started = Date.now();
+	while (Date.now() - started < 30_000) {
+		const open = await Promise.all([canConnect(9099), canConnect(8080), canConnect(5001), canConnect(9199)]);
+		if (open.every((up) => !up)) return;
+		await new Promise((resolve) => setTimeout(resolve, 250));
+	}
+	throw new Error('Firebase emulators are still shutting down. Stop them, then run the UI tests again.');
+}
+
 async function waitForEmulators(child: ReturnType<typeof spawn>) {
 	let exitCode: number | null = null;
 	child.on('exit', (code) => {
@@ -30,7 +40,13 @@ async function waitForEmulators(child: ReturnType<typeof spawn>) {
 	});
 	const started = Date.now();
 	while (Date.now() - started < 240_000) {
-		if ((await canConnect(9099)) && (await canConnect(8080)) && (await canConnect(5001)) && emulatorLog().includes('All emulators ready')) {
+		if (
+			(await canConnect(9099)) &&
+			(await canConnect(8080)) &&
+			(await canConnect(5001)) &&
+			(await canConnect(9199)) &&
+			emulatorLog().includes('All emulators ready')
+		) {
 			return;
 		}
 		if (exitCode !== null) {
@@ -42,11 +58,13 @@ async function waitForEmulators(child: ReturnType<typeof spawn>) {
 }
 
 export default async function globalSetup() {
+	if (emulatorLog().includes('Shutting down emulators')) await waitForPortsClosed();
 	const authUp = await canConnect(9099);
 	const firestoreUp = await canConnect(8080);
 	const functionsUp = await canConnect(5001);
-	if (authUp && firestoreUp && functionsUp) return;
-	if (authUp || firestoreUp || functionsUp) {
+	const storageUp = await canConnect(9199);
+	if (authUp && firestoreUp && functionsUp && storageUp) return;
+	if (authUp || firestoreUp || functionsUp || storageUp) {
 		throw new Error('Firebase emulators are only partly running. Stop them, then run the UI tests again.');
 	}
 
@@ -70,7 +88,7 @@ export default async function globalSetup() {
 			'firebase-tools@15.34.0',
 			'emulators:start',
 			'--only',
-			'auth,firestore,functions',
+			'auth,firestore,functions,storage',
 			'--project',
 			'gaslandsgarage-74ce6'
 		],

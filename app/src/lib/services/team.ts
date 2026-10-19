@@ -1,4 +1,5 @@
 import { auth, db, user } from '../firebase';
+import { deleteTeamPhotos } from './vehiclePhotos';
 export type TeamSavePayload = {
   teamName?: string;
   sponsor?: string;
@@ -257,6 +258,9 @@ export async function deleteTeam(teamId: string): Promise<DeleteTeamResult> {
       return { success: false, error: "Unauthorized access to team" };
     }
     
+    // Photos first, so a failed photo delete leaves the team to retry.
+    await deleteTeamPhotos(teamId);
+
     // Delete the team document
     await deleteDoc(teamDocRef);
     

@@ -106,6 +106,33 @@ test('every vehicle type still draws when gear is past slot and can limits', asy
 	expect(errors.filter((message) => /effect_update_depth_exceeded|could not be drawn/i.test(message))).toEqual([]);
 });
 
+test('a second weapon on a new car still draws', async ({ page }) => {
+	const errors: string[] = [];
+	page.on('pageerror', (error) => errors.push(error.message));
+	page.on('dialog', (dialog) => dialog.accept());
+	await page.goto('/builder');
+	await page.getByRole('button', { name: '+ Add Vehicle' }).click();
+	await page.getByRole('button', { name: 'Expand vehicle' }).click();
+	const addWeapon = page.getByLabel('Add a weapon');
+	const facings = page.getByLabel('Weapon facing direction');
+
+	await addWeapon.selectOption('mg');
+	await expect(facings).toHaveCount(1);
+	await expect(page.getByText('could not be drawn')).toHaveCount(0);
+
+	await addWeapon.selectOption('hmg');
+	await expect(facings).toHaveCount(2);
+	await expect(page.getByText('could not be drawn')).toHaveCount(0);
+	await expect(page.getByRole('textbox', { name: 'Vehicle Name' })).toBeVisible();
+
+	await addWeapon.selectOption('handgun');
+	await expect(facings).toHaveCount(3);
+	await expect(page.getByText('could not be drawn')).toHaveCount(0);
+	await expect(page.getByTestId('slot-warning')).toHaveCount(0);
+
+	expect(errors.filter((message) => /effect_update_depth_exceeded|each_key_duplicate/i.test(message))).toEqual([]);
+});
+
 test('a turret facing from the weapon list still draws', async ({ page }) => {
 	const errors: string[] = [];
 	page.on('pageerror', (error) => errors.push(error.message));

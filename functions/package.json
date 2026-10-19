@@ -8,7 +8,7 @@
   "scripts": {
     "build": "esbuild src/index.ts --bundle --platform=node --target=node22 --format=cjs --outfile=lib/index.js --packages=external --sourcemap",
     "check": "tsc --noEmit",
-    "test": "METADATA_SERVER_DETECTION=none pnpm --config.engine-strict=false dlx firebase-tools@13.29.1 emulators:exec --only auth,firestore --project demo-gaslands-functions --config ../firebase.json \"pnpm exec vitest run\""
+    "test": "METADATA_SERVER_DETECTION=none pnpm --config.engine-strict=false dlx firebase-tools@13.29.1 emulators:exec --only auth,firestore,storage --project demo-gaslands-functions --config ../firebase.json \"pnpm exec vitest run\""
   },
   "dependencies": {
     "firebase-admin": "14.5.0",

@@ -109,9 +109,9 @@ export class GarageStack extends cdk.Stack {
       "form-action 'self'",
       "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://www.gstatic.com https://maps.googleapis.com https://maps.gstatic.com https://apis.google.com",
       "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: blob: https://tile.openstreetmap.org https://*.basemaps.cartocdn.com https://www.google-analytics.com https://www.googletagmanager.com https://maps.gstatic.com https://maps.googleapis.com https://mirrors.creativecommons.org",
+      "img-src 'self' data: blob: https://firebasestorage.googleapis.com https://tile.openstreetmap.org https://*.basemaps.cartocdn.com https://www.google-analytics.com https://www.googletagmanager.com https://maps.gstatic.com https://maps.googleapis.com https://mirrors.creativecommons.org",
       "font-src 'self' data:",
-      "connect-src 'self' https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com https://nominatim.openstreetmap.org https://maps.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://firebase.googleapis.com https://firebaseinstallations.googleapis.com https://www.googleapis.com https://gaslandsgarage-74ce6.firebaseapp.com https://us-central1-gaslandsgarage-74ce6.cloudfunctions.net wss://*.firebaseio.com",
+      "connect-src 'self' https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com https://nominatim.openstreetmap.org https://maps.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://firebasestorage.googleapis.com https://firebase.googleapis.com https://firebaseinstallations.googleapis.com https://www.googleapis.com https://gaslandsgarage-74ce6.firebaseapp.com https://us-central1-gaslandsgarage-74ce6.cloudfunctions.net wss://*.firebaseio.com",
       "frame-src 'self' https://gaslandsgarage-74ce6.firebaseapp.com https://accounts.google.com https://apis.google.com https://www.youtube.com https://www.youtube-nocookie.com",
       "worker-src 'self' blob:",
       "manifest-src 'self'"

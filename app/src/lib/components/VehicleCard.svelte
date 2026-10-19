@@ -2,6 +2,7 @@
     import { nanoid } from 'nanoid';
     import { createEventDispatcher } from 'svelte';
     import BuildHeader from './BuildHeader.svelte';
+    import VehiclePhotos from './VehiclePhotos.svelte';
     import { loadWeaponSpecialRules } from '$lib/rules/loadRules';
     import { perkCost } from '$lib/validate/calc';
     import Tooltip from './Tooltip.svelte';
@@ -40,6 +41,9 @@
     
     // Props
     export let vehicle: TeamVehicle;
+    export let teamId: string | null = null;
+    export let sharedPhotos: { photoId: string; url: string; caption: string; vehicleType: string }[] = [];
+    export let photoViewOnly = false;
 
     // A loaded vehicle often has no gear arrays or facings map. Repair those
     // before cost and `{#each}` run, or the card boundary replaces the vehicle.
@@ -1536,6 +1540,13 @@
                 </ul>
             </div>
         {/if}
+
+        <svelte:boundary>
+            <VehiclePhotos {teamId} vehicleId={vehicle.id} {playMode} viewOnly={photoViewOnly} viewPhotos={sharedPhotos} />
+            {#snippet failed()}
+                <p class="mt-4 text-sm text-stone-600 dark:text-gray-300" data-testid="vehicle-photos-error">Photos could not be shown on this vehicle.</p>
+            {/snippet}
+        </svelte:boundary>
     </div>
 </div>
 

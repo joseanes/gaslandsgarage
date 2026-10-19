@@ -56,7 +56,7 @@ jobs:
       - name: Typecheck admin bootstrap
         run: pnpm exec tsc -p scripts/tsconfig.json
 
-      - name: Firestore rules tests
+      - name: Firestore and Storage rules tests
         working-directory: app
         run: pnpm test:rules
 

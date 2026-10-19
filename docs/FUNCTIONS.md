@@ -9,8 +9,15 @@ The functions are 2nd gen, Node.js 22, TypeScript, in `functions/`. Node.js 20 i
 | `publishUsageStats` | Cloud Scheduler `15 6 * * *` in `America/New_York` | Writes `stats/public` and upserts `users/{uid}`. Same job as `stats/job.ts`. |
 | `syncAuthDisabled` | `adminUsers/{uid}` write | Sets Firebase Auth `disabled` to match the document. On disable, revokes refresh tokens. Does not delete the user. |
 | `queueGameContactEmail` | `gameContacts/{contactId}` create | Queues one Trigger Email document when the recipient opted in. |
-| `exportMyData` | Callable, signed-in user | JSON of that account's Firestore data. |
-| `deleteMyAccount` | Callable, signed-in user | Deletes that account. Requires a fresh sign-in and the confirmation `DELETE`. |
+| `exportMyData` | Callable, signed-in user | JSON of that account's Firestore data, including a list of painted-car photos. |
+| `deleteMyAccount` | Callable, signed-in user | Deletes that account, including every Storage object under `users/{uid}/`, the photo metadata, and any shared photo copies. Requires a fresh sign-in and the confirmation `DELETE`. |
+| `reserveVehiclePhoto` | Callable, signed-in user | Reserves one painted-car photo for a vehicle on the caller's saved team. Enforces 3 photos per vehicle and 100 per account. The browser uploads the file after this returns. |
+| `setPhotoSharing` | Callable, signed-in user | Turns sharing on or off for one of the caller's photos, including the Gallery and the vehicle stats snapshot. A shared photo is copied to `shared-photos/{photoId}`. The public document has no account id. Stats are copied from the saved team only when the player asked to share them. |
+| `listVisibleTeamPhotos` | Callable, public | Lists photos a player chose to show on a team share link, or to an accepted buddy. The response has no account id and no download token. |
+| `reportPhoto` | Callable, signed-in user | Records one report per player. Ten reports an hour. Three different reports hide the gallery photo until an administrator reviews it. |
+| `moderateGallery` | Callable, administrator | Lists shared photos, hides or removes one, approves one, or sets the gallery approval kill switch. |
+| `refreshSharedVehicleStats` | `teams/{teamId}` write | Refreshes the public stats snapshot when a saved vehicle changes. Removes that snapshot when the vehicle is gone. |
+| `removeSharedPhotoOnDelete` | `users/{uid}/photos/{photoId}` delete | Removes the shared copy when the private photo document is deleted. |
 | `syncNewsletterToken` | `userSettings/{uid}` write | When `newsletterOptIn` is true, stores one random unsubscribe token. Does not send mail. |
 | `unsubscribeNewsletter` | Public HTTPS `GET` or `POST` | GET shows a confirm page and changes nothing. POST with the token sets `newsletterOptIn` to false. An RFC 8058 one-click POST is accepted on the same URL. No sign-in. |
 | `getBuddyInvite` | Callable, signed-in user | Returns or creates that account's invite code, and whether email invites are on. |
@@ -25,7 +32,7 @@ The functions are 2nd gen, Node.js 22, TypeScript, in `functions/`. Node.js 20 i
 | `removeBuddy` | Callable, signed-in user | Deletes the accepted link. Access ends immediately. |
 | `unblockBuddy` | Callable, signed-in user | Removes a block the caller created. |
 
-Region is `us-central1`. `publishUsageStats` uses 256MiB, a 300 second timeout, and one instance. `syncAuthDisabled`, `queueGameContactEmail`, and `syncNewsletterToken` retry on failure. `syncAuthDisabled` and `queueGameContactEmail` use the platform defaults. `syncNewsletterToken` uses the platform memory and timeout. `exportMyData`, `deleteMyAccount`, and the gaming-buddy callables use 256MiB, a 60 second timeout, and at most 10 instances. `unsubscribeNewsletter` and `suppressBuddyEmailInvites` use 256MiB, a 30 second timeout, at most 10 instances, and `invoker: public` so the email link works without a Google sign-in. None keep a warm instance.
+Region is `us-central1`. `publishUsageStats` uses 256MiB, a 300 second timeout, and one instance. `syncAuthDisabled`, `queueGameContactEmail`, and `syncNewsletterToken` retry on failure. `syncAuthDisabled` and `queueGameContactEmail` use the platform defaults. `syncNewsletterToken` uses the platform memory and timeout. `exportMyData`, `deleteMyAccount`, `reserveVehiclePhoto`, the photo-sharing callables, and the gaming-buddy callables use 256MiB, a 60 second timeout, and at most 10 instances. `listVisibleTeamPhotos` also sets `invoker: public` so a team share link can list photos without a sign-in. `unsubscribeNewsletter` and `suppressBuddyEmailInvites` use 256MiB, a 30 second timeout, at most 10 instances, and `invoker: public` so the email link works without a Google sign-in. None keep a warm instance.
 
 `getBuddyInvite`, `sendBuddyInvite`, `acceptBuddyEmailInvite`, `exportMyData`, and `deleteMyAccount` declare the Twilio secrets. The other buddy callables do not. Email sending stays off until both secrets look like real Twilio credentials (an Account SID starting with `AC`, and an auth token). The placeholder value `disabled` keeps the feature off. The buddies page still shows the copyable invite link and says email invites are coming soon.
 
@@ -93,15 +100,18 @@ Point the extension at the `mail` collection. Leave its sender address in the ex
 
 `deleteMyAccount` checks that `confirmation` is exactly `DELETE` and that the ID token `auth_time` is less than five minutes old. It then, in order:
 
-1. Removes this account's key from `playerMapBoard/public` and `openToGamesBoard/public` in one transaction.
-2. Deletes the account's documents, including teams, the legacy `users/{uid}/teams` subcollection, and `newsletterTokens/{uid}`.
-3. Anonymizes this account's side of `gameContacts` and `messages`. The other person's text stays. Names become `Deleted player`. Contact-form messages lose their email and body, and `userId` becomes `deleted`.
-4. Deletes queued `mail` documents for those requests and any mail addressed to this account.
-5. Deletes buddy links, requests, blocks, the invite, the findable-name card, `buddyRate/{uid}`, email invites that account sent, and opt-out link tokens it created. When Twilio is configured, it also deletes `buddyEmailRate` for the salted hash of that account's own address. It does not delete `buddyEmailSuppress`. That opt-out stays after deletion whether or not Twilio is configured. A placeholder secret of `disabled` skips only the rate-hash lookup. The invitee's address is not stored.
-6. Deletes `privacyRate/{uid}`.
-7. Deletes the Auth user last. A missing Auth user is success, so a retry can finish leftover documents.
+1. Writes a deletion marker and revokes refresh tokens, so a still-valid ID token cannot recreate data.
+2. Removes this account's key from `playerMapBoard/public` and `openToGamesBoard/public` in one transaction.
+3. Deletes the account's documents, including teams, the legacy `users/{uid}/teams` subcollection, and `newsletterTokens/{uid}`.
+4. Anonymizes this account's side of `gameContacts` and `messages`. The other person's text stays. Names become `Deleted player`. Contact-form messages lose their email and body, and `userId` becomes `deleted`. The request document is removed only when both players are gone.
+5. Deletes queued `mail` documents for those requests and any mail addressed to this account.
+6. Deletes buddy links, requests, blocks, the invite, the findable-name card, `buddyRate/{uid}`, email invites that account sent, and opt-out link tokens it created. When Twilio is configured, it also deletes `buddyEmailRate` for the salted hash of that account's own address. It does not delete `buddyEmailSuppress`. That opt-out stays after deletion whether or not Twilio is configured. A placeholder secret of `disabled` skips only the rate-hash lookup. The invitee's address is not stored.
+7. Deletes `privacyRate/{uid}` and `gameContactEmailRate/{uid}`.
+8. Deletes painted-car photos: shared copies and their documents, every Storage object under `users/{uid}/`, and the photo metadata.
+9. Deletes the Auth user. A missing Auth user is success, so a retry can finish leftover documents.
+10. Scans again for map keys and documents created while the account was being deleted.
 
-Logs are `privacy <event> ref=<sha256 prefix>`. They do not include the uid, email, or display name. Deleting `adminUsers/{uid}` makes `syncAuthDisabled` see a deleted document and leave Auth alone. The Auth delete is only step 7.
+Logs are `privacy <event> ref=<sha256 prefix>`. They do not include the uid, email, or display name. Deleting `adminUsers/{uid}` makes `syncAuthDisabled` see a deleted document and leave Auth alone. The Auth delete is only step 9.
 
 The browser calls these from Settings → General Settings after Google sign-in. Download does not ask for a second sign-in. Delete opens the Google prompt again, then calls the function. See `docs/PRIVACY-OPS.md` for requests, retention, and the breach checklist.
 

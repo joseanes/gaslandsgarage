@@ -72,7 +72,7 @@ test('New is first in the Teams menu and is the way to discard a draft', async (
 		.locator('.share-menu-dropdown')
 		.getByRole('button')
 		.evaluateAll((items) => items.map((item) => item.textContent?.replace(/\s+/g, ' ').trim()));
-	expect(labels).toEqual(['New', 'Save/Load Team', 'Print Team', 'Share Team', 'Import Build']);
+	expect(labels).toEqual(['New', 'Save/Load Team', 'Print Team', 'Print with photos', 'Share Team', 'Import Build']);
 
 	page.once('dialog', (dialog) => dialog.dismiss());
 	await page.getByRole('button', { name: 'New', exact: true }).click();

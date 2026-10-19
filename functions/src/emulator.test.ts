@@ -423,6 +423,7 @@ describe('account privacy', () => {
 			'buddyEmailSuppress',
 			'buddyInvites',
 			'buddyRequests',
+			'config',
 			'gameContactEmailRate',
 			'gameContacts',
         'mapPlacements',
@@ -430,12 +431,16 @@ describe('account privacy', () => {
         'newsletterTokens',
         'openToGames',
         'openToGamesBoard',
+        'photoReportRate',
+        'photoReports',
         'playerMap',
         'playerMapBoard',
         'playerMapOwners',
         'playerMapPrivate',
         'playerProfiles',
         'roles',
+        'sharedPhotoPrivate',
+        'sharedPhotos',
         'stats',
         'teams',
         'userSettings',
@@ -455,7 +460,10 @@ describe('account privacy', () => {
       const data = exported.data as Record<string, unknown>;
       expect(exported.uid).toBe(ada);
       expect(exported.auth).toMatchObject({ email: 'ada@example.com', displayName: 'Ada Lovelace', disabled: false });
-      expect(exported.omitted).toEqual({ 'stats/public': OMITTED_NOTE });
+      expect(exported.omitted).toEqual({
+        'stats/public': OMITTED_NOTE,
+        'config/gallery': 'Site-wide gallery setting. Deleting an account does not change it.'
+      });
       expect(JSON.stringify(exported)).not.toContain('Keepers');
       expect(JSON.stringify(exported)).not.toContain('grace@example.com');
       expect(JSON.stringify(exported)).not.toContain('Stay');
@@ -612,7 +620,7 @@ describe('account privacy', () => {
       expect(lines.join('\n')).not.toContain('Grace');
 
       const again = await eraseAccount(ada);
-			expect(again).toEqual(['marker', 'revoke', 'boards', 'documents', 'anonymize', 'mail', 'buddies', 'rate', 'auth', 'rescan']);
+      expect(again).toEqual(['marker', 'revoke', 'boards', 'documents', 'anonymize', 'mail', 'buddies', 'rate', 'photos', 'auth', 'rescan']);
       expect((await db.doc(`accountControl/${ada}`).get()).get('deleted')).toBe(true);
       expect((await auth.getUser(grace)).email).toBe('grace@example.com');
       expect((await db.doc(`gameContacts/${grace}_${ada}`).get()).get('message')).toBe('Rematch?');

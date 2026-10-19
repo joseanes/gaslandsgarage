@@ -90,6 +90,7 @@ describe('function source', () => {
     const privacy = readFileSync(new URL('./accountPrivacy.ts', import.meta.url), 'utf8');
     expect(privacy).toMatch(/\.deleteUser\(/);
     expect(privacy.indexOf("steps.push('auth')")).toBeGreaterThan(privacy.indexOf("steps.push('anonymize')"));
+    expect(privacy.indexOf("steps.push('auth')")).toBeGreaterThan(privacy.indexOf("steps.push('photos')"));
     expect(privacy).not.toMatch(/request\.data\.uid/);
     expect(privacy).toMatch(/request\.auth\?\.uid/);
   });
