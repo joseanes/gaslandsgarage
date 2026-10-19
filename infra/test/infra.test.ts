@@ -73,6 +73,8 @@ describe('CDK v2 infra', () => {
 		expect(headers).toContain('tile.openstreetmap.org');
 		expect(headers).toContain('googletagmanager.com');
 		expect(headers).toContain('maps.googleapis.com');
+		// Firebase callable functions (buddies, account privacy, map placement).
+		expect(headers).toContain('https://us-central1-gaslandsgarage-74ce6.cloudfunctions.net');
 		expect(headers).toContain('DENY');
 		expect(headers).toContain('strict-origin-when-cross-origin');
 		expect(headers).toContain('ContentTypeOptions');
