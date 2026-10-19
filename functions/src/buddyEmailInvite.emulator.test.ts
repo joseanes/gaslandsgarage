@@ -118,6 +118,8 @@ describe('buddy email invites', () => {
 			expect(payload).not.toContain('Allow other players');
 			expect(payload).not.toContain('https://evil.test');
 			expect(payload).toContain('&lt;b&gt;soon&lt;/b&gt;');
+			expect(payload).toContain('A Gaslands Garage player invited you');
+			expect(payload).not.toContain('Ada invited');
 			const hash = emailAddressHash('friend@example.com', TOKEN);
 			const invites = await getFirestore().collection('buddyEmailInvites').get();
 			expect(invites.size).toBe(1);
@@ -133,6 +135,41 @@ describe('buddy email invites', () => {
 		} finally {
 			spy.mockRestore();
 		}
+	});
+
+	it('sends once when two players invite the same address at the same time', async () => {
+		await player('ada', 'ada@example.com', 'Ada');
+		await player('grace', 'grace@example.com', 'Grace');
+		let started = 0;
+		let releaseFetch = () => {};
+		const hold = new Promise<void>((resolve) => {
+			releaseFetch = resolve;
+		});
+		const posted: string[] = [];
+		const fetchImpl: typeof fetch = async (input) => {
+			started += 1;
+			posted.push(String(input));
+			await hold;
+			return new Response(JSON.stringify({ operationId: 'op_test' }), {
+				status: 202,
+				headers: { 'content-type': 'application/json' }
+			});
+		};
+		const settled: Array<{ status: 'sent' } | undefined> = [undefined, undefined];
+		const sends = (['ada', 'grace'] as const).map((uid, index) =>
+			handleSendBuddyInvite(uid, { email: 'friend@example.com' }, runtime(fetchImpl, now)).then((result) => {
+				settled[index] = result;
+				return result;
+			})
+		);
+		await expect.poll(() => started, { timeout: 5_000 }).toBe(1);
+		await expect.poll(() => settled.filter(Boolean), { timeout: 5_000 }).toHaveLength(1);
+		expect(settled.find(Boolean)).toEqual({ status: 'sent' });
+		expect(started).toBe(1);
+		releaseFetch();
+		expect(await Promise.all(sends)).toEqual([{ status: 'sent' }, { status: 'sent' }]);
+		expect(posted).toHaveLength(1);
+		expect((await getFirestore().collection('buddyEmailInvites').get()).size).toBe(1);
 	});
 
 	it('returns the same sent status for a new address and an existing account', async () => {
@@ -230,6 +267,12 @@ describe('buddy email invites', () => {
 			).rejects.toMatchObject({ code: 'internal' });
 			expect(lines.join('\n')).toContain('failed network');
 			expect((await getFirestore().collection('buddyEmailRate').get()).empty).toBe(true);
+			const retry = mailCapture();
+			await handleSendBuddyInvite('ada', { email: 'friend@example.com' }, runtime(retry.fetchImpl, now + 2));
+			expect(retry.posted).toHaveLength(1);
+			expect((await getFirestore().doc(`buddyEmailRate/${emailAddressHash('friend@example.com', TOKEN)}`).get()).get('state')).toBe(
+				'sent'
+			);
 		} finally {
 			spy.mockRestore();
 		}
@@ -243,23 +286,35 @@ describe('buddy email invites', () => {
 		await handleSendBuddyInvite('ada', { email: 'friend@example.com' }, runtime(capture.fetchImpl));
 		const { accept } = linksFrom(capture.posted[0]);
 		await expect(
-			handleAcceptBuddyEmailInvite('other', { token: accept }, { authToken: TOKEN, nowMs: now + 1000 })
+			handleAcceptBuddyEmailInvite('friend', { token: accept }, { authToken: TOKEN, emailVerified: false, nowMs: now + 500 })
+		).rejects.toThrow(/Verify your email address/);
+		await getAuth().updateUser('friend', { emailVerified: true });
+		await expect(
+			handleAcceptBuddyEmailInvite('friend', { token: accept }, { authToken: TOKEN, emailVerified: false, nowMs: now + 750 })
+		).rejects.toThrow(/Verify your email address/);
+		expect((await getFirestore().collection('buddyEmailInvites').get()).docs[0].get('usedAt')).toBeNull();
+		await expect(
+			handleAcceptBuddyEmailInvite('other', { token: accept }, { authToken: TOKEN, emailVerified: true, nowMs: now + 1000 })
 		).rejects.toThrow(/Sign in with the email address/);
 		const invite = (await getFirestore().collection('buddyEmailInvites').get()).docs[0];
 		expect(invite.get('usedAt')).toBeNull();
 		expect(JSON.stringify(invite.data())).not.toContain('friend@example.com');
 
-		const accepted = await handleAcceptBuddyEmailInvite('friend', { token: accept }, { authToken: TOKEN, nowMs: now + 2000 });
+		const accepted = await handleAcceptBuddyEmailInvite(
+			'friend',
+			{ token: accept },
+			{ authToken: TOKEN, emailVerified: true, nowMs: now + 2000 }
+		);
 		expect(accepted).toEqual({ status: 'accepted' });
 		expect((await getFirestore().doc('buddies/ada~friend').get()).get('status')).toBe('accepted');
 		expect((await getFirestore().collection('buddyEmailInvites').get()).docs[0].get('usedAt')).toBeTruthy();
 		await expect(
-			handleAcceptBuddyEmailInvite('friend', { token: accept }, { authToken: TOKEN, nowMs: now + 3000 })
+			handleAcceptBuddyEmailInvite('friend', { token: accept }, { authToken: TOKEN, emailVerified: true, nowMs: now + 3000 })
 		).rejects.toMatchObject({ code: 'failed-precondition' });
 
 		const tampered = `${accept.slice(0, -1)}${accept.endsWith('a') ? 'b' : 'a'}`;
 		await expect(
-			handleAcceptBuddyEmailInvite('friend', { token: tampered }, { authToken: TOKEN, nowMs: now + 4000 })
+			handleAcceptBuddyEmailInvite('friend', { token: tampered }, { authToken: TOKEN, emailVerified: true, nowMs: now + 4000 })
 		).rejects.toMatchObject({ code: 'not-found' });
 	});
 
@@ -273,7 +328,7 @@ describe('buddy email invites', () => {
 			handleAcceptBuddyEmailInvite(
 				'friend',
 				{ token: accept },
-				{ authToken: TOKEN, nowMs: now + BUDDY_EMAIL_INVITE_TTL_MS }
+				{ authToken: TOKEN, emailVerified: true, nowMs: now + BUDDY_EMAIL_INVITE_TTL_MS }
 			)
 		).rejects.toMatchObject({ code: 'not-found' });
 		expect((await getFirestore().collection('buddyEmailInvites').get()).docs[0].get('usedAt')).toBeNull();
@@ -350,7 +405,7 @@ describe('buddy email invites', () => {
 			expect((await db.collection('buddyEmailOptOuts').where('fromUid', '==', 'ada').get()).empty).toBe(true);
 			expect((await db.doc('buddyEmailInvites/to-ada').get()).exists).toBe(false);
 			expect((await db.doc(`buddyEmailRate/${adaHash}`).get()).exists).toBe(false);
-			expect((await db.doc(`buddyEmailSuppress/${adaHash}`).get()).exists).toBe(false);
+			expect((await db.doc(`buddyEmailSuppress/${adaHash}`).get()).exists).toBe(true);
 			expect((await db.doc(`buddyEmailSuppress/${otherHash}`).get()).exists).toBe(true);
 			expect((await db.doc(`buddyEmailRate/${emailAddressHash('friend@example.com', TOKEN)}`).get()).exists).toBe(true);
 		} finally {

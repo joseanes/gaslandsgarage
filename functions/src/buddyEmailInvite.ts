@@ -65,32 +65,45 @@ function newId(): string {
 	return randomBytes(16).toString('hex');
 }
 
-async function consumeSenderRate(uid: string, nowMs: number): Promise<void> {
-	const ref = getFirestore().doc(`${BUDDY_COLLECTIONS.rate}/${uid}`);
-	const allowed = await getFirestore().runTransaction(async (tx) => {
-		const snap = await tx.get(ref);
+const VERIFY_EMAIL =
+	'Verify your email address before accepting this invite. Google sign-in is already verified.';
+
+/**
+ * Claims the sender's daily slot and, when a message will actually be sent,
+ * the address cooldown. Both writes are in one transaction, so two senders
+ * cannot both pass the 7-day check. A suppressed or cooling address still
+ * consumes a sender slot and returns "skip" so the caller can answer "sent".
+ */
+async function reserveInvite(uid: string, hash: string, nowMs: number): Promise<'limited' | 'skip' | 'claimed'> {
+	const db = getFirestore();
+	const rateRef = db.doc(`${BUDDY_COLLECTIONS.rate}/${uid}`);
+	const suppressRef = db.doc(`${BUDDY_COLLECTIONS.emailSuppress}/${hash}`);
+	const coolRef = db.doc(`${BUDDY_COLLECTIONS.emailRate}/${hash}`);
+	return db.runTransaction(async (tx) => {
+		const [rateSnap, suppressSnap, coolSnap] = await Promise.all([tx.get(rateRef), tx.get(suppressRef), tx.get(coolRef)]);
 		const next = rollingWindow(
-			snap.get('emailInviteAt'),
+			rateSnap.get('emailInviteAt'),
 			nowMs,
 			BUDDY_EMAIL_INVITES_PER_DAY,
 			BUDDY_EMAIL_INVITE_WINDOW_MS
 		);
-		if (!next.allowed) return false;
-		tx.set(ref, { emailInviteAt: next.stamps }, { merge: true });
-		return true;
+		if (!next.allowed) return 'limited';
+		tx.set(rateRef, { emailInviteAt: next.stamps }, { merge: true });
+		if (suppressSnap.exists) return 'skip';
+		const sentAt = coolSnap.get('sentAt');
+		if (typeof sentAt === 'number' && nowMs - sentAt < BUDDY_EMAIL_RECIPIENT_WINDOW_MS) return 'skip';
+		tx.set(coolRef, { sentAt: nowMs, state: 'reserved' });
+		return 'claimed';
 	});
-	if (!allowed) throw new HttpsError('resource-exhausted', 'You can send 10 email invites a day. Try again tomorrow.');
 }
 
-async function suppressed(hash: string): Promise<boolean> {
-	const snap = await getFirestore().doc(`${BUDDY_COLLECTIONS.emailSuppress}/${hash}`).get();
-	return snap.exists;
-}
-
-async function recipientCoolingDown(hash: string, nowMs: number): Promise<boolean> {
-	const snap = await getFirestore().doc(`${BUDDY_COLLECTIONS.emailRate}/${hash}`).get();
-	const sentAt = snap.get('sentAt');
-	return typeof sentAt === 'number' && nowMs - sentAt < BUDDY_EMAIL_RECIPIENT_WINDOW_MS;
+/** Drops a reservation after Twilio did not accept the message. A finished send is left in place. */
+async function releaseReservation(hash: string, nowMs: number): Promise<void> {
+	const ref = getFirestore().doc(`${BUDDY_COLLECTIONS.emailRate}/${hash}`);
+	await getFirestore().runTransaction(async (tx) => {
+		const snap = await tx.get(ref);
+		if (snap.get('state') === 'reserved' && snap.get('sentAt') === nowMs) tx.delete(ref);
+	});
 }
 
 export async function handleSendBuddyInvite(
@@ -113,8 +126,11 @@ export async function handleSendBuddyInvite(
 	if (own && emailAddressHash(own, config.authToken) === hash) {
 		throw new HttpsError('failed-precondition', 'You cannot invite yourself.');
 	}
-	await consumeSenderRate(caller, nowMs);
-	if ((await suppressed(hash)) || (await recipientCoolingDown(hash, nowMs))) return SENT;
+	const slot = await reserveInvite(caller, hash, nowMs);
+	if (slot === 'limited') {
+		throw new HttpsError('resource-exhausted', 'You can send 10 email invites a day. Try again tomorrow.');
+	}
+	if (slot === 'skip') return SENT;
 
 	const jti = newId();
 	const exp = nowMs + BUDDY_EMAIL_INVITE_TTL_MS;
@@ -141,10 +157,12 @@ export async function handleSendBuddyInvite(
 		);
 	} catch {
 		console.info('buddies email-invite failed network');
+		await releaseReservation(hash, nowMs);
 		throw new HttpsError('internal', 'Could not send that invite. Try again.');
 	}
 	if (!posted.ok) {
 		console.info(`buddies email-invite failed http ${posted.status}`);
+		await releaseReservation(hash, nowMs);
 		throw new HttpsError('internal', 'Could not send that invite. Try again.');
 	}
 	const stamp = new Date(nowMs).toISOString();
@@ -164,7 +182,7 @@ export async function handleSendBuddyInvite(
 		inviteId: jti,
 		createdAt: stamp
 	});
-	batch.set(db.doc(`${BUDDY_COLLECTIONS.emailRate}/${hash}`), { sentAt: nowMs });
+	batch.set(db.doc(`${BUDDY_COLLECTIONS.emailRate}/${hash}`), { sentAt: nowMs, state: 'sent' });
 	await batch.commit();
 	console.info('buddies email-invite sent');
 	return SENT;
@@ -216,7 +234,7 @@ async function writeAcceptedBuddy(
 export async function handleAcceptBuddyEmailInvite(
 	uid: string | undefined,
 	data: unknown,
-	config: { authToken: string; nowMs?: number }
+	config: { authToken: string; nowMs?: number; emailVerified?: boolean }
 ): Promise<{ status: 'accepted' | 'already' }> {
 	const caller = await assertCaller(uid);
 	if (!twilioEmailConfigured('AC00000000000000000000000000000000', config.authToken)) {
@@ -234,6 +252,9 @@ export async function handleAcceptBuddyEmailInvite(
 	const snap = await getFirestore().doc(`${BUDDY_COLLECTIONS.emailInvites}/${signed.jti}`).get();
 	if (!snap.exists || snap.get('fromUid') !== signed.fromUid) {
 		throw new HttpsError('not-found', 'That invite is not valid.');
+	}
+	if (config.emailVerified !== true) {
+		throw new HttpsError('failed-precondition', VERIFY_EMAIL);
 	}
 	if (!email || snap.get('emailHash') !== emailAddressHash(email, config.authToken)) {
 		throw new HttpsError('failed-precondition', 'Sign in with the email address that received this invite.');
@@ -343,7 +364,10 @@ export const sendBuddyInvite = onCall(buddyEmailCallableOptions, async (request)
 });
 
 export const acceptBuddyEmailInvite = onCall(buddyEmailCallableOptions, async (request) => {
-	return handleAcceptBuddyEmailInvite(request.auth?.uid, request.data, { authToken: twilioAuthToken.value() });
+	return handleAcceptBuddyEmailInvite(request.auth?.uid, request.data, {
+		authToken: twilioAuthToken.value(),
+		emailVerified: request.auth?.token?.email_verified === true
+	});
 });
 
 export const suppressBuddyEmailInvites = onRequest(suppressHttpsOptions, async (req, res) => {

@@ -12,6 +12,7 @@ import {
 	buddyBlockId,
 	buddyPairId,
 	buddyRequestId,
+	chosenBuddyName,
 	createInviteCode,
 	displayNameKey,
 	normalizeInviteCode,
@@ -25,7 +26,6 @@ export const BUDDY_REGION = 'us-central1';
 const UNAVAILABLE = 'That player is not available to add.';
 const INVITE_INVALID = 'That invite is not valid.';
 const RATE_LIMITED = 'Too many requests. Try again later.';
-const FALLBACK_NAME = 'Player';
 
 export const buddyCallableOptions = {
 	region: BUDDY_REGION,
@@ -93,23 +93,11 @@ export async function targetIsActive(uid: string): Promise<boolean> {
 
 export async function publicBuddyName(uid: string): Promise<string> {
 	const db = getFirestore();
-	const [invite, directory, profile] = await Promise.all([
+	const [invite, directory] = await Promise.all([
 		db.doc(`${BUDDY_COLLECTIONS.invites}/${uid}`).get(),
-		db.doc(`${BUDDY_COLLECTIONS.directory}/${uid}`).get(),
-		db.doc(`users/${uid}`).get()
+		db.doc(`${BUDDY_COLLECTIONS.directory}/${uid}`).get()
 	]);
-	const stored =
-		publicDisplayName(invite.get('displayName')) ??
-		publicDisplayName(directory.get('displayName')) ??
-		publicDisplayName(profile.get('displayName'));
-	if (stored) return stored;
-	try {
-		const record = await getAuth().getUser(uid);
-		return publicDisplayName(record.displayName) ?? FALLBACK_NAME;
-	} catch (error) {
-		if (isUserNotFound(error)) return FALLBACK_NAME;
-		throw error;
-	}
+	return chosenBuddyName(invite.get('displayName'), directory.get('displayName'));
 }
 
 async function freshInviteCode(): Promise<string> {
