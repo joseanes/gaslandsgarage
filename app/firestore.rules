@@ -65,6 +65,59 @@ service cloud.firestore {
       return noEmail(value) && value.size() <= max;
     }
 
+    // Same street and unit words the profile form rejects. A 5-digit ZIP is allowed.
+    // Rules match the whole string, so each pattern is anchored with .*.
+    function streetish(value) {
+      return value.matches('(?i).*\\b(street|avenue|boulevard|lane|drive|court|place|terrace|highway|parkway|trail|circle|road|alley|square)\\b.*')
+        || value.matches('(?i).*[A-Za-z][A-Za-z.\\-]{0,40} +(st|ave|blvd|ln|dr|ct|pl|rd|hwy|pkwy)\\b.*')
+        || value.matches('(?i).*\\b(apt|apartment|unit|suite|ste|floor|bldg|building)\\b.*')
+        || value.matches('.*#.*');
+    }
+
+    function locationLabelOk(value) {
+      return value is string
+        && value.size() <= 80
+        && noEmail(value)
+        && (
+          value.size() == 0
+          || value.matches('^\\d{5}$')
+          || (!value.matches('.*[0-9].*') && !streetish(value))
+        );
+    }
+
+    // placeMapPoint writes this. Clients cannot. A new or moved point must match it.
+    function placedPoint(lat, lng) {
+      return exists(/databases/$(database)/documents/mapPlacements/$(request.auth.uid))
+        && get(/databases/$(database)/documents/mapPlacements/$(request.auth.uid)).data.latE2 == lat
+        && get(/databases/$(database)/documents/mapPlacements/$(request.auth.uid)).data.lngE2 == lng;
+    }
+
+    function profilePointOk() {
+      return request.resource.data.latE2 == null
+        || (
+          resource != null
+          && request.resource.data.latE2 == resource.data.latE2
+          && request.resource.data.lngE2 == resource.data.lngE2
+        )
+        || placedPoint(request.resource.data.latE2, request.resource.data.lngE2);
+    }
+
+    function storedPointOk() {
+      return (
+        resource != null
+        && request.resource.data.latE2 == resource.data.latE2
+        && request.resource.data.lngE2 == resource.data.lngE2
+      ) || placedPoint(request.resource.data.latE2, request.resource.data.lngE2);
+    }
+
+    function markerPointOk(pin, previous) {
+      return (
+        previous != null
+        && previous.latE2 == pin.latE2
+        && previous.lngE2 == pin.lngE2
+      ) || placedPoint(pin.latE2, pin.lngE2);
+    }
+
     function hundredth(value, min, max) {
       return value is int && value >= min && value <= max;
     }
@@ -81,7 +134,8 @@ service cloud.firestore {
         ])
         && shortText(request.resource.data.playerName, 60)
         && shortText(request.resource.data.bio, 280)
-        && shortText(request.resource.data.locationLabel, 80)
+        && locationLabelOk(request.resource.data.locationLabel)
+        && profilePointOk()
         && shortText(request.resource.data.playSpots, 280)
         && optionalHundredth(request.resource.data.latE2, -9000, 9000)
         && optionalHundredth(request.resource.data.lngE2, -18000, 18000)
@@ -143,7 +197,7 @@ service cloud.firestore {
         && pin.playerName.size() > 0
         && shortText(pin.bio, 280)
         && shortText(pin.playSpots, 280)
-        && shortText(pin.locationLabel, 80)
+        && locationLabelOk(pin.locationLabel)
         && pin.openToGames is bool
         && coarsePoint(pin);
     }
@@ -195,7 +249,10 @@ service cloud.firestore {
         && (before == null || after.diff(before).affectedKeys().hasOnly([entryId]))
         && (
           !after.keys().hasAny([entryId])
-          || validPublicPin(after[entryId])
+          || (
+            validPublicPin(after[entryId])
+            && markerPointOk(after[entryId], before == null ? null : before[entryId])
+          )
         )
         && boardGrowthOk(after, before)
         && boardBytesOk();
@@ -297,10 +354,18 @@ service cloud.firestore {
         && request.resource.data.lastSeenAt is string
         && request.resource.data.lastSignInAt is string
         && request.resource.data.email.size() < 320
+        && authEmailOk()
         && request.resource.data.displayName.size() < 200
         && request.resource.data.createdAt.size() < 40
         && request.resource.data.lastSeenAt.size() < 40
         && request.resource.data.lastSignInAt.size() < 40;
+    }
+
+    // The stored address is the Auth token address. An account with no email stores ''.
+    function authEmailOk() {
+      return request.auth.token.keys().hasAny(['email'])
+        ? request.resource.data.email == request.auth.token.email
+        : request.resource.data.email == '';
     }
 
     function profileUpdate() {
@@ -312,7 +377,72 @@ service cloud.firestore {
         && request.resource.data.lastSeenAt is string
         && request.resource.data.lastSignInAt is string
         && request.resource.data.email.size() < 320
+        && authEmailOk()
         && request.resource.data.displayName.size() < 200;
+    }
+
+    function teamShapeOk() {
+      let data = request.resource.data;
+      return data.keys().hasOnly(['userId', 'teamName', 'teamData', 'createdAt', 'updatedAt', 'hiddenFromBuddies'])
+        && data.userId == request.auth.uid
+        && (!('teamName' in data) || (data.teamName is string && data.teamName.size() <= 120))
+        && (!('teamData' in data) || data.teamData is map)
+        && (!('createdAt' in data) || data.createdAt is timestamp || (data.createdAt is string && data.createdAt.size() < 40))
+        && (!('updatedAt' in data) || data.updatedAt is timestamp || (data.updatedAt is string && data.updatedAt.size() < 40))
+        && (!('hiddenFromBuddies' in data) || data.hiddenFromBuddies is bool)
+        && request.resource.size() < 100000;
+    }
+
+    function settingsBool(data, key) {
+      return !(key in data) || data[key] is bool;
+    }
+
+    function settingsText(data, key, max) {
+      return !(key in data) || (data[key] is string && data[key].size() <= max);
+    }
+
+    function settingsShapeOk() {
+      let data = request.resource.data;
+      return data.keys().hasOnly([
+          'enableSponsorships', 'includeAdvanced', 'darkMode', 'printStyle',
+          'showTeamSummary', 'showGaslandsMath', 'hasRules', 'showExperimentalFeatures',
+          'receiveUpdates', 'receiveUpdatesChangedAt',
+          'newsletterOptIn', 'newsletterOptInAt', 'newsletterOptOutAt', 'newsletterConsentText',
+          'newsletterPromptDismissedAt', 'newsletterSource',
+          'showOnPlayersMap', 'allowContactFromPlayers', 'location',
+          'showEquipmentDescriptions', 'showPerkDescriptions', 'showSpecialRules'
+        ])
+        && settingsBool(data, 'enableSponsorships')
+        && settingsBool(data, 'includeAdvanced')
+        && settingsBool(data, 'darkMode')
+        && settingsBool(data, 'showTeamSummary')
+        && settingsBool(data, 'showGaslandsMath')
+        && settingsBool(data, 'hasRules')
+        && settingsBool(data, 'showExperimentalFeatures')
+        && settingsBool(data, 'receiveUpdates')
+        && settingsBool(data, 'showOnPlayersMap')
+        && settingsBool(data, 'allowContactFromPlayers')
+        && settingsBool(data, 'showEquipmentDescriptions')
+        && settingsBool(data, 'showPerkDescriptions')
+        && settingsBool(data, 'showSpecialRules')
+        && settingsText(data, 'printStyle', 40)
+        && settingsText(data, 'receiveUpdatesChangedAt', 40)
+        && settingsText(data, 'location', 120)
+        && request.resource.size() < 32000
+        && newsletterSettingsOk();
+    }
+
+    function messageShapeOk() {
+      let data = request.resource.data;
+      return data.keys().hasOnly(['userId', 'email', 'subject', 'message', 'createdAt', 'read', 'recipient'])
+        && data.userId == request.auth.uid
+        && (!('email' in data) || (data.email is string && data.email.size() < 320))
+        && (!('subject' in data) || (data.subject is string && data.subject.size() <= 200))
+        && (!('message' in data) || (data.message is string && data.message.size() <= 5000))
+        && (!('createdAt' in data) || data.createdAt is timestamp || (data.createdAt is string && data.createdAt.size() < 40))
+        && (!('read' in data) || data.read is bool)
+        && (!('recipient' in data) || (data.recipient is string && data.recipient.size() < 320))
+        && request.resource.size() < 20000;
     }
 
     // Default deny all access
@@ -370,12 +500,12 @@ service cloud.firestore {
 
       allow create: if signedIn()
                     && !isDisabled()
-                    && request.resource.data.userId == request.auth.uid;
+                    && teamShapeOk();
 
       allow update: if signedIn()
                     && !isDisabled()
                     && resource.data.userId == request.auth.uid
-                    && request.resource.data.userId == resource.data.userId;
+                    && teamShapeOk();
 
       allow delete: if signedIn()
                     && !isDisabled()
@@ -419,7 +549,7 @@ service cloud.firestore {
     match /userSettings/{userId} {
       allow read: if signedIn() && !isDisabled() && userId == request.auth.uid;
       allow read: if isAdmin();
-      allow create, update: if signedIn() && !isDisabled() && userId == request.auth.uid && newsletterSettingsOk();
+      allow create, update: if signedIn() && !isDisabled() && userId == request.auth.uid && settingsShapeOk();
       allow delete: if signedIn() && !isDisabled() && userId == request.auth.uid;
     }
 
@@ -432,7 +562,7 @@ service cloud.firestore {
     match /messages/{messageId} {
       allow create: if signedIn()
                     && !isDisabled()
-                    && request.resource.data.userId == request.auth.uid;
+                    && messageShapeOk();
 
       allow read: if isAdmin();
       allow update, delete: if false;
@@ -519,7 +649,8 @@ service cloud.firestore {
       allow create, update: if ownsMapClaim(entryId)
         && exists(/databases/$(database)/documents/playerMapPrivate/$(entryId))
         && get(/databases/$(database)/documents/playerMapPrivate/$(entryId)).data.ownerUid == request.auth.uid
-        && (anonMapEntry() || namedMapEntry());
+        && (anonMapEntry() || namedMapEntry())
+        && storedPointOk();
       allow delete: if signedIn()
         && !isDisabled()
         && exists(/databases/$(database)/documents/playerMapPrivate/$(entryId))
@@ -536,6 +667,11 @@ service cloud.firestore {
       allow create: if docId == 'public' && signedIn() && !isDisabled() && createMapBoard();
       allow update: if docId == 'public' && signedIn() && !isDisabled() && updateMapBoard();
       allow delete: if false;
+    }
+
+    // Server-issued approximate point. Clients cannot read or write it.
+    match /mapPlacements/{userId} {
+      allow read, write: if false;
     }
 
     // Contact opt-in. No email and no coordinate. A signed-in player may read one
