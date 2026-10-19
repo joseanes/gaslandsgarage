@@ -40,6 +40,7 @@ test('builds a car, adds Powder Keg, and shares the link', async ({ page }) => {
 
 	page.once('dialog', (dialog) => dialog.accept());
 	await page.getByRole('button', { name: 'Teams' }).click();
+	await page.getByRole('button', { name: 'Share Team' }).click();
 	await page.getByRole('button', { name: 'Share Link' }).click();
 	await expect(page).toHaveURL(/draft=/);
 
@@ -98,6 +99,7 @@ test('a shared draft does not come back after the rules version changes', async 
 	await page.getByRole('button', { name: '+ Add Vehicle' }).click();
 	page.once('dialog', (dialog) => dialog.accept());
 	await page.getByRole('button', { name: 'Teams' }).click();
+	await page.getByRole('button', { name: 'Share Team' }).click();
 	await page.getByRole('button', { name: 'Share Link' }).click();
 	await expect(page).toHaveURL(/draft=/);
 
@@ -200,6 +202,8 @@ test('a phone shows the same Teams, Settings, and Help menus', async ({ page }) 
 	await page.getByRole('button', { name: 'Teams' }).click();
 	await expect(page.getByRole('button', { name: 'Save/Load Team' })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Print Team' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Share Team' })).toBeVisible();
+	await page.getByRole('button', { name: 'Share Team' }).click();
 	await expect(page.getByRole('button', { name: 'Share Link' })).toBeVisible();
 });
 

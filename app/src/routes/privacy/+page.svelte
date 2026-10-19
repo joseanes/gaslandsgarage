@@ -125,12 +125,14 @@
 			The request does not include your email or account id, and the page does not ask the browser for
 			GPS. A suggestion is kept only when it is a city, region, or 5-digit US ZIP. Street addresses are
 			still rejected. Google’s precise place point is not stored. The coordinate saved with the profile
-			is still the approximate point from Nominatim or the local ZIP list.
+			is the approximate point the site issues after Nominatim or the local ZIP list.
 		</p>
 		<p>
-			Before anything is stored, the coordinate is moved 2 to 8 kilometers in a random direction and
-			rounded to about 1 kilometer (0.01 degrees). The original point is not kept. Only that approximate
-			point can appear on the map.
+			When you save a new place, a server function moves the coordinate 2 to 8 kilometers in a random
+			direction and rounds it to about 1 kilometer (0.01 degrees). The database accepts a new or moved
+			pin only when it matches that server-issued point. Street addresses are rejected before the point
+			is stored. An existing pin keeps its point until you save a new place. The original point is not
+			kept. Only that approximate point can appear on the map.
 		</p>
 
 		<h2 class="text-xl font-bold mt-8 mb-3">What is public, and what needs a sign-in</h2>
@@ -145,8 +147,9 @@
 		</ul>
 		<p>
 			The open-to-games list is not on the public map. Only a signed-in player whose account is not
-			disabled can read it. Each card shows a player name, bio, and where that person likes to play. It
-			does not include an email address or a coordinate.
+			disabled can read it. Each card shows a player name, bio, and where that person likes to play. The
+			list is keyed by account id, so a signed-in player can see that id. It does not include an email
+			address or a coordinate.
 		</p>
 		<p>
 			Your private profile, your settings, and your saved teams stay limited to you, plus an

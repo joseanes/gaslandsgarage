@@ -142,3 +142,9 @@ export { acceptBuddyEmailInvite, sendBuddyInvite, suppressBuddyEmailInvites };
  * to false for that token. It does not send the monthly email.
  */
 export { syncNewsletterToken, unsubscribeNewsletter };
+
+/**
+ * Server-side map offset. The signed-in player sends a city or ZIP point.
+ * The function stores only the 2–8 km approximate point. Clients cannot write it.
+ */
+export { placeMapPoint } from './mapPlacement.ts';

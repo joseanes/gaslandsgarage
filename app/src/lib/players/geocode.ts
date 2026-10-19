@@ -93,6 +93,8 @@ export async function resolveApproximateLocation(
 		random?: () => number;
 		lookupZip?: (zip: string) => Promise<{ lat: number; lng: number } | null>;
 		fetchPlace?: (query: string) => Promise<PlaceHit | { error: string }>;
+		/** Production saves pass the placeMapPoint callable. Tests keep the local offset. */
+		offset?: (lat: number, lng: number) => Promise<{ latE2: number; lngE2: number }>;
 	}
 ): Promise<{ ok: true; value: ResolvedLocation } | { ok: false; error: string }> {
 	const assessed = assessLocation(raw);
@@ -113,6 +115,8 @@ export async function resolveApproximateLocation(
 	if (!hit || 'error' in hit) {
 		return { ok: false, error: hit?.error ?? 'Could not place that location.' };
 	}
-	const approx = approximateCoordinate(hit.lat, hit.lng, deps?.random);
+	const approx = deps?.offset
+		? await deps.offset(hit.lat, hit.lng)
+		: approximateCoordinate(hit.lat, hit.lng, deps?.random);
 	return { ok: true, value: { locationLabel: assessed.label, ...approx } };
 }
