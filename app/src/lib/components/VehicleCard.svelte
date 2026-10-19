@@ -600,7 +600,7 @@
     }
 </script>
 
-<div class="vehicle-card bg-stone-200 dark:bg-gray-800 rounded-lg shadow-md overflow-hidden border-2 p-1 mb-1" style="border-color: {vehicleTypes.find(vt => vt.id === vehicle.type)?.color || '#f59e0b'};">
+<div id="vehicle-{vehicle.id}" class="vehicle-card scroll-mt-20 bg-stone-200 dark:bg-gray-800 rounded-lg shadow-md overflow-hidden border-2 p-1 mb-1" style="border-color: {vehicleTypes.find(vt => vt.id === vehicle.type)?.color || '#f59e0b'};">
     {#if !vehicleTypes.some((vt) => vt.id === vehicle.type)}
         <p class="px-4 py-2 text-sm text-red-800 bg-red-50" data-testid="vehicle-warning">
             This vehicle isn't in the current rules list ({vehicle.type || 'no type'}). It is still on the team.
