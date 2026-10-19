@@ -128,3 +128,49 @@ function toQuery(querystring) {
 }
 `;
 }
+
+/**
+ * Viewer-request function for /car/* and /embed/*. Redirects www to the apex
+ * and leaves the path alone so CloudFront sends it to the car-page function.
+ * It does not rewrite the URI to index.html.
+ */
+export function apexRedirectCode(): string {
+	return `
+function handler(event) {
+  var request = event.request;
+  var hostHeader = request.headers && request.headers.host;
+  var host = hostHeader && hostHeader.value ? hostHeader.value.toLowerCase() : '';
+  if (host === 'www.gaslandsgarage.com') {
+    return {
+      statusCode: 301,
+      statusDescription: 'Moved Permanently',
+      headers: {
+        location: { value: 'https://gaslandsgarage.com' + (request.uri || '/') + toQuery(request.querystring) }
+      }
+    };
+  }
+  return request;
+}
+
+function toQuery(querystring) {
+  if (!querystring) return '';
+  var parts = [];
+  var key;
+  for (key in querystring) {
+    if (!Object.prototype.hasOwnProperty.call(querystring, key)) continue;
+    var entry = querystring[key] || {};
+    if (entry.multiValue && entry.multiValue.length) {
+      var i;
+      for (i = 0; i < entry.multiValue.length; i++) {
+        parts.push(encodeURIComponent(key) + '=' + encodeURIComponent(entry.multiValue[i].value));
+      }
+    } else if (entry.value) {
+      parts.push(encodeURIComponent(key) + '=' + encodeURIComponent(entry.value));
+    } else {
+      parts.push(encodeURIComponent(key));
+    }
+  }
+  return parts.length ? '?' + parts.join('&') : '';
+}
+`;
+}

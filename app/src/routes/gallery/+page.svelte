@@ -1,6 +1,9 @@
 <script lang="ts">
+	import { dev } from '$app/environment';
+	import { page } from '$app/stores';
+	import ShareCar from '$lib/components/ShareCar.svelte';
 	import { user } from '$lib/firebase';
-	import type { VehicleStatsSnapshot } from '$lib/photos/share';
+	import { carLabel, statRows } from '$lib/photos/carPage';
 	import { listGalleryPhotos, reportSharedPhoto, type GalleryPhoto } from '$lib/services/photoShare';
 
 	let status: 'loading' | 'ready' | 'error' = 'loading';
@@ -19,12 +22,22 @@
 		status = 'loading';
 		notice = '';
 		try {
+			if (dev && $page.url.searchParams.get('fixture') === '1') {
+				photos = [(await import('$lib/photos/carPageFixture')).sampleGalleryPhoto()];
+				status = 'ready';
+				return;
+			}
 			photos = await listGalleryPhotos();
 			status = 'ready';
 		} catch (error) {
 			console.error('Could not load the gallery', error);
 			status = 'error';
 		}
+	}
+
+	function carHref(photoId: string): string {
+		const preview = dev && $page.url.searchParams.get('fixture') === '1' ? '?fixture=1' : '';
+		return `/car/${photoId}${preview}`;
 	}
 
 	function requestSignIn() {
@@ -64,26 +77,6 @@
 		} finally {
 			busy = false;
 		}
-	}
-
-	function statRows(stats: VehicleStatsSnapshot): { label: string; value: string }[] {
-		const rows = [
-			{ label: 'Type', value: stats.type },
-			{ label: 'Name', value: stats.name },
-			{ label: 'Hull', value: String(stats.hull) },
-			{ label: 'Handling', value: String(stats.handling) },
-			{ label: 'Crew', value: String(stats.crew) },
-			{ label: 'Gear', value: String(stats.gear) },
-			{ label: 'Cans', value: String(stats.cans) },
-			{ label: 'Weapons', value: stats.weapons.join(', ') || 'None' },
-			{ label: 'Upgrades', value: stats.upgrades.join(', ') || 'None' },
-			{ label: 'Perks', value: stats.perks.join(', ') },
-			{ label: 'Slots', value: stats.slots },
-			{ label: 'Weight', value: stats.weight },
-			{ label: 'Armour', value: stats.armour },
-			{ label: 'Driver', value: stats.driver }
-		];
-		return rows.filter((row) => row.value.length > 0);
 	}
 
 	void load();
@@ -135,7 +128,7 @@
 		{:else}
 			<ul class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4" data-testid="gallery-grid">
 				{#each visible as photo (photo.photoId)}
-					<li>
+					<li class="rounded-lg border border-stone-200 bg-white p-2 dark:border-gray-700 dark:bg-gray-900">
 						<button type="button" class="w-full text-left" data-testid="gallery-card" on:click={() => (open = photo)}>
 							<img src={photo.url} alt={photo.caption || `${photo.displayName} ${photo.vehicleType}`} class="h-40 w-full rounded-lg bg-stone-100 object-cover" />
 							<p class="mt-2 truncate text-sm font-medium">{photo.displayName}</p>
@@ -154,6 +147,10 @@
 								</dl>
 							{/if}
 						</button>
+						<div class="mt-2">
+							<ShareCar shareId={photo.photoId} carName={carLabel({ vehicleType: photo.vehicleType, vehicleStats: photo.vehicleStats })} compact />
+							<a class="mt-1 inline-block text-xs font-medium text-amber-800 underline dark:text-amber-300" href={carHref(photo.photoId)} data-testid="car-page-link">Car page</a>
+						</div>
 					</li>
 				{/each}
 			</ul>
@@ -180,7 +177,11 @@
 					{/each}
 				</dl>
 			{/if}
+			<div class="mt-4">
+				<ShareCar shareId={open.photoId} carName={carLabel({ vehicleType: open.vehicleType, vehicleStats: open.vehicleStats })} />
+			</div>
 			<div class="mt-4 flex flex-wrap gap-2">
+				<a class="rounded-md border border-stone-300 px-3 py-2 text-sm dark:border-gray-600" href={carHref(open.photoId)} data-testid="car-page-link">Car page</a>
 				<button type="button" class="rounded-md px-3 py-2 text-sm amber-button" data-testid="report-photo" disabled={busy} on:click={() => open && report(open)}>
 					{$user ? 'Report photo' : 'Sign in to report'}
 				</button>

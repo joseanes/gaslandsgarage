@@ -27,6 +27,7 @@ The functions are 2nd gen, Node.js 22, TypeScript, in `functions/`. Node.js 20 i
 | `moderateGallery` | Callable, administrator | Lists shared photos, hides or removes one, approves one, or sets the gallery approval kill switch. |
 | `refreshSharedVehicleStats` | `teams/{teamId}` write | Refreshes the public stats snapshot when a saved vehicle changes. Removes that snapshot when the vehicle is gone. |
 | `removeSharedPhotoOnDelete` | `users/{uid}/photos/{photoId}` delete | Removes the shared copy when the private photo document is deleted. |
+| `renderSharedCar` | Public HTTPS `GET` or `HEAD` | HTML for a public car page and its embed, including Open Graph and Twitter card tags. Reads `sharedPhotos/{photoId}` only. Returns a "no longer shared" page when the photo is not a published, visible gallery share. |
 | `syncNewsletterToken` | `userSettings/{uid}` write | When `newsletterOptIn` is true, stores one random unsubscribe token. Does not send mail. |
 | `unsubscribeNewsletter` | Public HTTPS `GET` or `POST` | GET shows a confirm page and changes nothing. POST with the token sets `newsletterOptIn` to false. An RFC 8058 one-click POST is accepted on the same URL. No sign-in. |
 | `getBuddyInvite` | Callable, signed-in user | Returns or creates that account's invite code, and whether email invites are on. |
@@ -41,7 +42,7 @@ The functions are 2nd gen, Node.js 22, TypeScript, in `functions/`. Node.js 20 i
 | `removeBuddy` | Callable, signed-in user | Deletes the accepted link. Access ends immediately. |
 | `unblockBuddy` | Callable, signed-in user | Removes a block the caller created. |
 
-Region is `us-central1`. `publishUsageStats` uses 256MiB, a 300 second timeout, and one instance. `syncAuthDisabled`, `queueGameContactEmail`, and `syncNewsletterToken` retry on failure. `syncAuthDisabled` and `queueGameContactEmail` use the platform defaults. `syncNewsletterToken` uses the platform memory and timeout. `exportMyData`, `deleteMyAccount`, `reserveVehiclePhoto`, the photo library callables, the photo-sharing callables, and the gaming-buddy callables use 256MiB, a 60 second timeout, and at most 10 instances. `listVisibleTeamPhotos` also sets `invoker: public` so a team share link can list photos without a sign-in. `unsubscribeNewsletter` and `suppressBuddyEmailInvites` use 256MiB, a 30 second timeout, at most 10 instances, and `invoker: public` so the email link works without a Google sign-in. None keep a warm instance.
+Region is `us-central1`. `publishUsageStats` uses 256MiB, a 300 second timeout, and one instance. `syncAuthDisabled`, `queueGameContactEmail`, and `syncNewsletterToken` retry on failure. `syncAuthDisabled` and `queueGameContactEmail` use the platform defaults. `syncNewsletterToken` uses the platform memory and timeout. `exportMyData`, `deleteMyAccount`, `reserveVehiclePhoto`, the photo library callables, the photo-sharing callables, and the gaming-buddy callables use 256MiB, a 60 second timeout, and at most 10 instances. `listVisibleTeamPhotos` also sets `invoker: public` so a team share link can list photos without a sign-in. `unsubscribeNewsletter`, `suppressBuddyEmailInvites`, and `renderSharedCar` use 256MiB, a 30 second timeout, at most 10 instances, and `invoker: public`. The first two are email links. `renderSharedCar` is the public car page CloudFront fetches. None keep a warm instance.
 
 `getBuddyInvite`, `sendBuddyInvite`, `acceptBuddyEmailInvite`, `exportMyData`, and `deleteMyAccount` declare the Twilio secrets. The other buddy callables do not. Email sending stays off until both secrets look like real Twilio credentials (an Account SID starting with `AC`, and an auth token). The placeholder value `disabled` keeps the feature off. The buddies page still shows the copyable invite link and says email invites are coming soon.
 
@@ -131,6 +132,42 @@ Point the extension at the `mail` collection. Leave its sender address in the ex
 Logs are `privacy <event> ref=<sha256 prefix>`. They do not include the uid, email, or display name. Deleting `adminUsers/{uid}` makes `syncAuthDisabled` see a deleted document and leave Auth alone. The Auth delete is only step 9.
 
 The browser calls these from Settings → General Settings after Google sign-in. Download does not ask for a second sign-in. Delete opens the Google prompt again, then calls the function. See `docs/PRIVACY-OPS.md` for requests, retention, and the breach checklist.
+
+## Shared car pages
+
+`renderSharedCar` is the page a link preview fetches. The site is a static SPA, so a crawler that only reads the first HTML response would otherwise see the builder title and the default icon. CloudFront Functions cannot make a network call, so they cannot look up the car. Lambda@Edge would need a second set of credentials and a us-east-1 build. This function already runs next to Firestore with the default compute identity, so `/car/*` and `/embed/*` are routed to it.
+
+The CloudFront change is in `infra/lib/garage-stack.ts`. It is not applied by this repository's workflow. Do not deploy it until the function below is live, or those URLs return an origin error.
+
+What the function does:
+
+- `GET` or `HEAD` `/car/<photoId>` renders the car page. `GET` or `HEAD` `/embed/car/<photoId>` renders the small card.
+- It loads `sharedPhotos/<photoId>` and nothing else. It does not read `sharedPhotoPrivate`, Auth, or email.
+- The page is public only when `showInGallery`, `published`, and `hidden == false` are all set the way the Gallery requires. Unsharing, hiding, or a report takedown (three reports, or an admin hide) returns **410** with "This car is no longer shared." and no photo. 410 is used so CloudFront's existing 404 mapping does not replace that notice with `/404.html`.
+- The HTML includes `og:title`, `og:image`, `og:description`, `og:url`, and `twitter:card` = `summary_large_image`. A crawler does not need JavaScript.
+- The car page sends `X-Frame-Options: DENY`. The embed does not, and its content security policy allows `frame-ancestors *`. These behaviors must not use the site response-headers policy, which would block the iframe.
+- `Cache-Control: no-store`, and the CloudFront behavior uses the managed CachingDisabled policy, so a takedown is visible on the next request.
+- `invoker: public`. CloudFront does not sign the request. The response is the same public card the Gallery already shows.
+
+No Firestore rules change and no new index. A car page is one document read by id. The browser page uses the existing `sharedPhotos` read rule, which already requires a published, visible gallery photo. Storage rules already allow the image only in that same case.
+
+Deploy the function by hand, from the repository root, before the CloudFront change:
+
+```bash
+firebase deploy --only functions:renderSharedCar --project=gaslandsgarage-74ce6
+```
+
+A deploy of every function still needs `--force` because other functions retry. `renderSharedCar` itself does not. If the project policy blocks public invoke, allow unauthenticated invoke for this function only. Do not put a key in the source or in the URL.
+
+Then review and deploy the stack when you mean to:
+
+```bash
+cd infra && npx cdk diff && npx cdk deploy
+```
+
+Until that deploy, `/car/<id>` and `/embed/car/<id>` are ordinary SPA routes. The page works in the browser, and the embed is blocked by the site's frame policy. Link previews start working after the behavior is live.
+
+`renderSharedCar` uses 256MiB, a 30 second timeout, and at most 10 instances. It does not keep a warm instance.
 
 ## Deploy
 

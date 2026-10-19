@@ -20,11 +20,12 @@ import {
   FunctionCode,
   FunctionEventType,
   FunctionRuntime,
+  OriginProtocolPolicy,
   type BehaviorOptions,
   type ICachePolicy,
   type IResponseHeadersPolicy
 } from 'aws-cdk-lib/aws-cloudfront';
-import { S3BucketOrigin } from 'aws-cdk-lib/aws-cloudfront-origins';
+import { HttpOrigin, S3BucketOrigin } from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as cr from 'aws-cdk-lib/custom-resources';
 import { RemovalPolicy } from 'aws-cdk-lib';
@@ -33,7 +34,7 @@ import * as route53Targets from 'aws-cdk-lib/aws-route53-targets';
 import { Certificate, CertificateValidation } from 'aws-cdk-lib/aws-certificatemanager';
 import * as path from 'path';
 import { discoverSpaRoutes } from './spa-routes';
-import { viewerRequestCode } from './viewer-request';
+import { apexRedirectCode, viewerRequestCode } from './viewer-request';
 
 export interface GarageStackProps extends cdk.StackProps {
   domainName?: string;
@@ -57,7 +58,19 @@ export interface GarageStackProps extends cdk.StackProps {
  * - File names are left alone, so assets, robots.txt, sitemap.xml, and PDFs
  *   are still the S3 objects. Any other missing path 403s from the private
  *   bucket, and CloudFront turns that into a real 404.
+ *
+ * /car/* and /embed/* are a separate behavior. A CloudFront Function cannot
+ * call Firestore, so it cannot put the car photo and name into Open Graph
+ * tags. Lambda@Edge would need its own credentials and a us-east-1 deploy.
+ * Those paths go to the public Firebase HTTPS function `renderSharedCar`,
+ * which already runs with the Admin SDK and reads only `sharedPhotos`.
+ * The behavior does not use the site response-headers policy: that policy
+ * sends X-Frame-Options DENY, and the embed has to be frameable. The
+ * function sets the headers itself, including frame-ancestors * on embeds.
+ * Cache is disabled so an unshare or a takedown goes dark on the next request.
+ * This stack change is not applied from CI. Deploy the function first.
  */
+const CAR_PAGE_ORIGIN = 'us-central1-gaslandsgarage-74ce6.cloudfunctions.net';
 const spaRoutes = discoverSpaRoutes(path.join(__dirname, '../../app/src/routes'));
 for (const required of ['/builder', '/stats', '/admin/users', '/privacy', '/terms']) {
   if (!spaRoutes.includes(required)) {
@@ -216,6 +229,29 @@ export class GarageStack extends cdk.Stack {
 
     const staticBehavior = (): BehaviorOptions => behavior(CachePolicy.CACHING_OPTIMIZED, staticHeaders);
 
+    // www → apex only. Rewriting /car or /embed to index.html would drop the
+    // Open Graph response from renderSharedCar.
+    const carViewer = new Function(this, 'CarPageViewer', {
+      comment: 'Redirect www car and embed URLs to the apex. Leave the path for the Firebase function.',
+      code: FunctionCode.fromInline(apexRedirectCode()),
+      runtime: FunctionRuntime.JS_2_0
+    });
+    const carOrigin = new HttpOrigin(CAR_PAGE_ORIGIN, {
+      originPath: '/renderSharedCar',
+      protocolPolicy: OriginProtocolPolicy.HTTPS_ONLY
+    });
+    const carBehavior = (): BehaviorOptions => ({
+      origin: carOrigin,
+      viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+      allowedMethods: AllowedMethods.ALLOW_GET_HEAD_OPTIONS,
+      compress: true,
+      cachePolicy: CachePolicy.CACHING_DISABLED,
+      functionAssociations: [{
+        function: carViewer,
+        eventType: FunctionEventType.VIEWER_REQUEST
+      }]
+    });
+
     /* ----------------------------------------------------------------
        Route53 hosted zone (use existing zone)
        ---------------------------------------------------------------- */
@@ -263,6 +299,9 @@ export class GarageStack extends cdk.Stack {
       defaultRootObject: 'index.html',
       defaultBehavior: behavior(CachePolicy.CACHING_DISABLED, htmlHeaders),
       additionalBehaviors: {
+        // Firebase function origin. Not the SPA, and not the frame-denying HTML headers.
+        '/car/*': carBehavior(),
+        '/embed/*': carBehavior(),
         // Highest precedence first. Hashed bundles must not inherit HTML no-cache.
         '/_app/immutable/*': behavior(CachePolicy.CACHING_OPTIMIZED, immutableHeaders),
         '/images/*': staticBehavior(),

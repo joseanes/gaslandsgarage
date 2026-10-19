@@ -2,6 +2,8 @@ import { browser } from '$app/environment';
 import { auth, db, initializeFirebase } from '../firebase';
 import { PRIVACY_FUNCTIONS_REGION } from '../privacy/accountShared';
 import { storageBucketName } from '../photos/model';
+import { PHOTO_ID_PATTERN } from '../photos/model';
+import { publicCarFromDocument, type PublicCar } from '../photos/carPage';
 import { GALLERY_PAGE_LIMIT, sanitizeVehicleStats, sharedPhotoMediaUrl, type ShareFlags, type VehicleStatsSnapshot } from '../photos/share';
 
 export interface SharedVehiclePhoto {
@@ -124,6 +126,27 @@ export async function listVisibleTeamPhotos(teamId: string, audience: 'buddies' 
 
 export async function reportSharedPhoto(photoId: string): Promise<{ alreadyReported: boolean; hidden: boolean }> {
 	return call('reportPhoto', { photoId }, 'That report could not be saved.');
+}
+
+/**
+ * One public car. A missing, unshared, hidden, or not-yet-approved photo
+ * returns null. The Firestore rules already deny that read; the allow-list
+ * runs again so an admin read of a hidden photo still stays off the page.
+ */
+export async function loadPublicCar(shareId: string): Promise<PublicCar | null> {
+	if (!PHOTO_ID_PATTERN.test(shareId)) return null;
+	await appInstance();
+	if (!db) throw new Error('This car could not be loaded.');
+	const { doc, getDoc } = await import('firebase/firestore');
+	try {
+		const snap = await getDoc(doc(db, 'sharedPhotos', shareId));
+		if (!snap.exists()) return null;
+		return publicCarFromDocument(shareId, snap.data(), sharedPhotoUrl(shareId));
+	} catch (error) {
+		const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
+		if (code.includes('permission-denied') || code.includes('not-found')) return null;
+		throw new Error('This car could not be loaded.');
+	}
 }
 
 export async function listGalleryPhotos(): Promise<GalleryPhoto[]> {

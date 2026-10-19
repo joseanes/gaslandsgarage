@@ -41,7 +41,7 @@ describe('CDK v2 infra', () => {
 		template.resourceCountIs('AWS::S3::Bucket', 1);
 		template.resourceCountIs('AWS::CloudFront::Distribution', 1);
 		template.resourceCountIs('AWS::CloudFront::OriginAccessControl', 1);
-		template.resourceCountIs('AWS::CloudFront::Function', 1);
+		template.resourceCountIs('AWS::CloudFront::Function', 2);
 
 		const buckets = template.findResources('AWS::S3::Bucket');
 		for (const bucket of Object.values(buckets)) {
@@ -90,6 +90,28 @@ describe('CDK v2 infra', () => {
 		expect(viewerCode).toContain('/terms');
 		expect(viewerCode).not.toContain('/beta');
 		expect(viewerCode.toLowerCase()).not.toContain('g3e');
+
+		const distribution = JSON.stringify(template.findResources('AWS::CloudFront::Distribution'));
+		expect(distribution).toContain('us-central1-gaslandsgarage-74ce6.cloudfunctions.net');
+		expect(distribution).toContain('/renderSharedCar');
+		expect(distribution).toContain('/car/*');
+		expect(distribution).toContain('/embed/*');
+		const config = Object.values(template.findResources('AWS::CloudFront::Distribution'))[0] as {
+			Properties: {
+				DistributionConfig: {
+					DefaultCacheBehavior: { TargetOriginId: string };
+					CacheBehaviors: Array<{ PathPattern?: string; TargetOriginId: string; ResponseHeadersPolicyId?: unknown }>;
+				};
+			};
+		};
+		const behaviors = config.Properties.DistributionConfig.CacheBehaviors;
+		const car = behaviors.find((item) => item.PathPattern === '/car/*');
+		const embed = behaviors.find((item) => item.PathPattern === '/embed/*');
+		expect(car?.TargetOriginId).toBeTruthy();
+		expect(car?.TargetOriginId).toBe(embed?.TargetOriginId);
+		expect(car?.TargetOriginId).not.toBe(config.Properties.DistributionConfig.DefaultCacheBehavior.TargetOriginId);
+		expect(car?.ResponseHeadersPolicyId).toBeUndefined();
+		expect(embed?.ResponseHeadersPolicyId).toBeUndefined();
 	});
 });
 
