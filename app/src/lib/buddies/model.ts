@@ -8,6 +8,8 @@ export const BUDDY_EMAIL_INVITE_WINDOW_MS = 24 * 60 * 60 * 1000;
 export const BUDDY_EMAIL_RECIPIENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 export const BUDDY_EMAIL_INVITE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 export const BUDDY_NAME_MAX = 60;
+/** Shown when the player has not saved a buddy name. Never a Google or Auth name. */
+export const BUDDY_FALLBACK_NAME = 'A Gaslands Garage player';
 export const INVITE_CODE_LENGTH = 10;
 export const INVITE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
@@ -59,6 +61,18 @@ export function publicDisplayName(value: unknown): string | null {
 	if (name.includes('@')) return null;
 	if (/[\u0000-\u001f]/.test(name)) return null;
 	return name;
+}
+
+/**
+ * The name this player typed for buddies. A blank, an email, or anything
+ * they did not choose here becomes the shared fallback.
+ */
+export function chosenBuddyName(...values: unknown[]): string {
+	for (const value of values) {
+		const name = publicDisplayName(value);
+		if (name) return name;
+	}
+	return BUDDY_FALLBACK_NAME;
 }
 
 export function displayNameKey(name: string): string {

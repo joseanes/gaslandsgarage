@@ -3,7 +3,9 @@ import {
 	BUDDY_REQUESTS_PER_HOUR,
 	INVITE_ALPHABET,
 	buddyBlockId,
+	BUDDY_FALLBACK_NAME,
 	buddyCopyTeamName,
+	chosenBuddyName,
 	buddyPairId,
 	buddyRequestId,
 	createInviteCode,
@@ -26,6 +28,13 @@ describe('buddy ids', () => {
 });
 
 describe('public names and search', () => {
+	it('uses only a name the player chose', () => {
+		expect(chosenBuddyName('Ada', 'google@example.com')).toBe('Ada');
+		expect(chosenBuddyName('ada@example.com', '   ', undefined)).toBe(BUDDY_FALLBACK_NAME);
+		expect(chosenBuddyName()).toBe('A Gaslands Garage player');
+		expect(BUDDY_FALLBACK_NAME.includes('@')).toBe(false);
+	});
+
 	it('rejects email addresses and blank names', () => {
 		expect(publicDisplayName('  Ada  Lovelace ')).toBe('Ada Lovelace');
 		expect(publicDisplayName('ada@example.com')).toBeNull();

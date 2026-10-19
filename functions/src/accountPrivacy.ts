@@ -281,10 +281,9 @@ async function deleteBuddyLinks(uid: string, email: string): Promise<void> {
 	refs.set(`${BUDDY_INVITES}/${uid}`, db.doc(`${BUDDY_INVITES}/${uid}`));
 	refs.set(`${BUDDY_DIRECTORY}/${uid}`, db.doc(`${BUDDY_DIRECTORY}/${uid}`));
 	refs.set(`${BUDDY_RATE}/${uid}`, db.doc(`${BUDDY_RATE}/${uid}`));
-	if (hash) {
-		refs.set(`${BUDDY_EMAIL_RATE}/${hash}`, db.doc(`${BUDDY_EMAIL_RATE}/${hash}`));
-		refs.set(`${BUDDY_EMAIL_SUPPRESS}/${hash}`, db.doc(`${BUDDY_EMAIL_SUPPRESS}/${hash}`));
-	}
+	// The 7-day cooldown can be cleared. A "don't email me again" hash stays,
+	// with or without Twilio, so the opt-out survives account deletion.
+	if (hash) refs.set(`${BUDDY_EMAIL_RATE}/${hash}`, db.doc(`${BUDDY_EMAIL_RATE}/${hash}`));
 	await deleteRefs([...refs.values()]);
 }
 

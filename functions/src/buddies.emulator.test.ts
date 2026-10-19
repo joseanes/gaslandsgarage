@@ -13,7 +13,9 @@ import {
 	handleSendBuddyRequest,
 	handleUnblockBuddy
 } from './buddies';
-import { BUDDY_REQUESTS_PER_HOUR } from '../../app/src/lib/buddies/model';
+import { BUDDY_FALLBACK_NAME, BUDDY_REQUESTS_PER_HOUR } from '../../app/src/lib/buddies/model';
+import { handleSendBuddyInvite } from './buddyEmailInvite';
+import { emailAddressHash } from '../../app/src/lib/buddies/emailInvite';
 
 const projectId = process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT || 'demo-gaslands-functions';
 
@@ -155,6 +157,73 @@ describe('gaming buddies', () => {
 		await expect(handleSendBuddyRequest('grace', { targetUid: 'ada' }, now + 10)).rejects.toMatchObject({
 			code: 'resource-exhausted'
 		});
+	});
+
+	it('uses the buddy name the player saved and ignores the Google name', async () => {
+		await player('ada', 'Ada');
+		await player('grace', 'Grace');
+		await getAuth().updateUser('ada', { displayName: 'ada@example.com' });
+		await getFirestore().doc('users/ada').set({ displayName: 'Google Ada', email: 'ada@example.com' });
+		await handleSaveBuddyProfile('grace', { displayName: 'Grace', discoverable: true }, now);
+		const sent = await handleSendBuddyRequest('ada', { targetUid: 'grace' }, now);
+		expect((await getFirestore().doc(`buddyRequests/${sent.requestId}`).get()).get('fromName')).toBe(BUDDY_FALLBACK_NAME);
+		const capture = {
+			posted: [] as string[],
+			fetchImpl: (async () => {
+				return new Response(JSON.stringify({ operationId: 'op' }), { status: 202 });
+			}) as typeof fetch
+		};
+		const wrapped: typeof fetch = async (input, init) => {
+			capture.posted.push(String(init?.body));
+			return capture.fetchImpl(input, init);
+		};
+		await handleSendBuddyInvite(
+			'ada',
+			{ email: 'friend@example.com' },
+			{
+				accountSid: 'AC00000000000000000000000000000000',
+				authToken: 'test-token-value-16',
+				fromAddress: 'noreply@gaslandsgarage.com',
+				fetchImpl: wrapped,
+				nowMs: now
+			}
+		);
+		expect(capture.posted[0]).toContain(BUDDY_FALLBACK_NAME);
+		expect(capture.posted[0]).not.toContain('Google Ada');
+		expect(capture.posted[0]).not.toContain('ada@example.com invited');
+		await handleSaveBuddyProfile('ada', { displayName: 'Track Ada', discoverable: false }, now);
+		await handleSendBuddyInvite(
+			'ada',
+			{ email: 'second@example.com' },
+			{
+				accountSid: 'AC00000000000000000000000000000000',
+				authToken: 'test-token-value-16',
+				fromAddress: 'noreply@gaslandsgarage.com',
+				fetchImpl: wrapped,
+				nowMs: now + 1
+			}
+		);
+		expect(capture.posted[1]).toContain('Track Ada invited you');
+		expect(capture.posted[1]).not.toContain('Google Ada');
+	});
+
+	it('keeps an invite opt-out when the account is deleted without Twilio configured', async () => {
+		await player('ada', 'Ada');
+		const hash = emailAddressHash('ada@example.com', 'test-token-value-16');
+		await getFirestore().doc(`buddyEmailSuppress/${hash}`).set({ suppressedAt: '2026-10-18T12:00:00.000Z' });
+		const previousSid = process.env.TWILIO_ACCOUNT_SID;
+		const previousToken = process.env.TWILIO_AUTH_TOKEN;
+		process.env.TWILIO_ACCOUNT_SID = 'disabled';
+		process.env.TWILIO_AUTH_TOKEN = 'disabled';
+		try {
+			await eraseAccount('ada');
+			expect((await getFirestore().doc(`buddyEmailSuppress/${hash}`).get()).exists).toBe(true);
+		} finally {
+			if (previousSid === undefined) delete process.env.TWILIO_ACCOUNT_SID;
+			else process.env.TWILIO_ACCOUNT_SID = previousSid;
+			if (previousToken === undefined) delete process.env.TWILIO_AUTH_TOKEN;
+			else process.env.TWILIO_AUTH_TOKEN = previousToken;
+		}
 	});
 
 	it('rejects a disabled account and includes buddies in export and delete', async () => {

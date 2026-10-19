@@ -94,8 +94,10 @@
 			We use that address only to send the invite and to honor a request not to be emailed again. We do
 			not keep the address. We keep a salted hash of it so the same address is not invited again for 7
 			days, and so an opt-out stays in effect. The message has no marketing. The accept link expires
-			after 14 days and works once. The link that says not to email invites again works without an
-			account. Opening that link does not change anything until the person confirms.
+			after 14 days and works once, and it works only after the recipient signs in with that verified
+			address. The link that says not to email invites again works without an account. Opening that
+			link does not change anything until the person confirms. Deleting an account does not remove
+			that opt-out.
 		</p>
 
 		<h2 class="text-xl font-bold mt-8 mb-3">Location, Nominatim, and the approximate point</h2>
@@ -285,9 +287,9 @@
 			The account record is not deleted when you sign out, and it is not deleted when an account is
 			disabled. While you are signed in, you can delete your account from settings. You can also ask by
 			email. Buddy links, requests, blocks, your invite code, and buddy-invite records stay until you
-			remove them or delete your account. Deleting your account removes those links for both people.
-			The salted hash of your own address, and the invites you sent, are removed with the account.
-			An opt-out hash for someone else stays so we can still honor their request.
+			remove them or delete your account. Deleting your account removes those links for both people
+			and removes the invites you sent. The salted hash for “don't email me invites again” stays,
+			including the hash of your own address, so that request still blocks a later invite.
 		</p>
 		<p>
 			Game requests stay until we delete them on request. The profile page does not include a delete
@@ -389,7 +391,7 @@
 			<a class={linkClass} href="mailto:jose.anes@gmail.com">jose.anes@gmail.com</a>, or use
 			Contact Us while signed in, and say what you want removed. We answer email requests within 1
 			month. We can delete the Gaslands Garage records we hold for that account, including the account
-			record, teams, profile, settings, game requests, gaming buddy links, buddy-invite records, and messages to us. Disabling an account is not
+			record, teams, profile, settings, game requests, gaming buddy links, and the buddy invites you sent. A request not to receive buddy-invite email stays in place. Disabling an account is not
 			the same as deleting it. We cannot delete the Google account itself.
 		</p>
 
