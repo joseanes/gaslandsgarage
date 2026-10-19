@@ -4,7 +4,67 @@ on:
     branches: [main]
 
 jobs:
+  # Every merge to main lands on staging first: site, Firestore/Storage rules,
+  # indexes, and functions in the gaslandsgarage-staging Firebase project.
+  staging:
+    runs-on: ubuntu-latest
+    concurrency: { group: staging-deploy, cancel-in-progress: false }
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+    - uses: pnpm/action-setup@a3252b78c470c02df07e9d59298aecedc3ccdd6d # v3
+      with: { version: 9, run_install: false }
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      with: { node-version: '22', cache: 'pnpm' }
+
+    - name: Configure AWS with GitHub OIDC
+      uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+      with:
+        aws-region: ${{ env.AWS_REGION }}
+        role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
+        role-session-name: gaslands-garage-staging-deploy
+
+    - run: pnpm install
+
+    - name: Build SvelteKit (staging Firebase config)
+      working-directory: app
+      run: pnpm run build:staging
+
+    - name: CDK Deploy staging stacks
+      working-directory: infra
+      run: |
+        pnpm run build
+        npx cdk deploy StagingCertificateStack StagingInfraStack --exclusively --require-approval never
+
+    - name: Upload staging site
+      run: scripts/deploy-staging-site.sh
+
+    # Keyless: Workload Identity Federation in the staging project only. The
+    # provider accepts this repository on refs/heads/main and nothing else.
+    - name: Authenticate to Google Cloud (staging)
+      uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+      with:
+        workload_identity_provider: projects/1059520931399/locations/global/workloadIdentityPools/github-actions/providers/gaslandsgarage
+        service_account: github-staging-deploy@gaslandsgarage-staging.iam.gserviceaccount.com
+
+    - name: Deploy Firebase rules, indexes, and functions to staging
+      run: |
+        echo "MAIL_FROM_ADDRESS=noreply@gaslandsgarage.com" > functions/.env.gaslandsgarage-staging
+        # No --force: a deploy that would delete a function or index fails instead.
+        npx --yes firebase-tools@13.29.1 deploy \
+          --only firestore:rules,firestore:indexes,storage,functions \
+          --project staging --non-interactive
+
+  # Production waits for staging and for José's approval on the
+  # "production" GitHub environment. Steps are unchanged.
   deploy:
+    needs: staging
+    environment: production
     runs-on: ubuntu-latest
     permissions:
       contents: read

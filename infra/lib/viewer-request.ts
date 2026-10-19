@@ -3,8 +3,24 @@
  * in that subset: `var`, classic functions, and no trailing syntax the
  * runtime rejects. Routes are data, inserted with JSON.stringify.
  */
-export function viewerRequestCode(routes: readonly string[]): string {
+export interface ViewerHosts {
+	/** Host every redirect lands on. */
+	canonicalHost?: string;
+	/** Alias that 301s to the canonical host. Empty string: no alias. */
+	redirectHost?: string;
+}
+
+const HOST_PATTERN = /^[a-z0-9.-]*$/;
+
+export function viewerRequestCode(routes: readonly string[], hosts: ViewerHosts = {}): string {
 	const list = JSON.stringify([...routes]);
+	const canonicalHost = hosts.canonicalHost ?? 'gaslandsgarage.com';
+	const redirectHost = hosts.redirectHost ?? `www.${canonicalHost}`;
+	for (const value of [canonicalHost, redirectHost]) {
+		if (!HOST_PATTERN.test(value)) throw new Error(`Invalid viewer host: ${value}`);
+	}
+	if (!canonicalHost) throw new Error('canonicalHost is required');
+	const aliasCheck = redirectHost ? `host === '${redirectHost}' || ` : '';
 	return `
 function handler(event) {
   var request = event.request;
@@ -13,8 +29,8 @@ function handler(event) {
   var uri = request.uri || '/';
   var query = toQuery(request.querystring);
   var dest = normalize(uri);
-  if (host === 'www.gaslandsgarage.com' || dest !== uri) {
-    return redirect('https://gaslandsgarage.com' + dest + query);
+  if (${aliasCheck}dest !== uri) {
+    return redirect('https://${canonicalHost}' + dest + query);
   }
   if (isSpa(uri)) {
     request.uri = '/index.html';
