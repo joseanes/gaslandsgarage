@@ -76,14 +76,17 @@ test('printing a car does not say a vehicle is missing', async ({ page, context 
 	await popup.close();
 
 	await page.getByRole('button', { name: 'Teams', exact: true }).click();
+	await page.getByRole('button', { name: 'Share Team', exact: true }).click();
 	await page.getByRole('button', { name: 'Copy to Clipboard', exact: true }).click();
 	await expect.poll(() => messages.some((message) => message.includes('Draft copied'))).toBeTruthy();
 
 	await page.getByRole('button', { name: 'Teams', exact: true }).click();
+	await page.getByRole('button', { name: 'Share Team', exact: true }).click();
 	await page.getByRole('button', { name: 'Share Link', exact: true }).click();
 	await expect.poll(() => messages.some((message) => message.includes('Link updated'))).toBeTruthy();
 
 	await page.getByRole('button', { name: 'Teams', exact: true }).click();
+	await page.getByRole('button', { name: 'Share Team', exact: true }).click();
 	await page.getByRole('button', { name: 'Generate QR Code', exact: true }).click();
 	await expect(page.getByRole('dialog', { name: 'QR Code' })).toBeVisible();
 	expect(messages.filter((message) => vehicleAlert.test(message))).toEqual([]);

@@ -1,5 +1,6 @@
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
+import { BUDDY_EMAIL_INVITES_PER_DAY, BUDDY_EMAIL_INVITE_WINDOW_MS, rollingWindow } from '../../app/src/lib/buddies/model.ts';
 
 /** Collection the Firebase Trigger Email extension watches. */
 export const MAIL_COLLECTION = 'mail';
@@ -25,9 +26,14 @@ export type QueuedContactMail = ContactMail & {
   expireAt: Timestamp;
 };
 
+export const GAME_CONTACT_EMAIL_RATE = 'gameContactEmailRate';
+
 export type QueueResult =
   | { status: 'queued' }
-  | { status: 'skipped'; reason: 'invalid' | 'not-opted-in' | 'no-email' | 'disabled' | 'missing-user' };
+  | {
+      status: 'skipped';
+      reason: 'invalid' | 'not-opted-in' | 'no-email' | 'disabled' | 'missing-user' | 'rate-limited';
+    };
 
 /**
  * Game-request email is opt-in. `userSettings.allowContactFromPlayers` defaults
@@ -69,13 +75,15 @@ export function contactMailDocument(input: { to: string; fromName: string; messa
   };
 }
 
-function readContact(data: Record<string, unknown>): { toUid: string; fromName: string; message: string } | null {
+function readContact(
+  data: Record<string, unknown>
+): { fromUid: string; toUid: string; fromName: string; message: string } | null {
   const toUid = typeof data.toUid === 'string' ? data.toUid : '';
   const fromUid = typeof data.fromUid === 'string' ? data.fromUid : '';
   const fromName = typeof data.fromName === 'string' ? data.fromName : '';
   const message = typeof data.message === 'string' ? data.message : '';
   if (!toUid || !fromUid || toUid === fromUid || !message.trim()) return null;
-  return { toUid, fromName, message };
+  return { fromUid, toUid, fromName, message };
 }
 
 function errorCode(error: unknown): string {
@@ -118,15 +126,34 @@ export async function queueContactEmail(contactId: string, data: Record<string, 
   }
   if (!email) return { status: 'skipped', reason: 'no-email' };
 
+  const mailRef = db.doc(`${MAIL_COLLECTION}/${mailDocId(contactId)}`);
+  if ((await mailRef.get()).exists) return { status: 'queued' };
+  if (!(await reserveContactEmail(contact.fromUid))) return { status: 'skipped', reason: 'rate-limited' };
+
   const mail: QueuedContactMail = {
     ...contactMailDocument({ to: email, fromName: contact.fromName, message: contact.message }),
     expireAt: mailExpiresAt()
   };
   try {
-    await db.doc(`${MAIL_COLLECTION}/${mailDocId(contactId)}`).create(mail);
+    await mailRef.create(mail);
   } catch (error) {
     if (!isAlreadyExists(error)) throw error;
   }
   console.log(`Queued mail/${mailDocId(contactId)} for gameContacts/${contactId}`);
   return { status: 'queued' };
+}
+
+/** Ten game-request emails per sender per day. The in-app note is unaffected. */
+async function reserveContactEmail(fromUid: string, nowMs = Date.now()): Promise<boolean> {
+  const db = getFirestore();
+  const ref = db.doc(`${GAME_CONTACT_EMAIL_RATE}/${fromUid}`);
+  let allowed = false;
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const next = rollingWindow(snap.get('sentAt'), nowMs, BUDDY_EMAIL_INVITES_PER_DAY, BUDDY_EMAIL_INVITE_WINDOW_MS);
+    allowed = next.allowed;
+    if (!next.allowed) return;
+    tx.set(ref, { sentAt: next.stamps }, { merge: true });
+  });
+  return allowed;
 }

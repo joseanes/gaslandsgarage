@@ -7,13 +7,34 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     permissions:
-      contents: read          # PAT/keys, not OIDC
+      contents: read
+      id-token: write
+    env:
+      # Empty until José creates the role and stores its ARN. The key path below stays until then.
+      AWS_DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
     steps:
-    - uses: actions/checkout@v4
-    - uses: pnpm/action-setup@v3
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+    - uses: pnpm/action-setup@a3252b78c470c02df07e9d59298aecedc3ccdd6d # v3
       with: { version: 9, run_install: false }
-    - uses: actions/setup-node@v4
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
       with: { node-version: '20', cache: 'pnpm' }
+
+    - name: Configure AWS with GitHub OIDC
+      if: env.AWS_DEPLOY_ROLE_ARN != ''
+      uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+      with:
+        aws-region: ${{ env.AWS_REGION }}
+        role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
+        role-session-name: gaslands-garage-deploy
+
+    - name: Configure AWS with access keys
+      if: env.AWS_DEPLOY_ROLE_ARN == ''
+      uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+      with:
+        aws-region: ${{ env.AWS_REGION }}
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
     # ---------- Install workspace deps ----------
     - run: pnpm install
@@ -26,10 +47,6 @@ jobs:
     # -------- CDK Bootstrap --------
     - name: CDK Bootstrap
       working-directory: infra
-      env:
-        AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        AWS_REGION:            ${{ secrets.AWS_REGION }}
       run: |
         ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
         npx cdk bootstrap aws://$ACCOUNT/$AWS_REGION --require-approval never
@@ -37,32 +54,20 @@ jobs:
     # -------- CDK Deploy --------
     - name: CDK Deploy
       working-directory: infra
-      env:
-        AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        AWS_REGION:            ${{ secrets.AWS_REGION }}
       run: |
         pnpm run build
         npx cdk deploy CertificateStack --require-approval never
         npx cdk deploy InfraStack --require-approval never
-        
+
     # -------- Upload files to S3 --------
     - name: Get S3 bucket name
       working-directory: infra
-      env:
-        AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        AWS_REGION:            ${{ secrets.AWS_REGION }}
       run: |
         # Extract bucket name from CDK outputs
         BUCKET_NAME=$(aws cloudformation describe-stacks --stack-name InfraStack --query "Stacks[0].Outputs[?OutputKey=='BucketName'].OutputValue" --output text)
         echo "BUCKET_NAME=$BUCKET_NAME" >> $GITHUB_ENV
-        
+
     - name: Upload SvelteKit build to S3
-      env:
-        AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        AWS_REGION:            ${{ secrets.AWS_REGION }}
       run: |
         echo "Uploading files to S3 bucket: $BUCKET_NAME"
         ls -la app/build/
@@ -92,21 +97,17 @@ jobs:
         aws s3 cp app/build/icon-192.png s3://$BUCKET_NAME/icon-192.png --content-type image/png --cache-control max-age=86400
         aws s3 cp app/build/icon-512.png s3://$BUCKET_NAME/icon-512.png --content-type image/png --cache-control max-age=86400
         aws s3 cp app/build/site.webmanifest s3://$BUCKET_NAME/site.webmanifest --content-type application/manifest+json --cache-control max-age=86400
-        
+
     - name: Invalidate CloudFront cache
-      env:
-        AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        AWS_REGION:            ${{ secrets.AWS_REGION }}
       run: |
         # Get the full CloudFront distribution domain
         CF_DOMAIN=$(aws cloudformation describe-stacks --stack-name InfraStack --query "Stacks[0].Outputs[?OutputKey=='CDNDistributionDomainName'].OutputValue" --output text)
         echo "CloudFront Domain: $CF_DOMAIN"
-        
+
         # List all CloudFront distributions and find the matching one
         DIST_ID=$(aws cloudfront list-distributions --query "DistributionList.Items[?DomainName=='$CF_DOMAIN'].Id" --output text)
         echo "Distribution ID: $DIST_ID"
-        
+
         # Only invalidate if we found a distribution ID
         if [ -n "$DIST_ID" ]; then
           # Invalidate the entire distribution
@@ -114,4 +115,3 @@ jobs:
         else
           echo "Could not find CloudFront distribution ID. Skipping invalidation."
         fi
-

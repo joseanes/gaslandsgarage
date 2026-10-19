@@ -27,8 +27,11 @@ async function holdHome(page: Page) {
 	});
 }
 
+const SHARE_TEAM_ITEMS = new Set(['Copy to Clipboard', 'Share Link', 'Generate QR Code']);
+
 async function openTeamsItem(page: Page, name: string) {
 	await page.getByRole('button', { name: 'Teams', exact: true }).click();
+	if (SHARE_TEAM_ITEMS.has(name)) await page.getByRole('button', { name: 'Share Team', exact: true }).click();
 	await page.getByRole('button', { name, exact: true }).click();
 }
 
