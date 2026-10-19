@@ -8,7 +8,8 @@
   import "../dark-override.css"; /* This must be imported last to override other styles */
   import "../inline-fixes.js"; /* JavaScript fixes for element heights */
   import "../print-new.js"; /* Print handler */
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
+  import { clampToViewport } from '$lib/clampToViewport';
   import { fade } from 'svelte/transition';
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
@@ -30,6 +31,14 @@
   // Ad configuration variables
   let showAds = false; // Removed ads for now
   
+  const headerMenus = ['.share-menu-dropdown', '.settings-menu-dropdown', '.players-menu-dropdown', '.help-menu-dropdown'];
+
+  async function clampHeaderMenus() {
+    await tick();
+    if (typeof document === 'undefined') return;
+    for (const selector of headerMenus) clampToViewport(document.querySelector(selector));
+  }
+
   // Menu state
   let showShareMenu = false;
   let showHelpMenu = false;
@@ -460,7 +469,9 @@
 <!-- Main layout with ad space -->
 <div class="app-container min-h-screen flex flex-col">
   <!-- Top Navigation Bar -->
-  <header class="w-full print:hidden">
+  <!-- Sticky on the header, not only the bar: the bar fills the header, so a
+       sticky bar has no room to stick and the open menu scrolls away with the page. -->
+  <header class="sticky top-0 z-10 w-full print:hidden">
     <nav class="menu-bar print:hidden">
       <div class="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 w-full flex justify-between items-center">
         <div class="flex flex-col justify-start">
@@ -477,7 +488,7 @@
             <button
               type="button"
               class="menu-item flex items-center share-menu-trigger"
-              on:click={() => showShareMenu = !showShareMenu}
+              on:click={() => { showShareMenu = !showShareMenu; void clampHeaderMenus(); }}
               aria-haspopup="true"
               aria-expanded={showShareMenu}
               style="height: auto !important; min-height: auto !important;"
@@ -519,7 +530,7 @@
             <button
               type="button"
               class="menu-item flex items-center settings-menu-trigger"
-              on:click={() => showSettingsMenu = !showSettingsMenu}
+              on:click={() => { showSettingsMenu = !showSettingsMenu; void clampHeaderMenus(); }}
               aria-haspopup="true"
               aria-expanded={showSettingsMenu}
               style="height: auto !important; min-height: auto !important;"
@@ -549,7 +560,7 @@
             <button
               type="button"
               class="menu-item flex items-center players-menu-trigger"
-              on:click={() => showPlayersMenu = !showPlayersMenu}
+              on:click={() => { showPlayersMenu = !showPlayersMenu; void clampHeaderMenus(); }}
               aria-haspopup="true"
               aria-expanded={showPlayersMenu}
               style="height: auto !important; min-height: auto !important;"
@@ -582,7 +593,7 @@
             <button
               type="button"
               class="menu-item flex items-center help-menu-trigger"
-              on:click={() => showHelpMenu = !showHelpMenu}
+              on:click={() => { showHelpMenu = !showHelpMenu; void clampHeaderMenus(); }}
               aria-haspopup="true"
               aria-expanded={showHelpMenu}
               style="height: auto !important; min-height: auto !important;"
