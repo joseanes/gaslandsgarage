@@ -22,7 +22,8 @@
 	import { perkCost } from '$lib/validate/calc';
 	import type { Draft, Validation } from '$lib/validate/model';
 	import { encodeDraft, decodeDraft } from '$lib/draft/io';
-	import { normalizeIncomingDraft, withUpgradePerks } from '$lib/draft/importTeam';
+	import { normalizeIncomingDraft, readSavedTeamId, withUpgradePerks } from '$lib/draft/importTeam';
+	import { readHeldDraft, writeHeldDraft } from '$lib/draft/hold';
 	import { countedVehicleTotal, defaultRulesVersion, maxCountedVehicles, normalizeRulesVersion, type RulesVersion } from '$lib/rules/version';
 	import { resolveById } from '$lib/validate/v3/lookup';
 	import { v3BuildSlots } from '$lib/validate/v3/slots';
@@ -118,10 +119,20 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 	// Load settings on mount
 	// Load settings directly
 	onMount(() => {
-		const persist = () => rememberCurrentTeam(currentDraft);
+		const persist = () => {
+			rememberCurrentTeam(currentDraft);
+			persistHeldDraft();
+		};
+		const warnIfUnsaved = (event: BeforeUnloadEvent) => {
+			if (!teamIsDirty()) return;
+			event.preventDefault();
+			event.returnValue = '';
+		};
 		window.addEventListener('pagehide', persist);
+		window.addEventListener('beforeunload', warnIfUnsaved);
 		return () => {
 			window.removeEventListener('pagehide', persist);
+			window.removeEventListener('beforeunload', warnIfUnsaved);
 			persist();
 		};
 	});
@@ -132,26 +143,19 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		
 		// Check if we have stored team data from a failed load attempt
 		try {
-			if (sessionStorage.getItem('gaslands-buddy-copy-banner') === '1') {
-				buddyCopyBanner = true;
-				sessionStorage.removeItem('gaslands-buddy-copy-banner');
-			}
+			const showBuddyBanner = sessionStorage.getItem('gaslands-buddy-copy-banner') === '1';
+			if (showBuddyBanner) sessionStorage.removeItem('gaslands-buddy-copy-banner');
 			const storedTeamData = localStorage.getItem('gaslands-team-data');
 			if (storedTeamData) {
 				console.log("[Builder] Found stored team data, attempting to load");
-				// Parse the team data
-				const teamData = JSON.parse(storedTeamData);
-				
-				// Clear the storage immediately to prevent loops
 				localStorage.removeItem('gaslands-team-data');
-				
-				// Wait a moment for the page to fully initialize
 				setTimeout(() => {
-					// Dispatch an event to load this team data
-					document.dispatchEvent(new CustomEvent('gaslands-load-team-data', {
-						detail: teamData,
-						bubbles: true
-					}));
+					try {
+						const loaded = applyImportedDraft(JSON.parse(storedTeamData));
+						buddyCopyBanner = !!loaded && showBuddyBanner;
+					} catch (error) {
+						console.error("[Builder] Error loading stored team data:", error);
+					}
 				}, 300);
 			}
 		} catch (error) {
@@ -358,11 +362,16 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		await quickSaveTeam();
 	}
 
+	function idList(value: unknown): string[] {
+		if (!Array.isArray(value)) return [];
+		return value.filter((item): item is string => typeof item === 'string');
+	}
+
 	function calculateUsedBuildSlots(vehicle: Veh) {
 		let totalSlots = 0;
 		
 		// Calculate slots used by weapons
-		for (const weaponInstanceId of vehicle.weapons) {
+		for (const weaponInstanceId of idList(vehicle.weapons)) {
 			const lastUnderscoreIndex = weaponInstanceId.lastIndexOf('_');
 				const baseWeaponId = lastUnderscoreIndex !== -1 ? 
 					weaponInstanceId.substring(0, lastUnderscoreIndex) : 
@@ -380,7 +389,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		}
 		
 		// Calculate slots used by upgrades
-		for (const upgradeId of vehicle.upgrades) {
+		for (const upgradeId of idList(vehicle.upgrades)) {
 			const upgradeObj = upgrades.find(u => u.id === upgradeId);
 			if (upgradeObj) {
 				// Special case: Some upgrades don't use build slots in Gaslands Refueled
@@ -950,7 +959,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		let maxHull = vehicleType.maxHull;
 
 		// Add hull points from upgrades
-		for (const upgradeId of vehicle.upgrades) {
+		for (const upgradeId of idList(vehicle.upgrades)) {
 			const upgrade = upgrades.find(u => u.id === upgradeId);
 			if (upgrade) {
 				// Use the hull property if present
@@ -965,7 +974,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		}
 
 		// Add hull points from perks (if any)
-		for (const perkId of vehicle.perks) {
+		for (const perkId of idList(vehicle.perks)) {
 			// Add any perks that affect hull here
 			// For example: if (perkId === 'fortified' || perkId === 'tank_commander') maxHull += 1;
 		}
@@ -981,7 +990,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		let handling = vehicleType.handling || 4; // Default to 4 if not specified
 
 		// Add handling modifiers from upgrades
-		for (const upgradeId of vehicle.upgrades) {
+		for (const upgradeId of idList(vehicle.upgrades)) {
 			const upgrade = upgrades.find(u => u.id === upgradeId);
 			if (upgrade && upgrade.handling) {
 				handling += upgrade.handling;
@@ -999,7 +1008,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		let maxGear = vehicleType.maxGear;
 
 		// Add gear modifiers from upgrades
-		for (const upgradeId of vehicle.upgrades) {
+		for (const upgradeId of idList(vehicle.upgrades)) {
 			const upgrade = upgrades.find(u => u.id === upgradeId);
 			if (upgrade && upgrade.gear) {
 				maxGear += upgrade.gear;
@@ -1017,7 +1026,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		let crew = vehicleType.crew || 1; // Default to 1 if not specified
 
 		// Add crew modifiers from upgrades
-		for (const upgradeId of vehicle.upgrades) {
+		for (const upgradeId of idList(vehicle.upgrades)) {
 			const upgrade = upgrades.find(u => u.id === upgradeId);
 			if (upgrade && upgrade.crew) {
 				crew += upgrade.crew;
@@ -1034,7 +1043,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		let totalAttackDice = 0;
 
 		// Calculate total attack dice from all weapons
-		for (const weaponInstanceId of vehicle.weapons) {
+		for (const weaponInstanceId of idList(vehicle.weapons)) {
 			const lastUnderscoreIndex = weaponInstanceId.lastIndexOf('_');
 				const baseWeaponId = lastUnderscoreIndex !== -1 ? 
 					weaponInstanceId.substring(0, lastUnderscoreIndex) : 
@@ -1177,6 +1186,64 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 
 	// Mode toggle for Edit/Play mode
 	let playMode = false;
+	let savedTeamId: string | null = null;
+	/** Signature captured the last time this team was saved, loaded, or started fresh. */
+	let savedSignature = '';
+	let holdReady = false;
+
+	function teamSignature() {
+		return JSON.stringify({
+			teamName,
+			sponsorId,
+			maxCans,
+			rulesVersion,
+			vehicles
+		});
+	}
+
+	function persistHeldDraft() {
+		if (!holdReady || typeof window === 'undefined') return;
+		writeHeldDraft({
+			sponsor: sponsorId,
+			vehicles,
+			teamName,
+			maxCans,
+			darkMode,
+			rulesVersion,
+			savedTeamId,
+			cleanSignature: savedSignature
+		});
+	}
+
+	function markTeamSaved() {
+		savedSignature = teamSignature();
+		persistHeldDraft();
+	}
+
+	function teamIsDirty() {
+		return teamSignature() !== savedSignature;
+	}
+
+	function startNewTeam() {
+		if (teamIsDirty() && !confirm('Discard unsaved changes and start a new team?')) return;
+		teamName = 'My Gaslands Team';
+		vehicles = [];
+		sponsorId = sponsors.find((entry) => entry.id === 'no_sponsor')?.id ?? sponsors[0]?.id ?? '';
+		lastSponsorId = sponsorId;
+		savedTeamId = null;
+		vehicleHazards = {};
+		collapsedVehicles = new Set();
+		playMode = false;
+		totalCans = 0;
+		validation = { cans: 0, errors: [], vehicleReports: [] };
+		buddyCopyBanner = false;
+		forgetSharedDraft();
+		syncWindowTeam();
+		rememberCurrentTeam({ sponsor: sponsorId, vehicles: [] });
+		if (typeof window !== 'undefined') window.teamName = teamName;
+		markTeamSaved();
+		updateCurrentDraft();
+	}
 
 	// Function to check if user has acknowledged owning the rules
 	function checkRulesAcknowledgment(action: string) {
@@ -1407,7 +1474,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		try {
 			// First check if a team with this name already exists
 			const teamsResult = await getUserTeams();
-			if (teamsResult.success && teamsResult.teams) {
+			if (!savedTeamId && teamsResult.success && teamsResult.teams) {
 				const existingTeam = teamsResult.teams.find(team => team.teamName === teamName.trim());
 
 				// If team exists, ask for confirmation before overwriting
@@ -1432,10 +1499,12 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 				rulesVersion
 			};
 
-			// Save the team
-			const result = await saveTeam(draftData, teamName);
+			// Save the team. A known id updates that team; a new team is created when the id is clear.
+			const result = await saveTeam(draftData, teamName, savedTeamId ?? undefined);
 
 			if (result.success) {
+				if (result.teamId) savedTeamId = result.teamId;
+				markTeamSaved();
 				alert("Team saved successfully!");
 			} else {
 				console.error("Failed to save team:", result.error);
@@ -1755,68 +1824,9 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			// Set up a custom event listener for menu commands
 			// Listen for custom team loading events
 			onLoadTeam = (event: Event) => {
-				if (!(event instanceof CustomEvent)) return;
-				const detail = event.detail as {
-					sponsor?: string;
-					teamName?: string;
-					vehicles?: Veh[];
-					maxCans?: number;
-					darkMode?: boolean;
-				};
-				console.log('[Event] Received gaslands-load-team-data event with full team data:', detail);
-				
-				if (detail) {
-					if (window.importDraftFn) {
-						console.log('[Event] Using window.importDraftFn to load team');
-						window.importDraftFn(detail);
-					} else {
-						console.log('[Event] importDraftFn not available, setting team data manually');
-						try {
-							adoptRulesVersion(event.detail);
-							// Set team properties directly
-							if (detail.sponsor) {
-								sponsorId = detail.sponsor;
-							}
-							
-							if (detail.teamName) {
-								teamName = detail.teamName;
-								// Also update window.teamName for cross-component access
-								if (typeof window !== 'undefined') {
-									console.log("Setting window.teamName from event:", detail.teamName);
-									window.teamName = detail.teamName;
-								}
-							}
-							
-							if (Array.isArray(detail.vehicles)) {
-								vehicles = withUpgradePerks(detail.vehicles as Veh[], upgrades);
-							}
-							
-							// Update maxCans if specified
-							if (detail.maxCans && typeof detail.maxCans === 'number') {
-								maxCans = detail.maxCans;
-							}
-							
-							// Update dark mode if specified
-							if (typeof detail.darkMode === 'boolean') {
-								darkMode = detail.darkMode;
-								if (darkMode) {
-									document.documentElement.classList.add('dark-mode');
-								} else {
-									document.documentElement.classList.remove('dark-mode');
-								}
-							}
-							
-							// Calculate total cans after loading all team data
-							totalCans = calculateTotalCansDirectly();
-							
-							// Run validation to ensure everything is properly updated
-							validateSponsorRestrictions();
-							setTimeout(() => updateValidation(), 0);
-						} catch (error) {
-							console.error('[Event] Error setting team data manually:', error);
-						}
-					}
-				}
+				if (!(event instanceof CustomEvent) || event.detail == null) return;
+				event.preventDefault();
+				applyImportedDraft(event.detail);
 			};
 			document.addEventListener('gaslands-load-team-data', onLoadTeam);
 			
@@ -2019,6 +2029,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 					console.error("Error importing draft:", error);
 				}
 			};
+			window.startNewTeamFn = startNewTeam;
 
 			continueTeamMenuAction();
 		}
@@ -2046,6 +2057,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 				window.openTeamsModalFn = undefined;
 				window.currentDraftFn = undefined;
 				window.importDraftFn = undefined;
+				window.startNewTeamFn = undefined;
 				
 				// Clean up global team variables
 				window.teamName = undefined;
@@ -2079,6 +2091,10 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			importBuild();
 			return;
 		}
+		if (action === 'new') {
+			startNewTeam();
+			return;
+		}
 		if (!teamActionNeedsTeam(action)) return;
 		if (!teamHasVehicles(editorTeam())) {
 			applyImportedDraft(pendingTeamSnapshot);
@@ -2090,13 +2106,19 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		else void generateQRCode();
 	}
 
-	function applyImportedDraft(raw: unknown) {
+	function applyImportedDraft(
+		raw: unknown,
+		options?: { confirm?: boolean; savedTeamId?: string | null; cleanSignature?: string }
+	) {
+		if (holdReady && options?.confirm !== false && teamIsDirty()) {
+			if (!confirm('Discard unsaved changes and load this team?')) return false;
+		}
 		const draft = normalizeIncomingDraft(raw);
 		if (!draft) return false;
 
 		adoptRulesVersion(draft);
 		sponsorId = draft.sponsor;
-		vehicles = withUpgradePerks(draft.vehicles as Veh[], upgrades).map((vehicle) => ({
+		vehicles = withUpgradePerks(draft.vehicles as Veh[], upgrades, draft.rulesVersion).map((vehicle) => ({
 			...vehicle,
 			upgrades: vehicle.upgrades ?? []
 		}));
@@ -2110,6 +2132,9 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		if (draft.maxCans) maxCans = draft.maxCans;
 		if (draft.darkMode !== undefined) darkMode = draft.darkMode;
 
+		const incomingId = options && 'savedTeamId' in options ? options.savedTeamId : readSavedTeamId(raw);
+		savedTeamId = typeof incomingId === 'string' && incomingId.trim() ? incomingId.trim() : null;
+
 		totalCans = calculateTotalCansDirectly();
 		collapsedVehicles = new Set(vehicles.map((entry) => entry.id));
 		validateSponsorRestrictions();
@@ -2117,6 +2142,13 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		// After this function returns, the draft declaration picks up the new
 		// vehicles. Validating on the next turn keeps the banner on that draft.
 		setTimeout(() => updateValidation(), 0);
+
+		if (options && typeof options.cleanSignature === 'string') {
+			savedSignature = options.cleanSignature;
+			persistHeldDraft();
+		} else if (savedTeamId) {
+			markTeamSaved();
+		}
 		return true;
 	}
 
@@ -2131,12 +2163,14 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 
 	function importDraftString() {
 		const draft = decodeDraft(importString.trim());
-		if (draft && applyImportedDraft(draft)) {
+		if (!draft) {
+			alert('Invalid draft string');
+			return;
+		}
+		if (applyImportedDraft(draft)) {
 			importString = '';
 			showImportModal = false;
 			showSharePanel = false;
-		} else {
-			alert('Invalid draft string');
 		}
 	}
 
@@ -2147,6 +2181,29 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		if (savedDarkMode !== null) {
 			darkMode = savedDarkMode === 'true';
 		}
+
+		// Restore the in-progress team before a share link can replace it.
+		const held = readHeldDraft();
+		if (held) {
+			applyImportedDraft(
+				{
+					sponsor: held.sponsor,
+					vehicles: held.vehicles,
+					teamName: held.teamName,
+					maxCans: held.maxCans,
+					darkMode: held.darkMode,
+					rulesVersion: held.rulesVersion
+				},
+				{
+					confirm: false,
+					savedTeamId: held.savedTeamId ?? null,
+					cleanSignature: typeof held.cleanSignature === 'string' ? held.cleanSignature : ''
+				}
+			);
+		} else {
+			markTeamSaved();
+		}
+		holdReady = true;
 
 		// Then check for URL params (these override localStorage)
 		const url = new URL(window.location.href);
@@ -2273,6 +2330,18 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		darkMode,
 		rulesVersion
 	} satisfies Draft;
+	$: if (holdReady && typeof window !== 'undefined') {
+		writeHeldDraft({
+			sponsor: sponsorId,
+			vehicles,
+			teamName,
+			maxCans,
+			darkMode,
+			rulesVersion,
+			savedTeamId,
+			cleanSignature: savedSignature
+		});
+	}
 	// Keep the teams modal and quick save on the team that is actually on screen.
 	$: if (typeof window !== 'undefined') {
 		window.teamName = teamName;
@@ -2398,7 +2467,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		}
 
 		// Add upgrade costs
-		for (const upgradeId of vehicle.upgrades) {
+		for (const upgradeId of idList(vehicle.upgrades)) {
 			const upgradeObj = upgrades.find(u => u.id === upgradeId);
 			if (upgradeObj && upgradeObj.cost) {
 				totalCost += upgradeObj.cost;
@@ -2406,7 +2475,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		}
 
 		// Add perk costs (rules data uses `cost`; `level` is a legacy fallback)
-		for (const perkId of vehicle.perks) {
+		for (const perkId of idList(vehicle.perks)) {
 			const perkObj = perks.find(p => p.id === perkId);
 			totalCost += perkCost(perkObj);
 		}
@@ -2440,7 +2509,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			}
 			
 			// Add upgrade costs
-			for (const upgradeId of vehicle.upgrades) {
+			for (const upgradeId of idList(vehicle.upgrades)) {
 				const upgradeObj = upgrades.find(u => u.id === upgradeId);
 				if (upgradeObj && upgradeObj.cost) {
 					totalCost += upgradeObj.cost;
@@ -2448,7 +2517,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			}
 			
 			// Add perk costs (rules data uses `cost`; `level` is a legacy fallback)
-			for (const perkId of vehicle.perks) {
+			for (const perkId of idList(vehicle.perks)) {
 				const perkObj = perks.find(p => p.id === perkId);
 				totalCost += perkCost(perkObj);
 			}

@@ -41,9 +41,25 @@
     // Props
     export let vehicle: TeamVehicle;
 
-    // A loaded vehicle often has no facings map. Re-check when the prop is replaced,
-    // or the facing <select> reads a missing object and the card fails to render.
-    $: if (vehicle && !vehicle.weaponFacings) vehicle.weaponFacings = {};
+    // A loaded vehicle often has no gear arrays or facings map. Repair those
+    // before cost and `{#each}` run, or the card boundary replaces the vehicle.
+    function asIdList(value: unknown): string[] {
+        if (!Array.isArray(value)) return [];
+        return value.filter((item): item is string => typeof item === 'string');
+    }
+
+    function listIsIds(value: unknown): value is string[] {
+        return Array.isArray(value) && value.every((item) => typeof item === 'string');
+    }
+
+    $: if (vehicle) {
+        if (!listIsIds(vehicle.weapons)) vehicle.weapons = asIdList(vehicle.weapons);
+        if (!listIsIds(vehicle.upgrades)) vehicle.upgrades = asIdList(vehicle.upgrades);
+        if (!listIsIds(vehicle.perks)) vehicle.perks = asIdList(vehicle.perks);
+        if (!vehicle.weaponFacings || typeof vehicle.weaponFacings !== 'object' || Array.isArray(vehicle.weaponFacings)) {
+            vehicle.weaponFacings = {};
+        }
+    }
     export let vehicleTypes: Vehicle[] = [];
     export let weapons: Weapon[] = [];
     export let upgrades: Upgrade[] = [];
@@ -120,6 +136,14 @@
     function removePerk(index: number) {
         dispatch('removePerk', { vehicleId: vehicle.id, perkIndex: index });
     }
+
+    const FACING_OPTIONS = ['front', 'side', 'rear', '360'];
+
+    function setWeaponFacing(weaponId: string, facing: string) {
+        const next = { ...(vehicle.weaponFacings || {}), [weaponId]: facing };
+        vehicle.weaponFacings = next;
+        patch({ weaponFacings: next });
+    }
     
     function incrementHazard() {
         localHazardCount += 1; // Immediately update local UI
@@ -148,11 +172,9 @@
     $: v3Slots = rulesVersion === 3 && vehicleType
         ? v3BuildSlots(vehicleType, resolvedWeapons, resolvedUpgrades)
         : null;
-    $: maxBuildSlots = v3Slots ? v3Slots.capacity : (vehicleType?.buildSlots || 2);
+    $: maxBuildSlots = v3Slots ? v3Slots.capacity : (vehicleType?.buildSlots ?? 2);
     // Recalculate slots whenever weapons or upgrades change
     $: usedBuildSlots = v3Slots ? v3Slots.used : calculateUsedBuildSlots(vehicle);
-    // Force reactivity for weapon/upgrade changes
-    $: { vehicle.weapons; vehicle.upgrades; rulesVersion; usedBuildSlots = v3Slots ? v3Slots.used : calculateUsedBuildSlots(vehicle); }
 
     function patch(partial: Partial<TeamVehicle>) {
         dispatch('patch', { vehicleId: vehicle.id, patch: partial });
@@ -215,7 +237,7 @@
         }
 
         // Add upgrade costs
-        for (const upgradeId of vehicle.upgrades) {
+        for (const upgradeId of asIdList(vehicle.upgrades)) {
             const upgradeObj = upgrades.find(u => u.id === upgradeId);
             if (upgradeObj && upgradeObj.cost) {
                 totalCost += upgradeObj.cost;
@@ -223,7 +245,7 @@
         }
 
         // Add perk costs
-        for (const perkId of vehicle.perks) {
+        for (const perkId of asIdList(vehicle.perks)) {
             const perkObj = perks.find(p => p.id === perkId);
             totalCost += perkCost(perkObj);
         }
@@ -277,13 +299,12 @@
                     // These weapons don't consume build slots
                     continue;
                 }
-                // Just use the slots field directly
-                totalSlots += weaponObj.slots;
+                totalSlots += weaponObj.slots || 0;
             }
         }
 
         // Calculate slots used by upgrades
-        for (const upgradeId of vehicle.upgrades) {
+        for (const upgradeId of asIdList(vehicle.upgrades)) {
             const upgradeObj = upgrades.find(u => u.id === upgradeId);
             if (upgradeObj) {
                 // Special case: Some upgrades don't use build slots in Gaslands Refueled
@@ -291,8 +312,7 @@
                     // These upgrades don't consume build slots
                     continue;
                 }
-                // Just use the slots field directly
-                totalSlots += upgradeObj.slots;
+                totalSlots += upgradeObj.slots || 0;
             }
         }
 
@@ -306,7 +326,7 @@
         let maxHull = vehicleType.maxHull;
 
         // Add hull points from upgrades
-        for (const upgradeId of vehicle.upgrades) {
+        for (const upgradeId of asIdList(vehicle.upgrades)) {
             const upgradeObj = upgrades.find(u => u.id === upgradeId);
 
             // Use new hull property if available
@@ -324,7 +344,7 @@
         }
 
         // Add hull points from perks (if any)
-        for (const perkId of vehicle.perks) {
+        for (const perkId of asIdList(vehicle.perks)) {
             // Add any perks that affect hull here
             // For example: if (perkId === 'fortified' || perkId === 'tank_commander') maxHull += 1;
         }
@@ -339,7 +359,7 @@
         let handling = vehicleType.handling || 4; // Default to 4 if not specified
 
         // Add handling modifiers from upgrades
-        for (const upgradeId of vehicle.upgrades) {
+        for (const upgradeId of asIdList(vehicle.upgrades)) {
             const upgradeObj = upgrades.find(u => u.id === upgradeId);
 
             // Use new handling property if available
@@ -362,7 +382,7 @@
         let maxGear = vehicleType.maxGear;
 
         // Add gear modifiers from upgrades
-        for (const upgradeId of vehicle.upgrades) {
+        for (const upgradeId of asIdList(vehicle.upgrades)) {
             const upgradeObj = upgrades.find(u => u.id === upgradeId);
 
             // Use new gear property if available
@@ -385,7 +405,7 @@
         let crew = vehicleType.crew || 1; // Default to 1 if not specified
 
         // Add crew modifiers from upgrades
-        for (const upgradeId of vehicle.upgrades) {
+        for (const upgradeId of asIdList(vehicle.upgrades)) {
             const upgradeObj = upgrades.find(u => u.id === upgradeId);
 
             // Use new crew property if available
@@ -580,6 +600,11 @@
     {#if !vehicleTypes.some((vt) => vt.id === vehicle.type)}
         <p class="px-4 py-2 text-sm text-red-800 bg-red-50" data-testid="vehicle-warning">
             This vehicle isn't in the current rules list ({vehicle.type || 'no type'}). It is still on the team.
+        </p>
+    {/if}
+    {#if maxBuildSlots > 0 && usedBuildSlots > maxBuildSlots}
+        <p class="px-4 py-2 text-sm text-amber-900 bg-amber-50" data-testid="slot-warning">
+            This vehicle uses {usedBuildSlots} build slots and only has {maxBuildSlots}.
         </p>
     {/if}
     {#if collapsed}
@@ -1015,17 +1040,25 @@
                                                 parseSpecialRules(weaponObj.specialRules).includes("crew_fired")
                                             ))}
                                             {@const isDropped = weaponObj?.dropped || (weaponObj?.range && weaponObj?.range.includes('Dropped'))}
+                                            {@const storedFacing = vehicle.weaponFacings?.[weaponId] || ''}
+                                            {@const optionValues = isCrewFired ? ['360'] : isDropped ? ['side', 'rear'] : FACING_OPTIONS}
+                                            {@const displayFacing = optionValues.includes(storedFacing) ? storedFacing : (storedFacing || (isCrewFired ? '360' : isDropped ? 'rear' : 'front'))}
+                                            {@const extraFacing = optionValues.includes(displayFacing) ? '' : displayFacing}
                                             
-                                            <!-- Weapon facing controls - Mobile optimized -->
+                                            <!-- One-way value. bind:value writes a missing or illegal facing during render and loops until the card boundary gives up. -->
                                             <div class="flex items-center">
                                                 
                                                 <select
-                                                    bind:value={vehicle.weaponFacings![weaponId]}
+                                                    value={displayFacing}
+                                                    on:change={(event) => setWeaponFacing(weaponId, (event.currentTarget as HTMLSelectElement).value)}
                                                     class="text-xs py-0.5 px-1 border border-stone-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-stone-800 dark:text-gray-200"
                                                     disabled={weaponObj?.facing === 'fixed' || isCrewFired || playMode}
                                                     aria-label="Weapon facing direction"
                                                     title="Weapon facing direction"
                                                 >
+                                                    {#if extraFacing}
+                                                        <option value={extraFacing}>📍 {extraFacing}</option>
+                                                    {/if}
                                                     {#if isCrewFired}
                                                         <!-- Crew fired weapons must be 360° -->
                                                         <option value="360">📍 360°</option>

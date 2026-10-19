@@ -38,6 +38,7 @@ interface GarageWindow {
 	openTeamsModalFn?: () => void;
 	currentDraftFn?: () => Draft | null;
 	importDraftFn?: (draft: unknown) => void;
+	startNewTeamFn?: () => void;
 	dataLayer?: unknown[];
 	gtag?: (...args: unknown[]) => void;
 	signInEmulatorUser?: (email: string, password: string) => Promise<void>;

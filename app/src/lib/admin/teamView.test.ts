@@ -39,4 +39,15 @@ describe('summarizeVehicle', () => {
 		expect(rulesVersionLabel(undefined)).toBe('Version 2 — Refuelled');
 		expect(rulesVersionLabel(3)).toBe('Version 3');
 	});
+
+	it('summarizes a legacy vehicle that has no gear arrays', () => {
+		const summary = summarizeVehicle(
+			{ id: 'v1', type: 'car', name: '', weapons: undefined as unknown as string[], upgrades: undefined as unknown as string[], perks: undefined as unknown as string[] },
+			catalogs
+		);
+		expect(summary.weapons).toEqual([]);
+		expect(summary.upgrades).toEqual([]);
+		expect(summary.perks).toEqual([]);
+		expect(summary.cans).toBe(12);
+	});
 });
