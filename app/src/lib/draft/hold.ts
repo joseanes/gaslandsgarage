@@ -42,3 +42,19 @@ export function clearHeldDraft(storage: Pick<Storage, 'removeItem'> = localStora
 		/* storage can be blocked */
 	}
 }
+
+/**
+ * The builder's saved-versus-dirty signature. Key order is part of the value.
+ * A held draft is unsaved when this no longer matches cleanSignature.
+ */
+export function heldDraftSignature(
+	draft: Pick<HeldDraft, 'teamName' | 'sponsor' | 'maxCans' | 'rulesVersion' | 'vehicles'>
+): string {
+	return JSON.stringify({
+		teamName: draft.teamName,
+		sponsorId: draft.sponsor,
+		maxCans: draft.maxCans,
+		rulesVersion: draft.rulesVersion,
+		vehicles: draft.vehicles
+	});
+}

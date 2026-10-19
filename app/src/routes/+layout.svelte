@@ -26,6 +26,8 @@
   startAccountSession();
   import { sendContactMessage } from '$lib/services/messages';
   import { builderPathForTeamAction, rememberTeamMenuAction, type TeamMenuAction } from '$lib/teamMenu';
+  import { readHeldDraft } from '$lib/draft/hold';
+  import { backToTeamMenuLabel } from '$lib/draft/backToTeam';
   import { openLayoutSettings, type SettingsTab } from '$lib/settings/layoutSettingsControl';
   import { wargamingEventsUrl } from '$lib/players/wargamingEvents';
   import { SHOW_CHANGE_LOG, SHOW_UPCOMING_FEATURES } from '$lib/features/helpMenu';
@@ -43,6 +45,17 @@
 
   // Menu state
   let showShareMenu = false;
+  // First Teams item, off the builder, when a team is still in progress.
+  let backToTeamText: string | null = null;
+
+  function toggleTeamsMenu() {
+    if (!showShareMenu) {
+      const stored = typeof localStorage === 'undefined' ? null : readHeldDraft();
+      backToTeamText = backToTeamMenuLabel($page.url.pathname, stored);
+    }
+    showShareMenu = !showShareMenu;
+    void clampHeaderMenus();
+  }
   // "Share Team" submenu inside the Teams menu. A flyout on wide screens,
   // an expandable group on narrow ones.
   let showShareSubmenu = false;
@@ -628,7 +641,7 @@
             <button
               type="button"
               class="menu-item flex items-center share-menu-trigger"
-              on:click={() => { showShareMenu = !showShareMenu; void clampHeaderMenus(); }}
+              on:click={toggleTeamsMenu}
               aria-haspopup="true"
               aria-expanded={showShareMenu}
               style="height: auto !important; min-height: auto !important;"
@@ -641,10 +654,20 @@
 
             {#if showShareMenu}
           <div
-            class="absolute w-52 bg-black border-2 border-amber-500 shadow-xl rounded-lg overflow-visible z-30 py-2 share-menu-dropdown"
+            class="absolute bg-black border-2 border-amber-500 shadow-xl rounded-lg overflow-visible z-30 py-2 share-menu-dropdown {backToTeamText ? 'min-w-52 w-max max-w-[calc(100vw-1rem)]' : 'w-52'}"
             style="box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5); background-color: #000000 !important; top: 40px; left: 0;"
             transition:fade={{ duration: 150 }}
           >
+            {#if backToTeamText}
+            <a
+              href="/builder"
+              class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600 block whitespace-normal break-words"
+              data-testid="back-to-team"
+              on:click={() => { showShareMenu = false; }}
+            >
+              {backToTeamText}
+            </a>
+            {/if}
             <button type="button" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600" on:click={() => { startNewTeam(); showShareMenu = false; }}>
               New
             </button>
