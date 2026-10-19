@@ -131,6 +131,15 @@ describe('photo sharing', () => {
 		expect(page).toContain('SHARE_STATS_LABEL');
 		const gallery = readFileSync(resolve(process.cwd(), 'src/routes/gallery/+page.svelte'), 'utf8');
 		expect(gallery).toContain('data-testid="gallery-stats"');
+		expect(gallery).toContain('data-testid="report-photo"');
+		expect(gallery).toContain('data-testid="photo-usage"');
+		expect(gallery).toContain('data-testid="car-page-link"');
+		expect(gallery).toContain('data-testid="photo-view"');
+		expect(gallery).toContain('ShareCar');
+		expect(gallery).not.toContain('ownerUid');
+		expect(gallery).not.toContain('email');
+		expect(menu).toContain('href="/gallery?view=mine"');
+		expect(readFileSync(resolve(process.cwd(), 'src/routes/photos/+page.ts'), 'utf8')).toContain('/gallery?view=mine');
 		expect(page).toContain('never use them for advertising');
 		expect(page).toContain('Unsubscribe from the link');
 		expect(admin).not.toContain('ownerUid');

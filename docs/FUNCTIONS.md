@@ -149,7 +149,21 @@ What the function does:
 - `Cache-Control: no-store`, and the CloudFront behavior uses the managed CachingDisabled policy, so a takedown is visible on the next request.
 - `invoker: public`. CloudFront does not sign the request. The response is the same public card the Gallery already shows.
 
-No Firestore rules change and no new index. A car page is one document read by id. The browser page uses the existing `sharedPhotos` read rule, which already requires a published, visible gallery photo. Storage rules already allow the image only in that same case.
+No Firestore rules change and no new index for a car page. A car page is one document read by id. The browser page uses the existing `sharedPhotos` read rule, which already requires a published, visible gallery photo. Storage rules already allow the image only in that same case.
+
+The Photos page (Gallery under Players and Events, and My Photos in Settings, which opens that page with your photos selected) can also list one player's public photos. That query is `showInGallery == true`, `hidden == false`, `published == true`, `displayName ==` the Gaslands display name, `orderBy createdAt desc`. It needs a second composite index on collection `sharedPhotos`:
+
+- `showInGallery` ASC
+- `hidden` ASC
+- `published` ASC
+- `displayName` ASC
+- `createdAt` DESC
+
+The older `sharedPhotos` index, without `displayName`, stays. It serves the full Gallery list. Vehicle type and the other sorts run in the browser. This filter does not add a Cloud Function or a rules change. Deploy the index before the site that contains the player filter is published:
+
+```bash
+firebase deploy --only firestore:indexes --project=gaslandsgarage-74ce6
+```
 
 Deploy the function by hand, from the repository root, before the CloudFront change:
 

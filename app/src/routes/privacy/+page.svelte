@@ -82,8 +82,9 @@
 		<p>{PHOTO_PRIVACY_SHORT}</p>
 		<p>We never use them for advertising, and we never use them to train models.</p>
 		<p>
-			A photo is optional. It belongs to your account. My Photos, under Settings, lists every photo
-			you have added. You can attach one photo to cars on teams you saved. The file is stored in
+			A photo is optional. It belongs to your account. My Photos, under Settings, opens the Gallery
+			with your photos selected and lists every photo you have added. You can attach one photo to cars
+			on teams you saved. The file is stored in
 			Firebase Storage, in this site's project, under your user id. A small note (the time, the size,
 			and a caption if you add one) is stored in the database, also under your user id. The picture is
 			resized in your browser before it is uploaded, which removes camera location data from the file
@@ -94,7 +95,9 @@
 			"{SHARE_STATS_LABEL}". Both start off, and you can change them later. "Show to my Gaming Buddies"
 			lets a buddy who can already see that team see the photo. "Show on my team share link" shows it to
 			anyone who opens that link. "{SHARE_GALLERY_LABEL}" puts it on the Gallery page, which is under
-			Players and Events. {GALLERY_SHARE_COPY} "{SHARE_STATS_LABEL}" {STATS_SHARE_COPY} The snapshot is
+			Players and Events. Other players who open the Gallery only see photos published there that are
+			not hidden. A private photo is visible only to the player who added it. {GALLERY_SHARE_COPY}
+			"{SHARE_STATS_LABEL}" {STATS_SHARE_COPY} The snapshot is
 			copied from the saved team, updated when that vehicle changes, and removed from the Gallery when
 			you turn stats sharing off. The Gallery shows the display name you chose in Gaslands Garage, the
 			vehicle type, the caption, and those stats only when you shared them. It does not show your Google

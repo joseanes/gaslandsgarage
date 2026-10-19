@@ -19,6 +19,17 @@
       ]
     },
     {
+      "collectionGroup": "sharedPhotos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "showInGallery", "order": "ASCENDING" },
+        { "fieldPath": "hidden", "order": "ASCENDING" },
+        { "fieldPath": "published", "order": "ASCENDING" },
+        { "fieldPath": "displayName", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "buddies",
       "queryScope": "COLLECTION",
       "fields": [
