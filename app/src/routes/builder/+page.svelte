@@ -2747,14 +2747,9 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 
 		let totalCost = vehicleType.baseCost || 0;
 
-		// Add weapon costs
+		// Add weapon costs. The random suffix can itself contain "_".
 		for (const weaponInstanceId of vehicle.weapons || []) {
-			if (typeof weaponInstanceId !== 'string') continue;
-			const lastUnderscoreIndex = weaponInstanceId.lastIndexOf('_');
-				const baseWeaponId = lastUnderscoreIndex !== -1 ? 
-					weaponInstanceId.substring(0, lastUnderscoreIndex) : 
-					weaponInstanceId;
-			const weaponObj = weapons.find(w => w.id === baseWeaponId);
+			const weaponObj = resolveById(weapons, weaponInstanceId);
 			if (weaponObj && weaponObj.cost) {
 				totalCost += weaponObj.cost;
 			}
@@ -2789,14 +2784,10 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			// Add base vehicle cost
 			totalCost += vehicleType.baseCost || 0;
 			
-			// Add weapon costs
+			// Add weapon costs. The random suffix can itself contain "_", so match the
+			// catalog id the same way the vehicle card does.
 			for (const weaponInstanceId of vehicle.weapons || []) {
-				if (typeof weaponInstanceId !== 'string') continue;
-				const lastUnderscoreIndex = weaponInstanceId.lastIndexOf('_');
-				const baseWeaponId = lastUnderscoreIndex !== -1 ? 
-					weaponInstanceId.substring(0, lastUnderscoreIndex) : 
-					weaponInstanceId;
-				const weaponObj = weapons.find(w => w.id === baseWeaponId);
+				const weaponObj = resolveById(weapons, weaponInstanceId);
 				if (weaponObj && weaponObj.cost) {
 					totalCost += weaponObj.cost;
 				}

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { addGear } from './addGear';
 
 function encodeDraft(draft: unknown) {
 	return Buffer.from(encodeURIComponent(JSON.stringify(draft)), 'utf8').toString('base64');
@@ -31,9 +32,11 @@ test('builds a car, adds Powder Keg, and shares the link', async ({ page }) => {
 
 	await expect(cansValue(page)).toHaveText('12');
 	await page.getByRole('button', { name: 'Expand vehicle' }).click();
-	await page.getByLabel('Search perks').fill('powder');
-	await expect(page.getByLabel('Add a perk').locator('option', { hasText: 'Powder Keg' })).toHaveCount(1);
-	await page.getByLabel('Add a perk').selectOption({ label: 'Powder Keg (1 cans)' });
+	const perks = page.getByRole('combobox', { name: 'Add a perk' });
+	await perks.click();
+	await perks.fill('powder');
+	await expect(page.getByRole('option', { name: /Powder Keg/ })).toHaveCount(1);
+	await addGear(page, 'Add a perk', 'powder', /^Powder Keg\b/);
 	await expect(page.getByRole('listitem').filter({ hasText: 'Powder Keg' })).toBeVisible();
 	await expect(cansValue(page)).toHaveText('13');
 	await expect(page.getByText('Your team is legal and ready to race!')).toBeVisible();
