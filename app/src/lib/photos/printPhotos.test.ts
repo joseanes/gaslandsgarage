@@ -28,7 +28,7 @@ const vehicle = {
 		{ src: 'javascript:alert(1)', caption: 'nope' },
 		{ src: 'https://evil.example/photo.jpg', caption: 'nope' },
 		{
-			src: 'https://firebasestorage.googleapis.com/v0/b/gaslandsgarage-74ce6.appspot.com/o/users%2Fada%2Fphoto.webp?alt=media&token=secret',
+			src: 'https://firebasestorage.googleapis.com/v0/b/gaslandsgarage-74ce6.firebasestorage.app/o/users%2Fada%2Fphoto.webp?alt=media&token=secret',
 			caption: 'token'
 		}
 	]

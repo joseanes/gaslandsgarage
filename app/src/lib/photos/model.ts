@@ -10,7 +10,7 @@ export const MAX_CAPTION_LENGTH = 140;
 /** Reject huge camera originals before the browser tries to decode them. */
 export const MAX_SOURCE_BYTES = 25 * 1024 * 1024;
 
-export const DEFAULT_STORAGE_BUCKET = 'gaslandsgarage-74ce6.appspot.com';
+export const DEFAULT_STORAGE_BUCKET = 'gaslandsgarage-74ce6.firebasestorage.app';
 
 export function storageBucketName(configured = ''): string {
 	const name = configured.trim();

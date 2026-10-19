@@ -18,7 +18,7 @@ const firebaseConfig = {
   apiKey: "AIzaSyAW7eGDsJwWtaj3I1lrcuzvFx8vkX5EaKI",
   authDomain: "gaslandsgarage-74ce6.firebaseapp.com",
   projectId: "gaslandsgarage-74ce6",
-  storageBucket: "gaslandsgarage-74ce6.appspot.com",
+  storageBucket: "gaslandsgarage-74ce6.firebasestorage.app",
   messagingSenderId: "636098164916",
   appId: "1:636098164916:web:b3586c38da2ebaf9c13fe1",
   measurementId: "G-EKPMXMY097"
