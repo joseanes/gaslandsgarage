@@ -116,6 +116,28 @@ describe('vehicle photo storage', () => {
 		await testEnv.clearFirestore();
 		await assertSucceeds(deleteObject(file('alice', ownerPath)));
 	});
+
+	it('lets the owner upload a library file only when the reservation matches that path', async () => {
+		const libraryPath = 'users/alice/photos-library/photo1234.webp';
+		await assertFails(uploadBytes(file('alice', libraryPath), webp, { contentType: 'image/webp' }));
+		await reserve();
+		await assertFails(uploadBytes(file('alice', libraryPath), webp, { contentType: 'image/webp' }));
+		await testEnv.clearFirestore();
+		await reserve({ path: libraryPath, teamId: '', vehicleId: '' });
+		await assertSucceeds(uploadBytes(file('alice', libraryPath), webp, { contentType: 'image/webp' }));
+		await assertSucceeds(getBytes(file('alice', libraryPath)));
+		await assertFails(getBytes(file('bob', libraryPath)));
+		await reserve({
+			photoId: 'photojpeg',
+			fileName: 'photojpeg.jpg',
+			contentType: 'image/jpeg',
+			path: 'users/alice/photos-library/photojpeg.jpg',
+			teamId: '',
+			vehicleId: ''
+		});
+		await assertFails(uploadBytes(file('alice', 'users/alice/photos-library/photojpeg.jpg'), webp, { contentType: 'image/webp' }));
+		await assertSucceeds(uploadBytes(file('alice', 'users/alice/photos-library/photojpeg.jpg'), webp, { contentType: 'image/jpeg' }));
+	});
 });
 
 describe('shared photo storage', () => {

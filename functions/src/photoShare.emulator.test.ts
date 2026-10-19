@@ -266,4 +266,44 @@ describe('shared photos', () => {
 		expect(quiet?.showInGallery).toBe(true);
 		expect((await getFirestore().doc(`users/ada/photos/${reserved.photoId}`).get()).get('shareVehicleStats')).toBe(false);
 	});
+
+	it('asks which car to share from when a photo is on more than one', async () => {
+		const { reserved } = await savePhoto();
+		await getFirestore().doc('teams/team1234').set({
+			userId: 'ada',
+			teamName: 'Racers',
+			hiddenFromBuddies: false,
+			teamData: {
+				rulesVersion: 2,
+				vehicles: [
+					{ id: 'veh123', type: 'performance_car', name: 'Red', weapons: [], upgrades: [], perks: [] },
+					{ id: 'veh456', type: 'buggy', name: 'Bug', weapons: [], upgrades: [], perks: [] }
+				]
+			}
+		});
+		const { attachLibraryPhotoForUser } = await import('./photoLibrary');
+		await attachLibraryPhotoForUser('ada', reserved.photoId, 'team1234', 'veh456');
+		await expect(
+			setPhotoSharingForUser('ada', {
+				photoId: reserved.photoId,
+				showToBuddies: false,
+				showOnShareLink: false,
+				showInGallery: true,
+				shareVehicleStats: true
+			})
+		).rejects.toThrow(/Choose which car/);
+		await setPhotoSharingForUser('ada', {
+			photoId: reserved.photoId,
+			showToBuddies: false,
+			showOnShareLink: false,
+			showInGallery: true,
+			shareVehicleStats: true,
+			shareTeamId: 'team1234',
+			shareVehicleId: 'veh456'
+		});
+		const shared = (await getFirestore().doc(`sharedPhotos/${reserved.photoId}`).get()).data();
+		expect(shared?.vehicleType).toBe('Buggy');
+		expect(shared?.vehicleStats).toMatchObject({ name: 'Bug', type: 'Buggy' });
+		expect((await getFirestore().doc(`sharedPhotoPrivate/${reserved.photoId}`).get()).get('vehicleId')).toBe('veh456');
+	});
 });

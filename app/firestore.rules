@@ -599,7 +599,8 @@ service cloud.firestore {
       let data = request.resource.data;
       return data.keys().hasOnly([
           'photoId', 'userId', 'teamId', 'vehicleId', 'path', 'width', 'height', 'createdAt', 'caption', 'contentType',
-          'showToBuddies', 'showOnShareLink', 'showInGallery', 'shareVehicleStats'
+          'showToBuddies', 'showOnShareLink', 'showInGallery', 'shareVehicleStats',
+          'attachments', 'contentHash', 'shareTeamId', 'shareVehicleId'
         ])
         && data.keys().hasAll([
           'photoId', 'userId', 'teamId', 'vehicleId', 'path', 'width', 'height', 'createdAt', 'caption', 'contentType'
@@ -612,15 +613,20 @@ service cloud.firestore {
         && data.photoId.matches('^[A-Za-z0-9_-]{8,40}$')
         && data.userId == userId
         && data.teamId is string
-        && data.teamId.size() > 0
         && data.teamId.size() <= 40
-        && data.teamId.matches('^[A-Za-z0-9_-]+$')
+        && (data.teamId.size() == 0 || data.teamId.matches('^[A-Za-z0-9_-]+$'))
         && data.vehicleId is string
-        && data.vehicleId.size() > 0
         && data.vehicleId.size() <= 64
-        && data.vehicleId.matches('^[A-Za-z0-9_-]+$')
+        && (data.vehicleId.size() == 0 || data.vehicleId.matches('^[A-Za-z0-9_-]+$'))
         && photoText(data.path, 300)
-        && data.path.matches('^users/' + userId + '/vehicle-photos/.+')
+        && (
+          data.path.matches('^users/' + userId + '/vehicle-photos/.+')
+          || data.path.matches('^users/' + userId + '/photos-library/[A-Za-z0-9_-]{8,40}\\.(webp|jpe?g)$')
+        )
+        && (!('attachments' in data) || (data.attachments is list && data.attachments.size() <= 100))
+        && (!('contentHash' in data) || (data.contentHash is string && (data.contentHash == '' || data.contentHash.matches('^[a-f0-9]{64}$'))))
+        && (!('shareTeamId' in data) || (data.shareTeamId is string && data.shareTeamId.size() <= 40))
+        && (!('shareVehicleId' in data) || (data.shareVehicleId is string && data.shareVehicleId.size() <= 64))
         && data.width is int
         && data.width > 0
         && data.width <= 1600
@@ -631,7 +637,7 @@ service cloud.firestore {
         && data.createdAt.size() < 40
         && photoText(data.caption, 140)
         && (data.contentType == 'image/webp' || data.contentType == 'image/jpeg')
-        && request.resource.size() < 8000;
+        && request.resource.size() < 24000;
     }
 
     match /users/{userId}/photos/{photoId} {
@@ -654,7 +660,11 @@ service cloud.firestore {
         && request.resource.data.get('showToBuddies', false) == resource.data.get('showToBuddies', false)
         && request.resource.data.get('showOnShareLink', false) == resource.data.get('showOnShareLink', false)
         && request.resource.data.get('showInGallery', false) == resource.data.get('showInGallery', false)
-        && request.resource.data.get('shareVehicleStats', false) == resource.data.get('shareVehicleStats', false);
+        && request.resource.data.get('shareVehicleStats', false) == resource.data.get('shareVehicleStats', false)
+        && request.resource.data.get('attachments', []) == resource.data.get('attachments', [])
+        && request.resource.data.get('contentHash', '') == resource.data.get('contentHash', '')
+        && request.resource.data.get('shareTeamId', '') == resource.data.get('shareTeamId', '')
+        && request.resource.data.get('shareVehicleId', '') == resource.data.get('shareVehicleId', '');
       allow delete: if signedIn() && !isDisabled() && userId == request.auth.uid;
     }
 
