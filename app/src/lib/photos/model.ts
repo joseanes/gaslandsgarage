@@ -42,6 +42,7 @@ export type PhotoContentType = 'image/webp' | 'image/jpeg';
 export interface VehiclePhotoRecord {
 	photoId: string;
 	userId: string;
+	/** Car the Gallery and share link currently use. Empty when the photo is not shared from a car. */
 	teamId: string;
 	vehicleId: string;
 	path: string;
@@ -50,6 +51,10 @@ export interface VehiclePhotoRecord {
 	createdAt: string;
 	caption: string;
 	contentType: PhotoContentType;
+	attachments: PhotoAttachment[];
+	contentHash: string;
+	shareTeamId: string;
+	shareVehicleId: string;
 }
 
 export function photoExtension(contentType: PhotoContentType): 'webp' | 'jpg' {
@@ -65,6 +70,20 @@ export function vehiclePhotoPath(
 ): string {
 	return `users/${uid}/vehicle-photos/${teamId}/${vehicleId}/${photoId}.${photoExtension(contentType)}`;
 }
+
+/** A library file belongs to the account. Cars point at it; they do not own the bytes. */
+export function libraryPhotoPath(uid: string, photoId: string, contentType: PhotoContentType): string {
+	return `users/${uid}/photos-library/${photoId}.${photoExtension(contentType)}`;
+}
+
+export interface PhotoAttachment {
+	teamId: string;
+	vehicleId: string;
+}
+
+export const CONTENT_HASH_PATTERN = /^[a-f0-9]{64}$/;
+/** A reservation with no file is an orphan only after the upload has had time to finish. */
+export const ORPHAN_GRACE_MS = 15 * 60 * 1000;
 
 export function isPhotoContentType(value: unknown): value is PhotoContentType {
 	return value === 'image/webp' || value === 'image/jpeg';
@@ -111,7 +130,7 @@ export function cleanCaption(value: unknown): string {
 }
 
 export function quotaMessage(total: number, onVehicle: number): string | null {
-	if (onVehicle >= MAX_PHOTOS_PER_VEHICLE) return 'This vehicle already has 3 photos. Delete one to add another.';
+	if (onVehicle >= MAX_PHOTOS_PER_VEHICLE) return 'This vehicle already has 3 photos. Detach one to add another.';
 	if (total >= MAX_PHOTOS_PER_ACCOUNT) return 'This account already has 100 photos. Delete one to add another.';
 	return null;
 }

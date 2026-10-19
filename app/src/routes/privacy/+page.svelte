@@ -82,7 +82,8 @@
 		<p>{PHOTO_PRIVACY_SHORT}</p>
 		<p>We never use them for advertising, and we never use them to train models.</p>
 		<p>
-			A photo is optional. It is a picture of a vehicle on a team you saved. The file is stored in
+			A photo is optional. It belongs to your account. My Photos, under Settings, lists every photo
+			you have added. You can attach one photo to cars on teams you saved. The file is stored in
 			Firebase Storage, in this site's project, under your user id. A small note (the time, the size,
 			and a caption if you add one) is stored in the database, also under your user id. The picture is
 			resized in your browser before it is uploaded, which removes camera location data from the file
@@ -100,9 +101,11 @@
 			name, your email, or your account id.
 		</p>
 		<p>
-			A shared photo is a separate copy. Unsharing, deleting the photo, deleting the vehicle or the
-			team, or deleting your account removes that copy. Photos are still never used outside Gaslands
-			Garage. Print with photos puts your own photos on a sheet in your browser.
+			A shared photo is a separate copy. Unsharing, deleting the photo, or deleting your account
+			removes that copy. Removing a car or a team takes the photo off that car and out of that car's
+			share. The photo stays in My Photos until you delete the photo or your account. Photos are still
+			never used outside Gaslands Garage. Print with photos puts your own photos on a sheet in your
+			browser.
 		</p>
 
 		<h2 class="text-xl font-bold mt-8 mb-3">Gaming buddies</h2>
@@ -312,7 +315,8 @@
 		<h2 class="text-xl font-bold mt-8 mb-3">How long we keep information</h2>
 		<p>
 			Saved teams stay until you delete them or you ask us to delete them. You can delete a saved team
-			from My Teams. Photos stay until you delete the photo, the vehicle, the team, or your account.
+			from My Teams. Photos stay in My Photos until you delete the photo or your account. Removing a
+			car or a team only takes the photo off that car.
 			Settings and the private player profile stay until you change them or you ask us to
 			delete them. Turning the map off removes the public pin. Turning open to games off removes that
 			card.

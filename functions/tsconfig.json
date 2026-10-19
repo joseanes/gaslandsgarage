@@ -15,5 +15,5 @@
     "resolveJsonModule": true,
     "esModuleInterop": true
   },
-	"include": ["src/**/*.ts", "../app/src/lib/buddies/model.ts", "../app/src/lib/buddies/emailInvite.ts", "../app/src/lib/photos/model.ts", "../app/src/lib/photos/share.ts", "../app/src/lib/photos/vehicleStats.ts"]
+	"include": ["src/**/*.ts", "../app/src/lib/buddies/model.ts", "../app/src/lib/buddies/emailInvite.ts", "../app/src/lib/photos/model.ts", "../app/src/lib/photos/library.ts", "../app/src/lib/photos/share.ts", "../app/src/lib/photos/vehicleStats.ts"]
 }

@@ -12,6 +12,7 @@ import {
 	storageBucketForProject,
 	type PhotoContentType
 } from '../../app/src/lib/photos/model.ts';
+import { attachmentsFromData, shareSource } from '../../app/src/lib/photos/library.ts';
 import {
 	REPORT_HIDE_THRESHOLD,
 	anyShareFlag,
@@ -181,6 +182,8 @@ export async function setPhotoSharingForUser(
 		showOnShareLink: unknown;
 		showInGallery: unknown;
 		shareVehicleStats?: unknown;
+		shareTeamId?: unknown;
+		shareVehicleId?: unknown;
 	}
 ): Promise<{ shared: boolean; published: boolean; hidden: boolean }> {
 	if (!UID_PATTERN.test(uid)) throw new Error('Sign in again before sharing a photo.');
@@ -211,8 +214,9 @@ export async function setPhotoSharingForUser(
 		return { shared: false, published: false, hidden: false };
 	}
 
-	const teamId = String(photo.get('teamId') ?? '');
-	const vehicleId = String(photo.get('vehicleId') ?? '');
+	const source = shareSource(attachmentsFromData(photo.data()), input.shareTeamId, input.shareVehicleId);
+	const teamId = source.teamId;
+	const vehicleId = source.vehicleId;
 	if (!TEAM_ID_PATTERN.test(teamId)) throw new Error('Save this team before sharing a photo.');
 	const team = await db.doc(`teams/${teamId}`).get();
 	if (!team.exists || team.get('userId') !== uid) throw new Error('Save this team before sharing a photo.');
@@ -272,7 +276,7 @@ export async function setPhotoSharingForUser(
 	const batch = db.batch();
 	batch.set(db.doc(`sharedPhotos/${photoId}`), publicDoc);
 	batch.set(privateRef, privateDoc);
-	batch.set(photoRef, flags, { merge: true });
+	batch.set(photoRef, { ...flags, shareTeamId: teamId, shareVehicleId: vehicleId, teamId, vehicleId }, { merge: true });
 	await batch.commit();
 	return { shared: true, published, hidden };
 }
@@ -477,7 +481,9 @@ async function shareCall(request: CallableRequest): Promise<{ shared: boolean; p
 		showToBuddies: data.showToBuddies,
 		showOnShareLink: data.showOnShareLink,
 		showInGallery: data.showInGallery,
-		shareVehicleStats: data.shareVehicleStats
+		shareVehicleStats: data.shareVehicleStats,
+		shareTeamId: data.shareTeamId,
+		shareVehicleId: data.shareVehicleId
 	});
 }
 

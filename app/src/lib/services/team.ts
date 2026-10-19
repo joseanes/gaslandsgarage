@@ -1,5 +1,5 @@
 import { auth, db, user } from '../firebase';
-import { deleteTeamPhotos } from './vehiclePhotos';
+import { detachTeamPhotos } from './vehiclePhotos';
 export type TeamSavePayload = {
   teamName?: string;
   sponsor?: string;
@@ -258,8 +258,8 @@ export async function deleteTeam(teamId: string): Promise<DeleteTeamResult> {
       return { success: false, error: "Unauthorized access to team" };
     }
     
-    // Photos first, so a failed photo delete leaves the team to retry.
-    await deleteTeamPhotos(teamId);
+    // Detach photos first, so a failed detach leaves the team to retry. The files stay in My Photos.
+    await detachTeamPhotos(teamId);
 
     // Delete the team document
     await deleteDoc(teamDocRef);

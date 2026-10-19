@@ -45,6 +45,7 @@ describe('SvelteKit route discovery', () => {
 			'/buddies/:p',
 			'/builder',
 			'/gallery',
+			'/photos',
 			'/players',
 			'/privacy',
 			'/profile',
