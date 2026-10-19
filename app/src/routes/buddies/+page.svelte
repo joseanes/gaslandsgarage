@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { accountSessionReady } from '$lib/admin/session';
 	import { signInWithGoogle, user } from '$lib/firebase';
+	import { SHOW_BUDDY_HIDE_TOGGLE } from '$lib/features/buddyHide';
 	import { getUserTeams, setTeamHiddenFromBuddies } from '$lib/services/team';
 	import {
 		buddyErrorMessage,
@@ -431,7 +432,9 @@
 
 			<section aria-labelledby="buddy-teams-heading">
 				<h2 id="buddy-teams-heading" class="text-xl font-bold">Your teams</h2>
-				<p class="mt-1 text-sm text-stone-600 dark:text-gray-300">Hidden teams stay on your account. Buddies cannot open them.</p>
+				{#if SHOW_BUDDY_HIDE_TOGGLE}
+					<p class="mt-1 text-sm text-stone-600 dark:text-gray-300">Hidden teams stay on your account. Buddies cannot open them.</p>
+				{/if}
 				{#if teams.length === 0}
 					<p class="mt-2 text-sm text-stone-600 dark:text-gray-300">You have not saved a team yet.</p>
 				{:else}
@@ -439,21 +442,23 @@
 						{#each teams as team (team.id)}
 							<li class="flex flex-col gap-2 rounded-lg border border-stone-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between dark:border-gray-700 dark:bg-gray-800">
 								<span class="font-medium">{team.teamName}</span>
-								<button
-									type="button"
-									class={quietClass}
-									aria-pressed={team.hiddenFromBuddies}
-									aria-label="{team.hiddenFromBuddies ? 'Show' : 'Hide'} {team.teamName} from buddies"
-									data-testid="team-hide-from-buddies"
-									disabled={busy}
-									on:click={() =>
-										run(async () => {
-											const result = await setTeamHiddenFromBuddies(team.id, !team.hiddenFromBuddies);
-											if (!result.success) throw new Error('Could not update that team.');
-										}, team.hiddenFromBuddies ? 'Team is visible to buddies.' : 'Team hidden from buddies.')}
-								>
-									{team.hiddenFromBuddies ? 'Hidden from buddies' : 'Hide from buddies'}
-								</button>
+								{#if SHOW_BUDDY_HIDE_TOGGLE}
+									<button
+										type="button"
+										class={quietClass}
+										aria-pressed={team.hiddenFromBuddies}
+										aria-label="{team.hiddenFromBuddies ? 'Show' : 'Hide'} {team.teamName} from buddies"
+										data-testid="team-hide-from-buddies"
+										disabled={busy}
+										on:click={() =>
+											run(async () => {
+												const result = await setTeamHiddenFromBuddies(team.id, !team.hiddenFromBuddies);
+												if (!result.success) throw new Error('Could not update that team.');
+											}, team.hiddenFromBuddies ? 'Team is visible to buddies.' : 'Team hidden from buddies.')}
+									>
+										{team.hiddenFromBuddies ? 'Hidden from buddies' : 'Hide from buddies'}
+									</button>
+								{/if}
 							</li>
 						{/each}
 					</ul>
