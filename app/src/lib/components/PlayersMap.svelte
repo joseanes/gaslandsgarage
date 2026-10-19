@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
 	import type { Map as LeafletMap, Marker } from 'leaflet';
+	import { basemapFor } from '$lib/players/basemap';
 	import { escapeText, type MapMarker } from '$lib/players/profile';
 	import 'leaflet/dist/leaflet.css';
 
@@ -60,13 +61,8 @@
 		const loaded = leafletApi(await import('leaflet'));
 		api = loaded;
 		map = loaded.map(host, { minZoom: 2, maxZoom: 12 });
-		loaded
-			.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-				attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-				subdomains: 'abcd',
-				maxZoom: 20
-			})
-			.addTo(map);
+		const basemap = basemapFor(import.meta.env.VITE_CARTO_BASEMAPS_KEY);
+		loaded.tileLayer(basemap.url, basemap.options).addTo(map);
 		map.setView([20, 0], 2);
 		sync();
 	});

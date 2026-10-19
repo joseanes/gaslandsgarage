@@ -227,10 +227,11 @@
 
 		<h2 class="text-xl font-bold mt-8 mb-3">Map tiles</h2>
 		<p>
-			The players map uses Leaflet. It does not load Google Maps. The map pictures are CARTO’s Voyager tiles
-			from basemaps.cartocdn.com, based on OpenStreetMap data. Your browser requests those tiles directly
-			from CARTO, so CARTO receives the request, including an IP address. We do not send your email or
-			account id with that request. Tile copyright stays with OpenStreetMap contributors and CARTO.
+			The players map uses Leaflet. It does not load Google Maps. The map pictures are OpenStreetMap
+			tiles from tile.openstreetmap.org, or CARTO’s Voyager tiles from basemaps.cartocdn.com when we
+			have a CARTO key set up. Your browser requests those tiles directly from that provider, so it
+			receives the request, including an IP address. We do not send your email or account id with that
+			request. Tile copyright stays with OpenStreetMap contributors, and with CARTO for CARTO tiles.
 		</p>
 
 		<h2 class="text-xl font-bold mt-8 mb-3">Data stored in this browser</h2>
