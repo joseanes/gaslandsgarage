@@ -68,7 +68,7 @@ describe('print photo html', () => {
 			let closed = false;
 			revokePrintPhotosWhenClosed(
 				{
-					addEventListener(_type, listener) {
+					addEventListener(_type: string, listener: () => void) {
 						if (!closed) listener();
 						closed = true;
 					}
