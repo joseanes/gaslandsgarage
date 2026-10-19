@@ -173,6 +173,12 @@ describe('car page HTTP', () => {
 		expect(result.body).toContain('https://x.com/intent/post');
 		expect(result.body).toContain('facebook.com/sharer');
 		expect(result.body).toContain('reddit.com/submit');
+		expect(result.body).toContain('pinterest.com/pin/create/button/');
+		expect(result.body).toContain('api.whatsapp.com/send');
+		expect(result.body).toContain('bsky.app/intent/compose');
+		expect(result.body).toContain('aria-label="Share on Facebook"');
+		expect(result.body).toContain('aria-label="Copy link"');
+		expect(result.body).toContain('class="site"');
 		expect(result.body).toContain('utm_source=copy');
 		expect(result.body).not.toContain('<script>alert');
 	});
@@ -261,6 +267,8 @@ describe('car page HTTP', () => {
 		expect(result.body).toContain(VIA_GASLANDS);
 		expect(result.body).toContain('target="_top"');
 		expect(result.body).not.toContain('Copy link');
+		expect(result.body).not.toContain('class="site"');
+		expect(result.body).not.toContain('data-copy');
 	});
 
 	it('rejects bad paths and methods without reflecting them', async () => {
@@ -291,6 +299,13 @@ describe('share links and embed snippets', () => {
 		expect(new URL(carShareUrl(SHARE_ID, 'facebook')).searchParams.get('utm_medium')).toBe('social');
 		expect(shareIntent('x', carShareUrl(SHARE_ID, 'x'), 'Rust Rocket')).toContain('utm_source%3Dx');
 		expect(shareIntent('reddit', carShareUrl(SHARE_ID, 'reddit'), 'Rust Rocket')).toContain('reddit.com/submit');
+		const pin = shareIntent('pinterest', carShareUrl(SHARE_ID, 'pinterest'), 'Rust Rocket', IMAGE);
+		expect(pin).toContain('pinterest.com/pin/create/button/');
+		expect(pin).toContain('media=');
+		expect(shareIntent('pinterest', carShareUrl(SHARE_ID, 'pinterest'), 'Rust Rocket', 'data:image/svg')).not.toContain('media=');
+		expect(shareIntent('whatsapp', carShareUrl(SHARE_ID, 'whatsapp'), 'Rust Rocket')).toContain('api.whatsapp.com/send');
+		expect(shareIntent('bluesky', carShareUrl(SHARE_ID, 'bluesky'), 'Rust Rocket')).toContain('bsky.app/intent/compose');
+		expect(new URL(carShareUrl(SHARE_ID, 'bluesky')).searchParams.get('utm_medium')).toBe('social');
 	});
 
 	it('builds an iframe and an HTML card that both point at the car page', () => {

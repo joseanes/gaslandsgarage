@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { dev } from '$app/environment';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
@@ -56,6 +57,10 @@
 	let appliedKey = '';
 	let ticket = 0;
 	let keepNotice = false;
+	let density: 'photos' | 'details' = 'details';
+	let revealedId = '';
+
+	const DENSITY_KEY = 'gaslands-gallery-density';
 
 	const fieldClass =
 		'rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm text-stone-800 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100';
@@ -77,6 +82,35 @@
 	}
 	$: showingMine = state.view === 'mine';
 	$: sortShown = shownSort(state.sort, showingMine);
+
+	onMount(() => {
+		try {
+			const saved = localStorage.getItem(DENSITY_KEY);
+			if (saved === 'photos' || saved === 'details') density = saved;
+		} catch {
+			/* private browsing */
+		}
+	});
+
+	function chooseDensity(next: 'photos' | 'details') {
+		density = next;
+		revealedId = '';
+		try {
+			localStorage.setItem(DENSITY_KEY, next);
+		} catch {
+			/* private browsing */
+		}
+	}
+
+	function openPhoto(photo: GalleryPhoto, event: MouseEvent) {
+		const fromKeyboard = event.detail === 0;
+		const coarse = window.matchMedia('(hover: none)').matches;
+		if (!fromKeyboard && density === 'photos' && coarse && revealedId !== photo.photoId) {
+			revealedId = photo.photoId;
+			return;
+		}
+		open = photo;
+	}
 
 	function requestSignIn() {
 		window.dispatchEvent(new CustomEvent('gaslands-request-sign-in'));
@@ -374,11 +408,42 @@
 <svelte:window on:keydown={closeOnEscape} />
 
 <section class="mx-auto max-w-[90rem] px-3 py-8 text-stone-800 dark:text-gray-100" data-testid="gallery-page">
-	<h1 class="mb-2 text-3xl font-bold">Photos</h1>
-	<p class="mb-2 max-w-2xl text-stone-600 dark:text-gray-300">
-		Painted cars from the wastes. My photos is your own stack. Anyone else only sees a car a player published to the Gallery.
-	</p>
-	<p class="mb-6 max-w-2xl text-xs text-stone-500 dark:text-gray-400">
+	<div class="relative mb-5 overflow-hidden rounded-2xl border border-orange-900/60 bg-stone-950 px-5 py-6 text-orange-50 shadow-xl shadow-orange-950/20">
+		<div class="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(234,88,12,0.42),transparent_46%),radial-gradient(circle_at_bottom_right,rgba(120,53,15,0.55),transparent_42%)]"></div>
+		<div class="pointer-events-none absolute inset-0 opacity-30 [background-image:repeating-linear-gradient(135deg,rgba(255,255,255,0.05)_0_1px,transparent_1px_8px)]"></div>
+		<div class="relative flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+			<div>
+				<p class="text-xs font-bold uppercase tracking-[0.22em] text-orange-300">The wastes</p>
+				<h1 class="text-4xl font-black tracking-tight">Photos</h1>
+				<p class="mt-2 max-w-xl text-sm text-orange-100/85">
+					Painted cars from the wastes. My photos is your own stack. Anyone else only sees a car a player published to the Gallery.
+				</p>
+			</div>
+			{#if !showingMine}
+				<div class="inline-flex shrink-0 rounded-full border border-orange-800/80 bg-stone-950/80 p-1" role="group" aria-label="Gallery layout" data-testid="gallery-density">
+					<button
+						type="button"
+						class="rounded-full px-3 py-1.5 text-sm font-semibold {density === 'photos' ? 'bg-orange-500 text-stone-950' : 'text-orange-100'}"
+						aria-pressed={density === 'photos'}
+						data-testid="gallery-photos-only"
+						on:click={() => chooseDensity('photos')}
+					>
+						Photos only
+					</button>
+					<button
+						type="button"
+						class="rounded-full px-3 py-1.5 text-sm font-semibold {density === 'details' ? 'bg-orange-500 text-stone-950' : 'text-orange-100'}"
+						aria-pressed={density === 'details'}
+						data-testid="gallery-with-details"
+						on:click={() => chooseDensity('details')}
+					>
+						With details
+					</button>
+				</div>
+			{/if}
+		</div>
+	</div>
+	<p class="mb-4 max-w-2xl text-xs text-stone-500 dark:text-gray-400">
 		Search matches one word. Cars shared before that word list existed still appear here, and join search or a cans sort the next time they are saved.
 	</p>
 
@@ -553,18 +618,45 @@
 				{/each}
 			</ul>
 		{:else}
-			<ul class="grid grid-cols-1 items-start gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5" data-testid="gallery-grid">
+			<ul
+				class={density === 'photos'
+					? 'grid grid-cols-2 gap-1 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+					: 'grid grid-cols-1 items-start gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5'}
+				data-testid="gallery-grid"
+				data-density={density}
+			>
 				{#each publicPhotos as photo (photo.photoId)}
-					<li>
-						<button
-							type="button"
-							class="group block h-full w-full rounded-xl text-left transition duration-200 hover:-translate-y-1 hover:shadow-xl hover:shadow-orange-950/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-500"
-							data-testid="gallery-card"
-							aria-label="Open {galleryCarName(photo)} by {photo.displayName}"
-							on:click={() => (open = photo)}
-						>
-							<GalleryCardFace {photo} />
-						</button>
+					<li class="gallery-tile" class:is-revealed={density === 'photos' && revealedId === photo.photoId}>
+						{#if density === 'photos'}
+							<div class="photo-only-hit">
+								<button
+									type="button"
+									class="photo-hit absolute inset-0 z-0 block h-full w-full text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-500"
+									class:is-revealed={revealedId === photo.photoId}
+									data-testid="gallery-card"
+									aria-label="Open {galleryCarName(photo)} by {photo.displayName}"
+									on:click={(event) => openPhoto(photo, event)}
+								>
+									<GalleryCardFace {photo} photosOnly />
+								</button>
+								<div class="tile-share">
+									<ShareCar shareId={photo.photoId} carName={galleryCarName(photo)} imageUrl={photo.url} compact />
+								</div>
+							</div>
+						{:else}
+							<button
+								type="button"
+								class="photo-hit group block h-full w-full rounded-xl text-left transition duration-200 hover:-translate-y-1 hover:shadow-xl hover:shadow-orange-950/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-500"
+								data-testid="gallery-card"
+								aria-label="Open {galleryCarName(photo)} by {photo.displayName}"
+								on:click={(event) => openPhoto(photo, event)}
+							>
+								<GalleryCardFace {photo} />
+							</button>
+							<div class="mt-2">
+								<ShareCar shareId={photo.photoId} carName={galleryCarName(photo)} imageUrl={photo.url} compact />
+							</div>
+						{/if}
 					</li>
 				{/each}
 			</ul>
@@ -579,18 +671,66 @@
 	{/if}
 </section>
 
+<style>
+	.gallery-tile {
+		position: relative;
+	}
+	.tile-share {
+		position: absolute;
+		z-index: 2;
+		left: 0.35rem;
+		right: 0.35rem;
+		bottom: 0.35rem;
+		opacity: 0;
+		pointer-events: none;
+	}
+	.gallery-tile:hover .tile-share,
+	.gallery-tile:focus-within .tile-share,
+	.gallery-tile.is-revealed .tile-share {
+		opacity: 1;
+		pointer-events: auto;
+	}
+	.tile-share :global(.marks) {
+		flex-wrap: nowrap;
+		overflow-x: auto;
+		max-width: 100%;
+	}
+	.photo-only-hit {
+		position: relative;
+		width: 100%;
+		aspect-ratio: 1 / 1;
+		overflow: hidden;
+		border-radius: 6px;
+		background: #1c1917;
+	}
+	.photo-only-hit :global(.photo-frame) {
+		position: absolute;
+		inset: 0;
+		height: 100%;
+	}
+	.gallery-tile :global(.photo-meta) {
+		opacity: 0;
+		transition: opacity 160ms ease;
+	}
+	.gallery-tile:hover :global(.photo-meta),
+	.gallery-tile:focus-within :global(.photo-meta),
+	.gallery-tile.is-revealed :global(.photo-meta) {
+		opacity: 1;
+	}
+</style>
+
 {#if open}
 	<div class="fixed inset-0 z-50 flex items-end justify-center bg-stone-950/80 p-3 sm:items-center" role="dialog" aria-modal="true" aria-label="Shared photo" data-testid="gallery-lightbox">
 		<div class="max-h-full w-full max-w-xl overflow-auto">
 			<GalleryCardFace photo={open} layout="detail" />
-			<div class="mt-3 rounded-xl border border-stone-300 bg-white p-4 text-stone-800 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100">
-				<ShareCar shareId={open.photoId} carName={galleryCarName(open)} />
+			<div class="mt-3 rounded-xl border border-orange-900/60 bg-stone-950 p-4 text-orange-50">
+				<ShareCar shareId={open.photoId} carName={galleryCarName(open)} imageUrl={open.url} />
 				<div class="mt-4 flex flex-wrap gap-2">
-					<a class="rounded-md border border-stone-300 px-3 py-2 text-sm dark:border-gray-600" href={carHref(open.photoId)} data-testid="car-page-link">Car page</a>
+					<a class="rounded-md border border-orange-800 px-3 py-2 text-sm text-orange-100" href={carHref(open.photoId)} data-testid="car-page-link">Car page</a>
 					<button type="button" class="rounded-md px-3 py-2 text-sm amber-button" data-testid="report-photo" disabled={busy} on:click={() => open && report(open)}>
 						{$user ? 'Report photo' : 'Sign in to report'}
 					</button>
-					<button type="button" class="rounded-md border border-stone-300 px-3 py-2 text-sm dark:border-gray-600" on:click={() => (open = null)}>
+					<button type="button" class="rounded-md border border-orange-800 px-3 py-2 text-sm text-orange-100" on:click={() => (open = null)}>
 						Close
 					</button>
 				</div>

@@ -64,3 +64,35 @@ test('the gallery is the photos page and /photos opens My photos', async ({ page
 	await expect(page.getByTestId('photo-usage')).toHaveCount(0);
 	await expect(page.getByTestId('gallery-card').first()).toBeVisible();
 });
+
+test('photos only hides the stat card and remembers the choice', async ({ page }) => {
+	await page.goto('/gallery?fixture=1', { waitUntil: 'domcontentloaded' });
+	await expect(page.getByTestId('gallery-with-details')).toHaveAttribute('aria-pressed', 'true');
+	await expect(page.getByTestId('gallery-stats').first()).toBeVisible();
+
+	await page.getByTestId('gallery-photos-only').click();
+	await expect(page.getByTestId('gallery-photos-only')).toHaveAttribute('aria-pressed', 'true');
+	await expect(page.getByTestId('gallery-grid')).toHaveAttribute('data-density', 'photos');
+	await expect(page.getByTestId('gallery-stats')).toHaveCount(0);
+	await expect(page.getByTestId('gallery-cans')).toHaveCount(0);
+	await expect(page.getByTestId('gallery-type-badge')).toHaveCount(0);
+	const meta = page.getByTestId('gallery-hover-meta').first();
+	await expect(meta).toHaveCSS('opacity', '0');
+	await page.getByTestId('gallery-card').first().hover();
+	await expect(meta).toHaveCSS('opacity', '1');
+	await expect(meta).toContainText('Rust Rocket');
+	await expect(meta).toContainText('Casey');
+	await expect(page.getByTestId('gallery-card').first().locator('..').getByTestId('share-facebook')).toHaveAttribute('aria-label', 'Share on Facebook');
+
+	await page.reload({ waitUntil: 'domcontentloaded' });
+	await expect(page.getByTestId('gallery-photos-only')).toHaveAttribute('aria-pressed', 'true');
+	await expect(page.getByTestId('gallery-stats')).toHaveCount(0);
+
+	await page.getByTestId('gallery-with-details').click();
+	await expect(page.getByTestId('gallery-stats').first()).toBeVisible();
+	const lightboxShare = page.getByTestId('gallery-card').first();
+	await lightboxShare.click();
+	const lightbox = page.getByTestId('gallery-lightbox');
+	await expect(lightbox.getByRole('link', { name: 'Share on Bluesky' })).toBeVisible();
+	await expect(lightbox.getByRole('button', { name: 'Copy link' })).toBeVisible();
+});

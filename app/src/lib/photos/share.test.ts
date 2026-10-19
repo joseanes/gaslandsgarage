@@ -199,6 +199,9 @@ describe('photo sharing', () => {
 		expect(face).toContain('data-testid="gallery-stats"');
 		expect(gallery).toContain('data-testid="gallery-load-more"');
 		expect(gallery).toContain('data-testid="gallery-search"');
+		expect(gallery).toContain('data-testid="gallery-photos-only"');
+		expect(gallery).toContain('data-testid="gallery-with-details"');
+		expect(gallery).toContain('gaslands-gallery-density');
 		expect(gallery).toContain('GalleryCardFace');
 		expect(gallery).toContain('data-testid="report-photo"');
 		expect(gallery).toContain('data-testid="photo-usage"');

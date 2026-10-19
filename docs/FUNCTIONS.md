@@ -159,7 +159,7 @@ The Photos page (Gallery under Players and Events, and My Photos in Settings, wh
 firebase deploy --only firestore:indexes --project=gaslandsgarage-74ce6
 ```
 
-Deploy the function by hand, from the repository root, before the CloudFront change:
+The car page markup and CSS live in `app/src/lib/photos/carPage.ts`. The function imports that module, so a header, hero, stat card, or share-icon change is not live until `renderSharedCar` is deployed by hand. CI does not deploy functions. Hosting stays on AWS. Deploy the function by hand, from the repository root, before the CloudFront change:
 
 ```bash
 firebase deploy --only functions:renderSharedCar --project=gaslandsgarage-74ce6
