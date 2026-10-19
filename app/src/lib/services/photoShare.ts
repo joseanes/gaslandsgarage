@@ -90,8 +90,16 @@ async function call<T>(name: string, data: unknown, fallback: string): Promise<T
 	}
 }
 
-export async function setPhotoSharing(photoId: string, flags: ShareFlags): Promise<void> {
-	await call('setPhotoSharing', { photoId, ...flags }, 'That sharing choice could not be saved.');
+export async function setPhotoSharing(
+	photoId: string,
+	flags: ShareFlags,
+	source?: { teamId: string; vehicleId: string }
+): Promise<void> {
+	await call(
+		'setPhotoSharing',
+		{ photoId, ...flags, shareTeamId: source?.teamId, shareVehicleId: source?.vehicleId },
+		'That sharing choice could not be saved.'
+	);
 }
 
 export async function clearPhotoSharing(photoId: string): Promise<void> {

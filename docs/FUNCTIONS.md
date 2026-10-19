@@ -11,8 +11,17 @@ The functions are 2nd gen, Node.js 22, TypeScript, in `functions/`. Node.js 20 i
 | `queueGameContactEmail` | `gameContacts/{contactId}` create | Queues one Trigger Email document when the recipient opted in. |
 | `exportMyData` | Callable, signed-in user | JSON of that account's Firestore data, including a list of painted-car photos. |
 | `deleteMyAccount` | Callable, signed-in user | Deletes that account, including every Storage object under `users/{uid}/`, the photo metadata, and any shared photo copies. Requires a fresh sign-in and the confirmation `DELETE`. |
-| `reserveVehiclePhoto` | Callable, signed-in user | Reserves one painted-car photo for a vehicle on the caller's saved team. Enforces 3 photos per vehicle and 100 per account. The browser uploads the file after this returns. |
-| `setPhotoSharing` | Callable, signed-in user | Turns sharing on or off for one of the caller's photos, including the Gallery and the vehicle stats snapshot. A shared photo is copied to `shared-photos/{photoId}`. The public document has no account id. Stats are copied from the saved team only when the player asked to share them. |
+| `reserveVehiclePhoto` | Callable, signed-in user | Reserves one library file at `users/{uid}/photos-library/{photoId}.webp` (or `.jpg`). Counts library files toward 100 per account and attachments toward 3 per car. The same bytes attach to the existing photo instead of creating another file. The browser uploads only when this is a new file. |
+| `setPhotoSharing` | Callable, signed-in user | Turns sharing on or off for one of the caller's photos, including the Gallery and the vehicle stats snapshot. A shared photo is copied to `shared-photos/{photoId}`. The public document has no account id. Stats are copied from the car the photo is shared from. One attached car is used automatically. Several attached cars require `shareTeamId` and `shareVehicleId`. |
+| `attachLibraryPhoto` | Callable, signed-in user | Attaches one library photo to a car on the caller's saved team. A car can show 3 photos. |
+| `detachLibraryPhoto` | Callable, signed-in user | Takes one photo off one car. The file stays. If that car was the share source, the shared copy is removed. |
+| `detachVehiclePhotos` | Callable, signed-in user | Takes every library photo off one car. Files stay in My Photos. |
+| `detachTeamPhotos` | Callable, signed-in user | Takes every library photo off every car on one team. Files stay in My Photos. |
+| `renameLibraryPhoto` | Callable, signed-in user | Changes the caption on the library photo and on its shared copy. Attachments stay. |
+| `preparePhotoReplace` | Callable, signed-in user | Points the photo at the replacement library path. The browser uploads after this returns. Attachments stay. |
+| `replaceLibraryPhoto` | Callable, signed-in user | Records the new size and hash after the replacement upload, refreshes a shared copy, and deletes the previous file for that photo. |
+| `migratePhotoLibrary` | Callable, signed-in user | Copies the caller's older `vehicle-photos` files into `photos-library` when `apply` is true. A false `apply` only lists the moves. |
+| `cleanupOrphanPhotos` | Callable, signed-in user | Deletes a reservation that never received a file, and a file whose photo document is already gone, after 15 minutes. |
 | `listVisibleTeamPhotos` | Callable, public | Lists photos a player chose to show on a team share link, or to an accepted buddy. The response has no account id and no download token. |
 | `reportPhoto` | Callable, signed-in user | Records one report per player. Ten reports an hour. Three different reports hide the gallery photo until an administrator reviews it. |
 | `moderateGallery` | Callable, administrator | Lists shared photos, hides or removes one, approves one, or sets the gallery approval kill switch. |
@@ -33,9 +42,17 @@ The functions are 2nd gen, Node.js 22, TypeScript, in `functions/`. Node.js 20 i
 | `removeBuddy` | Callable, signed-in user | Deletes the accepted link. Access ends immediately. |
 | `unblockBuddy` | Callable, signed-in user | Removes a block the caller created. |
 
-Region is `us-central1`. `publishUsageStats` uses 256MiB, a 300 second timeout, and one instance. `syncAuthDisabled`, `queueGameContactEmail`, and `syncNewsletterToken` retry on failure. `syncAuthDisabled` and `queueGameContactEmail` use the platform defaults. `syncNewsletterToken` uses the platform memory and timeout. `exportMyData`, `deleteMyAccount`, `reserveVehiclePhoto`, the photo-sharing callables, and the gaming-buddy callables use 256MiB, a 60 second timeout, and at most 10 instances. `listVisibleTeamPhotos` also sets `invoker: public` so a team share link can list photos without a sign-in. `unsubscribeNewsletter`, `suppressBuddyEmailInvites`, and `renderSharedCar` use 256MiB, a 30 second timeout, at most 10 instances, and `invoker: public`. The first two are email links. `renderSharedCar` is the public car page CloudFront fetches. None keep a warm instance.
+Region is `us-central1`. `publishUsageStats` uses 256MiB, a 300 second timeout, and one instance. `syncAuthDisabled`, `queueGameContactEmail`, and `syncNewsletterToken` retry on failure. `syncAuthDisabled` and `queueGameContactEmail` use the platform defaults. `syncNewsletterToken` uses the platform memory and timeout. `exportMyData`, `deleteMyAccount`, `reserveVehiclePhoto`, the photo library callables, the photo-sharing callables, and the gaming-buddy callables use 256MiB, a 60 second timeout, and at most 10 instances. `listVisibleTeamPhotos` also sets `invoker: public` so a team share link can list photos without a sign-in. `unsubscribeNewsletter`, `suppressBuddyEmailInvites`, and `renderSharedCar` use 256MiB, a 30 second timeout, at most 10 instances, and `invoker: public`. The first two are email links. `renderSharedCar` is the public car page CloudFront fetches. None keep a warm instance.
 
 `getBuddyInvite`, `sendBuddyInvite`, `acceptBuddyEmailInvite`, `exportMyData`, and `deleteMyAccount` declare the Twilio secrets. The other buddy callables do not. Email sending stays off until both secrets look like real Twilio credentials (an Account SID starting with `AC`, and an auth token). The placeholder value `disabled` keeps the feature off. The buddies page still shows the copyable invite link and says email invites are coming soon.
+
+## Photo library
+
+A photo belongs to the account, not to a car. New files are stored at `users/{uid}/photos-library/{photoId}.webp` or `.jpg`. The photo document stays at `users/{uid}/photos/{photoId}` and keeps an `attachments` list of `{ teamId, vehicleId }`. Clients still cannot create that document. Older files at `users/{uid}/vehicle-photos/...` keep working. My Photos calls `migratePhotoLibrary` with `apply: true` so a signed-in player is moved as they open the page.
+
+Removing a car or a team only detaches the photo. The file and the document stay. If that car was the one the Gallery, buddies, or the share link used, that shared copy is removed. Deleting the photo from My Photos removes the file, the document, every attachment, and every shared copy.
+
+`functions/scripts/migrate-photo-library.mjs` is the operator copy of that move. Dry-run is the default. `--apply` copies the files. Run it from `functions/` with Application Default Credentials.
 
 ## Usage stats
 
@@ -108,7 +125,7 @@ Point the extension at the `mail` collection. Leave its sender address in the ex
 5. Deletes queued `mail` documents for those requests and any mail addressed to this account.
 6. Deletes buddy links, requests, blocks, the invite, the findable-name card, `buddyRate/{uid}`, email invites that account sent, and opt-out link tokens it created. When Twilio is configured, it also deletes `buddyEmailRate` for the salted hash of that account's own address. It does not delete `buddyEmailSuppress`. That opt-out stays after deletion whether or not Twilio is configured. A placeholder secret of `disabled` skips only the rate-hash lookup. The invitee's address is not stored.
 7. Deletes `privacyRate/{uid}` and `gameContactEmailRate/{uid}`.
-8. Deletes painted-car photos: shared copies and their documents, every Storage object under `users/{uid}/`, and the photo metadata.
+8. Deletes painted-car photos: shared copies and their documents, every Storage object under `users/{uid}/` (library files and older vehicle-photos files), and the photo metadata. The account export lists each photo's storage path and caption. It does not include a public link.
 9. Deletes the Auth user. A missing Auth user is success, so a retry can finish leftover documents.
 10. Scans again for map keys and documents created while the account was being deleted.
 

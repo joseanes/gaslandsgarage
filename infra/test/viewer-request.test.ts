@@ -50,6 +50,7 @@ describe('SvelteKit route discovery', () => {
 			'/embed/car',
 			'/embed/car/:p',
 			'/gallery',
+			'/photos',
 			'/players',
 			'/privacy',
 			'/profile',

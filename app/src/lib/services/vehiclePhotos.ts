@@ -1,7 +1,8 @@
 import { browser } from '$app/environment';
 import { auth, initializeFirebase } from '../firebase';
 import { PRIVACY_FUNCTIONS_REGION } from '../privacy/accountShared';
-import { compressVehiclePhoto } from '../photos/compress';
+import { blobBytes, compressVehiclePhoto } from '../photos/compress';
+import { attachmentsFromData, sha256Hex } from '../photos/library';
 import {
 	MAX_PHOTO_BYTES,
 	PHOTO_PRIVACY_SHORT,
@@ -59,12 +60,20 @@ function asPhoto(data: Record<string, unknown>, url: string): VehiclePhoto | nul
 		createdAt: String(data.createdAt ?? ''),
 		caption: typeof data.caption === 'string' ? data.caption : '',
 		contentType: data.contentType === 'image/jpeg' ? 'image/jpeg' : 'image/webp',
+		attachments: attachmentsFromData(data),
+		contentHash: typeof data.contentHash === 'string' ? data.contentHash : '',
+		shareTeamId: typeof data.shareTeamId === 'string' ? data.shareTeamId : '',
+		shareVehicleId: typeof data.shareVehicleId === 'string' ? data.shareVehicleId : '',
 		showToBuddies: data.showToBuddies === true,
 		showOnShareLink: data.showOnShareLink === true,
 		showInGallery: data.showInGallery === true,
 		shareVehicleStats: data.shareVehicleStats === true,
 		url
 	};
+}
+
+export function photoOnVehicle(photo: Pick<VehiclePhoto, 'attachments' | 'teamId' | 'vehicleId'>, teamId: string, vehicleId: string): boolean {
+	return photo.attachments.some((item) => item.teamId === teamId && item.vehicleId === vehicleId);
 }
 
 async function listPhotoDocs(): Promise<VehiclePhoto[]> {
@@ -103,16 +112,20 @@ export async function listMyPhotos(): Promise<VehiclePhoto[]> {
 /** Loads each photo with the signed-in user's Storage access. The caller turns the bytes into an object URL. */
 export async function photosForPrint(teamId: string): Promise<Record<string, PrintPhotoBlob[]>> {
 	const { app } = await readyUser();
-	const docs = (await listPhotoDocs()).filter((photo) => photo.teamId === teamId);
+	const docs = (await listPhotoDocs()).filter((photo) => photo.attachments.some((item) => item.teamId === teamId) || photo.teamId === teamId);
 	const { getStorage, ref, getBlob } = await import('firebase/storage');
 	const storage = getStorage(app);
 	const grouped: Record<string, PrintPhotoBlob[]> = {};
 	for (const photo of docs) {
 		try {
 			const blob = await getBlob(ref(storage, photo.path));
-			const list = grouped[photo.vehicleId] ?? [];
-			list.push({ blob, caption: photo.caption });
-			grouped[photo.vehicleId] = list;
+			const targets = photo.attachments.filter((item) => item.teamId === teamId);
+			const vehicles = targets.length > 0 ? targets : photo.teamId === teamId ? [{ teamId, vehicleId: photo.vehicleId }] : [];
+			for (const target of vehicles) {
+				const list = grouped[target.vehicleId] ?? [];
+				list.push({ blob, caption: photo.caption });
+				grouped[target.vehicleId] = list;
+			}
 		} catch {
 			// A missing file is skipped. The rest of the sheet still prints.
 		}
@@ -121,13 +134,14 @@ export async function photosForPrint(teamId: string): Promise<Record<string, Pri
 }
 
 async function reserve(input: {
-	teamId: string;
-	vehicleId: string;
+	teamId?: string;
+	vehicleId?: string;
 	width: number;
 	height: number;
 	contentType: string;
 	caption: string;
-}): Promise<VehiclePhotoRecord> {
+	contentHash: string;
+}): Promise<VehiclePhotoRecord & { duplicate?: boolean }> {
 	const { app } = await readyUser();
 	const { getFunctions, httpsCallable } = await import('firebase/functions');
 	const functions = getFunctions(app, PRIVACY_FUNCTIONS_REGION);
@@ -137,23 +151,34 @@ async function reserve(input: {
 }
 
 export async function uploadVehiclePhoto(input: {
-	teamId: string;
-	vehicleId: string;
+	teamId?: string;
+	vehicleId?: string;
 	file: Blob;
 	caption?: string;
 }): Promise<VehiclePhoto> {
 	const { uid } = await readyUser();
-	assertPhotoIds(uid, input.teamId, input.vehicleId);
+	const teamId = input.teamId ?? '';
+	const vehicleId = input.vehicleId ?? '';
+	if (teamId || vehicleId) assertPhotoIds(uid, teamId, vehicleId);
+	else if (!/^([A-Za-z0-9_-]{1,128})$/.test(uid)) throw new Error('Sign in again before adding a photo.');
 	const caption = cleanCaption(input.caption);
 	const existing = await listPhotoDocs();
-	const onVehicle = existing.filter((photo) => photo.teamId === input.teamId && photo.vehicleId === input.vehicleId).length;
-	const blocked = quotaMessage(existing.length, onVehicle);
-	if (blocked) throw new Error(blocked);
-
+	const onVehicle = teamId && vehicleId ? existing.filter((photo) => photoOnVehicle(photo, teamId, vehicleId)).length : 0;
 	const compressed = await compressVehiclePhoto(input.file);
 	if (compressed.blob.size > MAX_PHOTO_BYTES) throw new Error('That photo is still too large after compressing. Try a smaller one.');
+	const contentHash = await sha256Hex(await blobBytes(compressed.blob));
+	const duplicate = existing.find((photo) => photo.contentHash === contentHash);
+	if (duplicate) {
+		const alreadyHere = teamId && vehicleId ? photoOnVehicle(duplicate, teamId, vehicleId) : false;
+		if (teamId && vehicleId && !alreadyHere && onVehicle >= 3) {
+			throw new Error('This vehicle already has 3 photos. Detach one to add another.');
+		}
+	} else {
+		const blocked = quotaMessage(existing.length, onVehicle);
+		if (blocked) throw new Error(blocked);
+	}
 
-	let reserved: VehiclePhotoRecord;
+	let reserved: VehiclePhotoRecord & { duplicate?: boolean };
 	try {
 		reserved = await reserve({
 			teamId: input.teamId,
@@ -161,10 +186,23 @@ export async function uploadVehiclePhoto(input: {
 			width: compressed.width,
 			height: compressed.height,
 			contentType: compressed.contentType,
-			caption
+			caption,
+			contentHash
 		});
 	} catch (error) {
 		throw plainError(error, 'That photo could not be saved.');
+	}
+
+	if (reserved.duplicate) {
+		const stored = await storageRef(reserved.path);
+		const { getDownloadURL } = await import('firebase/storage');
+		let url = '';
+		try {
+			url = await getDownloadURL(stored.storageRef);
+		} catch {
+			url = '';
+		}
+		return { ...reserved, attachments: reserved.attachments ?? [], contentHash, shareTeamId: reserved.shareTeamId ?? '', shareVehicleId: reserved.shareVehicleId ?? '', showToBuddies: false, showOnShareLink: false, showInGallery: false, shareVehicleStats: false, url };
 	}
 
 	const stored = await storageRef(reserved.path);
@@ -172,7 +210,18 @@ export async function uploadVehiclePhoto(input: {
 	try {
 		await uploadBytes(stored.storageRef, compressed.blob, { contentType: compressed.contentType });
 		const url = await getDownloadURL(stored.storageRef);
-		return { ...reserved, showToBuddies: false, showOnShareLink: false, showInGallery: false, shareVehicleStats: false, url };
+		return {
+			...reserved,
+			attachments: reserved.attachments ?? [],
+			contentHash,
+			shareTeamId: reserved.shareTeamId ?? '',
+			shareVehicleId: reserved.shareVehicleId ?? '',
+			showToBuddies: false,
+			showOnShareLink: false,
+			showInGallery: false,
+			shareVehicleStats: false,
+			url
+		};
 	} catch (error) {
 		await deleteVehiclePhoto(reserved).catch(() => undefined);
 		throw plainError(error, 'That photo could not be uploaded.');
@@ -195,12 +244,70 @@ export async function deleteVehiclePhoto(photo: Pick<VehiclePhotoRecord, 'photoI
 	await deleteDoc(doc(db, 'users', uid, 'photos', photo.photoId));
 }
 
-export async function deleteVehiclePhotos(teamId: string, vehicleId: string): Promise<void> {
-	const photos = (await listPhotoDocs()).filter((photo) => photo.teamId === teamId && photo.vehicleId === vehicleId);
-	for (const photo of photos) await deleteVehiclePhoto(photo);
+async function libraryCall<T>(name: string, data: unknown, fallback: string): Promise<T> {
+	const { app } = await readyUser();
+	const { getFunctions, httpsCallable } = await import('firebase/functions');
+	try {
+		const result = await httpsCallable(getFunctions(app, PRIVACY_FUNCTIONS_REGION), name)(data);
+		return result.data as T;
+	} catch (error) {
+		throw plainError(error, fallback);
+	}
 }
 
-export async function deleteTeamPhotos(teamId: string): Promise<void> {
-	const photos = (await listPhotoDocs()).filter((photo) => photo.teamId === teamId);
-	for (const photo of photos) await deleteVehiclePhoto(photo);
+export async function attachLibraryPhoto(photoId: string, teamId: string, vehicleId: string): Promise<void> {
+	await libraryCall('attachLibraryPhoto', { photoId, teamId, vehicleId }, 'That photo could not be attached.');
 }
+
+export async function detachLibraryPhoto(photoId: string, teamId: string, vehicleId: string): Promise<void> {
+	await libraryCall('detachLibraryPhoto', { photoId, teamId, vehicleId }, 'That photo could not be removed from this car.');
+}
+
+/** Removes every attachment on this car. The files stay in My Photos. */
+export async function detachVehiclePhotos(teamId: string, vehicleId: string): Promise<void> {
+	await libraryCall('detachVehiclePhotos', { teamId, vehicleId }, 'Photos could not be removed from this car.');
+}
+
+/** Removes every attachment on this team. The files stay in My Photos. */
+export async function detachTeamPhotos(teamId: string): Promise<void> {
+	await libraryCall('detachTeamPhotos', { teamId }, 'Photos could not be removed from this team.');
+}
+
+export async function renameLibraryPhoto(photoId: string, caption: string): Promise<void> {
+	await libraryCall('renameLibraryPhoto', { photoId, caption }, 'That caption could not be saved.');
+}
+
+export async function replaceLibraryPhoto(photo: VehiclePhoto, file: Blob): Promise<void> {
+	const compressed = await compressVehiclePhoto(file);
+	if (compressed.blob.size > MAX_PHOTO_BYTES) throw new Error('That photo is still too large after compressing. Try a smaller one.');
+	const contentHash = await sha256Hex(await blobBytes(compressed.blob));
+	let path = photo.path;
+	let contentType = compressed.contentType;
+	if (compressed.contentType !== photo.contentType || !photo.path.includes('/photos-library/')) {
+		const prepared = await libraryCall<{ path: string; contentType: string }>(
+			'preparePhotoReplace',
+			{ photoId: photo.photoId, contentType: compressed.contentType },
+			'That photo could not be replaced.'
+		);
+		path = prepared.path;
+		contentType = prepared.contentType === 'image/jpeg' ? 'image/jpeg' : 'image/webp';
+	}
+	const stored = await storageRef(path);
+	const { uploadBytes } = await import('firebase/storage');
+	await uploadBytes(stored.storageRef, compressed.blob, { contentType });
+	await libraryCall('replaceLibraryPhoto', { photoId: photo.photoId, width: compressed.width, height: compressed.height, contentHash }, 'That photo could not be replaced.');
+}
+
+export async function migrateMyPhotoLibrary(): Promise<void> {
+	await libraryCall('migratePhotoLibrary', { apply: true }, 'Photos could not be prepared.');
+}
+
+export async function cleanupMyPhotoOrphans(): Promise<void> {
+	await libraryCall('cleanupOrphanPhotos', {}, 'Photos could not be cleaned up.');
+}
+
+export function countOnVehicleClient(photos: VehiclePhoto[], teamId: string, vehicleId: string): number {
+	return photos.filter((photo) => photoOnVehicle(photo, teamId, vehicleId)).length;
+}
+
+export { quotaMessage };
