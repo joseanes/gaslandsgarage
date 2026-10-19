@@ -108,7 +108,7 @@
 	{:else}
 		<PlayersMap {markers} />
 		<p class="mt-2 text-sm text-stone-500 dark:text-gray-400">
-			Map data &copy; OpenStreetMap contributors, tiles &copy; CARTO. Saving a city still looks it up through OpenStreetMap. The profile location field can ask Google Places for city suggestions.
+			Map data &copy; OpenStreetMap contributors. The tile credit is in the corner of the map. Saving a city still looks it up through OpenStreetMap. The profile location field can ask Google Places for city suggestions.
 		</p>
 
 		<div class="mt-6 grid gap-6 lg:grid-cols-2">
