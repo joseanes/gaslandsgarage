@@ -3,9 +3,12 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { BUDDY_FALLBACK_NAME } from '../buddies/model';
 import {
+	CUSTOMIZE_SHARING_LABEL,
 	GALLERY_SHARE_COPY,
 	REPORT_HIDE_THRESHOLD,
 	SHARE_BUDDIES_LABEL,
+	SHARE_CHOICES_COPY,
+	SHARE_EVERYWHERE_LABEL,
 	SHARE_GALLERY_LABEL,
 	SHARE_LINK_LABEL,
 	SHARE_STATS_LABEL,
@@ -14,6 +17,8 @@ import {
 	nextReportWindow,
 	publicSharedPhoto,
 	sanitizeVehicleStats,
+	shareChoiceState,
+	shareEverywhere,
 	shareFlags,
 	sharedPhotoMediaUrl,
 	vehicleTypeLabel
@@ -108,8 +113,21 @@ describe('photo sharing', () => {
 		expect(nextReportWindow(stamps.map((stamp) => stamp - 60 * 60 * 1000), now).allowed).toBe(true);
 	});
 
+	it('turns every sharing choice on or off together, and marks a partial choice as mixed', () => {
+		const off = shareEverywhere(false);
+		expect(shareChoiceState(off)).toBe('off');
+		expect(shareChoiceState(shareEverywhere(true))).toBe('on');
+		expect(shareChoiceState({ ...off, showInGallery: true })).toBe('mixed');
+		expect(shareChoiceState({ ...shareEverywhere(true), shareVehicleStats: false })).toBe('mixed');
+		expect(SHARE_EVERYWHERE_LABEL).toBe('Share everywhere');
+		expect(CUSTOMIZE_SHARING_LABEL).toBe('Customize sharing');
+		expect(SHARE_CHOICES_COPY.split('\n')).toHaveLength(1);
+	});
+
 	it('asks before sharing and explains the gallery on the privacy page', () => {
 		const card = readFileSync(resolve(process.cwd(), 'src/lib/components/VehiclePhotos.svelte'), 'utf8');
+		const choices = readFileSync(resolve(process.cwd(), 'src/lib/components/ShareChoices.svelte'), 'utf8');
+		const library = readFileSync(resolve(process.cwd(), 'src/lib/components/LibraryPhotoEditor.svelte'), 'utf8');
 		const page = readFileSync(resolve(process.cwd(), 'src/routes/privacy/+page.svelte'), 'utf8');
 		const admin = readFileSync(resolve(process.cwd(), 'src/routes/admin/gallery/+page.svelte'), 'utf8');
 		const menu = readFileSync(resolve(process.cwd(), 'src/routes/+layout.svelte'), 'utf8');
@@ -117,15 +135,25 @@ describe('photo sharing', () => {
 		expect(SHARE_LINK_LABEL).toBe('Show on my team share link');
 		expect(SHARE_GALLERY_LABEL).toBe('Show this car in the public Gallery?');
 		expect(SHARE_STATS_LABEL).toBe("Share this car's stats with the photo?");
-		expect(card).toContain('{SHARE_BUDDIES_LABEL}');
-		expect(card).toContain('{SHARE_LINK_LABEL}');
-		expect(card).toContain('{SHARE_GALLERY_LABEL}');
-		expect(card).toContain('{SHARE_STATS_LABEL}');
-		expect(card).toContain('{GALLERY_SHARE_COPY}');
-		expect(card).toContain('{STATS_SHARE_COPY}');
-		expect(card).toContain('data-testid="upload-share-gallery"');
-		expect(card).toContain('data-testid="upload-share-stats"');
+		expect(choices).toContain('{SHARE_BUDDIES_LABEL}');
+		expect(choices).toContain('{SHARE_LINK_LABEL}');
+		expect(choices).toContain('{SHARE_GALLERY_LABEL}');
+		expect(choices).toContain('{SHARE_STATS_LABEL}');
+		expect(choices).toContain('{SHARE_EVERYWHERE_LABEL}');
+		expect(choices).toContain('{CUSTOMIZE_SHARING_LABEL}');
+		expect(choices).toContain('{SHARE_CHOICES_COPY}');
+		expect(choices).toContain('data-testid={everywhereTestId}');
+		expect(choices).toContain('data-testid={customizeTestId}');
+		expect(choices).not.toContain('checked="checked"');
+		expect(choices).not.toContain('{GALLERY_SHARE_COPY}');
+		expect(choices).not.toContain('{STATS_SHARE_COPY}');
+		expect(card).toContain('ShareChoices');
+		expect(card).toContain('galleryTestId="upload-share-gallery"');
+		expect(card).toContain('statsTestId="upload-share-stats"');
+		expect(card).toContain('shareEverywhere(false)');
 		expect(card).not.toContain('checked="checked"');
+		expect(library).toContain('ShareChoices');
+		expect(library).toContain('linkTestId="library-share-link"');
 		expect(page).toContain('GALLERY_SHARE_COPY');
 		expect(page).toContain('STATS_SHARE_COPY');
 		expect(page).toContain('SHARE_STATS_LABEL');

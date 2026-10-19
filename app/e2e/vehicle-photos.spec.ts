@@ -44,7 +44,11 @@ test('a signed-in player can upload, view, print, and delete a vehicle photo', a
 	await page.getByRole('button', { name: 'Expand vehicle' }).click();
 	const photos = page.getByTestId('vehicle-photos');
 	await expect(photos).toBeVisible();
-	await photos.locator('summary').click();
+	await photos.locator('summary').first().click();
+	const uploadEverywhere = photos.getByTestId('upload-share-everywhere');
+	await expect(uploadEverywhere).not.toBeChecked();
+	await expect(uploadEverywhere).toHaveJSProperty('indeterminate', false);
+	await expect(photos.getByTestId('upload-share-gallery')).toBeHidden();
 	await expect(photos.getByTestId('upload-share-gallery')).not.toBeChecked();
 	await expect(photos.getByTestId('upload-share-stats')).not.toBeChecked();
 
@@ -58,6 +62,32 @@ test('a signed-in player can upload, view, print, and delete a vehicle photo', a
 	await expect(photos.getByRole('alert')).toHaveCount(0);
 	await expect(photos.getByTestId('upload-share-gallery')).not.toBeChecked();
 	await expect(photos.getByTestId('upload-share-stats')).not.toBeChecked();
+
+	const saved = photos.locator('li').filter({ has: page.getByRole('img', { name: 'Painted car' }) });
+	const everywhere = saved.getByTestId('share-everywhere');
+	await expect(everywhere).not.toBeChecked();
+	await expect(everywhere).toHaveJSProperty('indeterminate', false);
+	await expect(saved.getByTestId('share-buddies')).toBeHidden();
+	await saved.getByTestId('customize-sharing').click();
+	await everywhere.click();
+	await expect(saved.getByTestId('share-buddies')).toBeChecked({ timeout: 20_000 });
+	await expect(saved.getByTestId('share-link')).toBeChecked();
+	await expect(saved.getByTestId('share-gallery')).toBeChecked();
+	await expect(saved.getByTestId('share-stats')).toBeChecked();
+	await expect(everywhere).toBeChecked();
+	await expect(everywhere).toHaveJSProperty('indeterminate', false);
+
+	await saved.getByTestId('share-stats').click();
+	await expect(everywhere).not.toBeChecked();
+	await expect(everywhere).toHaveJSProperty('indeterminate', true, { timeout: 20_000 });
+	await everywhere.click();
+	await expect(saved.getByTestId('share-stats')).toBeChecked({ timeout: 20_000 });
+	await expect(everywhere).toBeChecked();
+	await everywhere.click();
+	await expect(saved.getByTestId('share-buddies')).not.toBeChecked({ timeout: 20_000 });
+	await expect(saved.getByTestId('share-gallery')).not.toBeChecked();
+	await expect(everywhere).not.toBeChecked();
+	await expect(everywhere).toHaveJSProperty('indeterminate', false);
 
 	await page.getByRole('button', { name: 'Teams', exact: true }).click();
 	const popupPromise = page.waitForEvent('popup');

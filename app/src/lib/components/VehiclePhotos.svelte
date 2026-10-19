@@ -1,16 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import ShareChoices from '$lib/components/ShareChoices.svelte';
 	import { user } from '$lib/firebase';
 	import { PHOTO_PRIVACY_SHORT, TEAM_ID_PATTERN, VEHICLE_ID_PATTERN } from '$lib/photos/model';
-	import {
-		GALLERY_SHARE_COPY,
-		SHARE_BUDDIES_LABEL,
-		SHARE_GALLERY_LABEL,
-		SHARE_LINK_LABEL,
-		SHARE_STATS_LABEL,
-		STATS_SHARE_COPY,
-		type ShareFlags
-	} from '$lib/photos/share';
+	import { shareEverywhere, type ShareFlags } from '$lib/photos/share';
 	import { setPhotoSharing } from '$lib/services/photoShare';
 	import { attachLibraryPhoto, detachLibraryPhoto, listMyPhotos, photoOnVehicle, uploadVehiclePhoto, type VehiclePhoto } from '$lib/services/vehiclePhotos';
 
@@ -22,8 +15,7 @@
 
 	let photos: VehiclePhoto[] = [];
 	let caption = '';
-	let uploadGallery = false;
-	let uploadStats = false;
+	let uploadFlags: ShareFlags = shareEverywhere(false);
 	let showLibrary = false;
 	let library: VehiclePhoto[] = [];
 	let loading = false;
@@ -80,23 +72,12 @@
 		try {
 			status = 'Uploading photo...';
 			const uploaded = await uploadVehiclePhoto({ teamId, vehicleId, file, caption });
-			const showInGallery = uploadGallery;
-			const shareVehicleStats = uploadStats;
+			const chosen = uploadFlags;
 			caption = '';
-			uploadGallery = false;
-			uploadStats = false;
-			if (showInGallery || shareVehicleStats) {
+			uploadFlags = shareEverywhere(false);
+			if (chosen.showToBuddies || chosen.showOnShareLink || chosen.showInGallery || chosen.shareVehicleStats) {
 				status = 'Saving sharing...';
-				await setPhotoSharing(
-					uploaded.photoId,
-					{
-						showToBuddies: false,
-						showOnShareLink: false,
-						showInGallery,
-						shareVehicleStats
-					},
-					{ teamId, vehicleId }
-				);
+				await setPhotoSharing(uploaded.photoId, chosen, { teamId, vehicleId });
 			}
 			status = '';
 			await refresh();
@@ -176,23 +157,16 @@
 		}
 	}
 
-	async function saveFlags(photo: VehiclePhoto, patch: Partial<ShareFlags>, input: HTMLInputElement) {
-		const current =
-			patch.showToBuddies !== undefined
-				? photo.showToBuddies
-				: patch.showOnShareLink !== undefined
-					? photo.showOnShareLink
-					: patch.shareVehicleStats !== undefined
-						? photo.shareVehicleStats
-						: photo.showInGallery;
-		input.checked = current;
-		const next: ShareFlags = {
+	function photoFlags(photo: VehiclePhoto): ShareFlags {
+		return {
 			showToBuddies: photo.showToBuddies,
 			showOnShareLink: photo.showOnShareLink,
 			showInGallery: photo.showInGallery,
-			shareVehicleStats: photo.shareVehicleStats,
-			...patch
+			shareVehicleStats: photo.shareVehicleStats
 		};
+	}
+
+	async function saveFlags(photo: VehiclePhoto, next: ShareFlags) {
 		busy = true;
 		error = '';
 		status = 'Saving sharing...';
@@ -289,63 +263,9 @@
 									</select>
 								</label>
 							{/if}
-							<fieldset class="mt-2 space-y-1" disabled={busy}>
-								<legend class="sr-only">Sharing for this photo</legend>
-								<label class="flex items-start gap-2 text-xs text-stone-700 dark:text-gray-200">
-									<input
-										type="checkbox"
-										class="mt-0.5"
-										data-testid="share-buddies"
-										checked={photo.showToBuddies}
-										on:change={(event) => {
-											const input = event.currentTarget;
-											if (input instanceof HTMLInputElement) void saveFlags(photo, { showToBuddies: input.checked }, input);
-										}}
-									/>
-									{SHARE_BUDDIES_LABEL}
-								</label>
-								<label class="flex items-start gap-2 text-xs text-stone-700 dark:text-gray-200">
-									<input
-										type="checkbox"
-										class="mt-0.5"
-										data-testid="share-link"
-										checked={photo.showOnShareLink}
-										on:change={(event) => {
-											const input = event.currentTarget;
-											if (input instanceof HTMLInputElement) void saveFlags(photo, { showOnShareLink: input.checked }, input);
-										}}
-									/>
-									{SHARE_LINK_LABEL}
-								</label>
-								<label class="flex items-start gap-2 text-xs text-stone-700 dark:text-gray-200">
-									<input
-										type="checkbox"
-										class="mt-0.5"
-										data-testid="share-gallery"
-										checked={photo.showInGallery}
-										on:change={(event) => {
-											const input = event.currentTarget;
-											if (input instanceof HTMLInputElement) void saveFlags(photo, { showInGallery: input.checked }, input);
-										}}
-									/>
-									{SHARE_GALLERY_LABEL}
-								</label>
-								<p class="text-xs leading-snug text-stone-600 dark:text-gray-300" data-testid="gallery-share-copy">{GALLERY_SHARE_COPY}</p>
-								<label class="flex items-start gap-2 text-xs text-stone-700 dark:text-gray-200">
-									<input
-										type="checkbox"
-										class="mt-0.5"
-										data-testid="share-stats"
-										checked={photo.shareVehicleStats}
-										on:change={(event) => {
-											const input = event.currentTarget;
-											if (input instanceof HTMLInputElement) void saveFlags(photo, { shareVehicleStats: input.checked }, input);
-										}}
-									/>
-									{SHARE_STATS_LABEL}
-								</label>
-								<p class="text-xs leading-snug text-stone-600 dark:text-gray-300" data-testid="stats-share-copy">{STATS_SHARE_COPY}</p>
-							</fieldset>
+							<div class="mt-2">
+								<ShareChoices flags={photoFlags(photo)} disabled={busy} onChange={(next) => void saveFlags(photo, next)} />
+							</div>
 						{/if}
 					</div>
 				</li>
@@ -367,19 +287,20 @@
 	{:else if !photosCanBeStored(teamId, vehicleId)}
 		<p class="mt-3 text-sm text-stone-700 dark:text-gray-200" data-testid="photos-need-save">Save the team to add photos</p>
 	{:else if !playMode && photos.length < 3}
-		<fieldset class="mt-3 space-y-1" data-testid="upload-sharing" disabled={busy}>
-			<legend class="text-xs font-medium text-stone-700 dark:text-gray-200">When this photo is added</legend>
-			<label class="flex items-start gap-2 text-xs text-stone-700 dark:text-gray-200">
-				<input type="checkbox" class="mt-0.5" data-testid="upload-share-gallery" bind:checked={uploadGallery} />
-				{SHARE_GALLERY_LABEL}
-			</label>
-			<p class="text-xs leading-snug text-stone-600 dark:text-gray-300">{GALLERY_SHARE_COPY}</p>
-			<label class="flex items-start gap-2 text-xs text-stone-700 dark:text-gray-200">
-				<input type="checkbox" class="mt-0.5" data-testid="upload-share-stats" bind:checked={uploadStats} />
-				{SHARE_STATS_LABEL}
-			</label>
-			<p class="text-xs leading-snug text-stone-600 dark:text-gray-300">{STATS_SHARE_COPY}</p>
-		</fieldset>
+		<div class="mt-3" data-testid="upload-sharing">
+			<p class="mb-1 text-xs font-medium text-stone-700 dark:text-gray-200">When this photo is added</p>
+			<ShareChoices
+				flags={uploadFlags}
+				disabled={busy}
+				everywhereTestId="upload-share-everywhere"
+				customizeTestId="upload-customize-sharing"
+				buddiesTestId="upload-share-buddies"
+				linkTestId="upload-share-link"
+				galleryTestId="upload-share-gallery"
+				statsTestId="upload-share-stats"
+				onChange={(next) => (uploadFlags = next)}
+			/>
+		</div>
 		<div class="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
 			<label class="inline-flex cursor-pointer items-center justify-center rounded-md px-3 py-2 text-sm amber-button {busy ? 'pointer-events-none opacity-60' : ''}">
 				Add a photo

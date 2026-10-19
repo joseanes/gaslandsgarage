@@ -6,6 +6,10 @@ export const SHARE_BUDDIES_LABEL = 'Show to my Gaming Buddies';
 export const SHARE_LINK_LABEL = 'Show on my team share link';
 export const SHARE_GALLERY_LABEL = 'Show this car in the public Gallery?';
 export const SHARE_STATS_LABEL = "Share this car's stats with the photo?";
+export const SHARE_EVERYWHERE_LABEL = 'Share everywhere';
+export const CUSTOMIZE_SHARING_LABEL = 'Customize sharing';
+export const SHARE_CHOICES_COPY =
+	"Off until you turn it on. The Gallery is public and can include this car's stats. Unshare anytime.";
 export const GALLERY_SHARE_COPY =
 	'Anyone can see photos you share to the Gallery. You can unshare anytime. Deleting your account removes them.';
 export const STATS_SHARE_COPY =
@@ -22,6 +26,26 @@ export interface ShareFlags {
 	showOnShareLink: boolean;
 	showInGallery: boolean;
 	shareVehicleStats: boolean;
+}
+
+export type ShareChoiceState = 'off' | 'on' | 'mixed';
+
+const SHARE_FLAG_KEYS = ['showToBuddies', 'showOnShareLink', 'showInGallery', 'shareVehicleStats'] as const;
+
+export function shareChoiceState(flags: ShareFlags): ShareChoiceState {
+	const on = SHARE_FLAG_KEYS.filter((key) => flags[key]).length;
+	if (on === 0) return 'off';
+	if (on === SHARE_FLAG_KEYS.length) return 'on';
+	return 'mixed';
+}
+
+export function shareEverywhere(on: boolean): ShareFlags {
+	return {
+		showToBuddies: on,
+		showOnShareLink: on,
+		showInGallery: on,
+		shareVehicleStats: on
+	};
 }
 
 /** Build snapshot stored on the public gallery card. No account id, email, or Google name. */

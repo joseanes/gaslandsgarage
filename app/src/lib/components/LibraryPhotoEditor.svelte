@@ -1,15 +1,8 @@
 <script lang="ts">
 	import ShareCar from '$lib/components/ShareCar.svelte';
+	import ShareChoices from '$lib/components/ShareChoices.svelte';
 	import { ownCarName, type SavedCar } from '$lib/photos/browser';
-	import {
-		GALLERY_SHARE_COPY,
-		SHARE_BUDDIES_LABEL,
-		SHARE_GALLERY_LABEL,
-		SHARE_LINK_LABEL,
-		SHARE_STATS_LABEL,
-		STATS_SHARE_COPY,
-		type ShareFlags
-	} from '$lib/photos/share';
+	import { type ShareFlags } from '$lib/photos/share';
 	import { setPhotoSharing } from '$lib/services/photoShare';
 	import {
 		attachLibraryPhoto,
@@ -154,9 +147,6 @@
 		await run(() => deleteVehiclePhoto(photo), 'Deleting photo...', 'That photo could not be deleted.');
 	}
 
-	function checked(event: Event): boolean {
-		return event.currentTarget instanceof HTMLInputElement && event.currentTarget.checked;
-	}
 </script>
 
 <article class="rounded-lg border border-stone-300 bg-white p-3 dark:border-gray-600 dark:bg-gray-900" data-testid="library-photo">
@@ -215,27 +205,19 @@
 				</select>
 			</label>
 		{/if}
-		<fieldset class="mt-2 space-y-1" disabled={busy || !sourceFor(photo)}>
-			<legend class="sr-only">Sharing for this photo</legend>
-			<label class="flex items-start gap-2 text-xs">
-				<input type="checkbox" class="mt-0.5" data-testid="share-buddies" checked={photo.showToBuddies} on:change={(event) => saveFlags({ showToBuddies: checked(event) })} />
-				{SHARE_BUDDIES_LABEL}
-			</label>
-			<label class="flex items-start gap-2 text-xs">
-				<input type="checkbox" class="mt-0.5" data-testid="library-share-link" checked={photo.showOnShareLink} on:change={(event) => saveFlags({ showOnShareLink: checked(event) })} />
-				{SHARE_LINK_LABEL}
-			</label>
-			<label class="flex items-start gap-2 text-xs">
-				<input type="checkbox" class="mt-0.5" data-testid="share-gallery" checked={photo.showInGallery} on:change={(event) => saveFlags({ showInGallery: checked(event) })} />
-				{SHARE_GALLERY_LABEL}
-			</label>
-			<p class="text-xs leading-snug text-stone-600 dark:text-gray-300">{GALLERY_SHARE_COPY}</p>
-			<label class="flex items-start gap-2 text-xs">
-				<input type="checkbox" class="mt-0.5" data-testid="share-stats" checked={photo.shareVehicleStats} on:change={(event) => saveFlags({ shareVehicleStats: checked(event) })} />
-				{SHARE_STATS_LABEL}
-			</label>
-			<p class="text-xs leading-snug text-stone-600 dark:text-gray-300">{STATS_SHARE_COPY}</p>
-		</fieldset>
+		<div class="mt-2">
+			<ShareChoices
+				flags={{
+					showToBuddies: photo.showToBuddies,
+					showOnShareLink: photo.showOnShareLink,
+					showInGallery: photo.showInGallery,
+					shareVehicleStats: photo.shareVehicleStats
+				}}
+				disabled={busy || !sourceFor(photo)}
+				linkTestId="library-share-link"
+				onChange={(next) => void saveFlags(next)}
+			/>
+		</div>
 	{/if}
 
 	{#if availableCars(photo).length > 0}
