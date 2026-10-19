@@ -6,7 +6,7 @@ import net from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Frame, type Page } from '@playwright/test';
 
 /** 1×1 PNG. The builder re-encodes it before the reserved upload. */
 const TINY_PNG = Buffer.from(
@@ -169,6 +169,18 @@ function liveContentSecurityPolicy(): string {
 		.join('; ');
 }
 
+function directiveHosts(policy: string, name: string): string[] {
+	const directive = policy.split(';').map((part) => part.trim()).find((part) => part.startsWith(`${name} `));
+	return directive ? directive.split(/\s+/).slice(1) : [];
+}
+
+/** Drops the download host from connect-src. img-src still allows it, matching a policy that forgets the redirect. */
+function policyWithoutStorageConnect(): string {
+	return liveContentSecurityPolicy().replace(/connect-src [^;]*/, (directive) =>
+		directive.replace(' https://storage.googleapis.com', '')
+	);
+}
+
 function watchDialogs(page: Page) {
 	const messages: string[] = [];
 	page.on('dialog', async (dialog) => {
@@ -178,25 +190,30 @@ function watchDialogs(page: Page) {
 	return messages;
 }
 
-test('print with photos follows the live Storage redirect', async ({ page }) => {
-	test.setTimeout(120_000);
-	const csp = liveContentSecurityPolicy();
-	activePolicy = csp;
-	const messages = watchDialogs(page);
-	const cspViolations: string[] = [];
-	page.on('console', (msg) => {
-		const text = msg.text();
-		if (text.includes('Content-Security-Policy') && text.includes('storage.googleapis.com')) cspViolations.push(text);
-	});
+test.describe.configure({ mode: 'serial' });
 
-	const email = `print-photos-${Date.now()}@example.com`;
-	await page.addInitScript(() => {
+test.beforeEach(async ({ page }) => {
+	// The print sheet is a new page, so the stub has to live on the browser context.
+	await page.context().addInitScript(() => {
+		const pageWindow = window as Window & { __printCalled?: boolean; __csp?: string[] };
+		pageWindow.__csp = [];
+		document.addEventListener('securitypolicyviolation', (event) => {
+			pageWindow.__csp?.push(`${event.violatedDirective} ${event.blockedURI}`);
+		});
+		// Headless print() can stall the popup. Record the call and return.
+		window.print = () => {
+			pageWindow.__printCalled = true;
+		};
 		localStorage.setItem('gaslands-firebase-emulators', '1');
 		localStorage.setItem('hasRules', 'true');
 		localStorage.setItem('printRulesPromptSeen', 'true');
 	});
+});
+
+async function saveTeamWithPhoto(page: Page) {
+	const messages = watchDialogs(page);
+	const email = `print-photos-${Date.now()}-${Math.random().toString(16).slice(2)}@example.com`;
 	const response = await page.goto('/builder', { waitUntil: 'domcontentloaded' });
-	expect(response?.headers()['content-security-policy'] || '').toContain('https://storage.googleapis.com');
 	await page.waitForFunction(() => typeof window.signInEmulatorUser === 'function');
 	await page.evaluate(async (address) => {
 		await window.signInEmulatorUser!(address, 'password123');
@@ -222,21 +239,146 @@ test('print with photos follows the live Storage redirect', async ({ page }) => 
 		buffer: TINY_PNG
 	});
 	await expect(photos.getByRole('img', { name: 'Painted car' })).toBeVisible({ timeout: 30_000 });
+	return response;
+}
+
+/**
+ * The finished sheet is either a popup whose address is the blob URL, or the
+ * same-tab frame used when the popup is blocked. A window left at about:blank
+ * is the blank page José saw.
+ */
+async function openPhotoSheet(page: Page, timeout: number) {
+	const popups: Page[] = [];
+	page.on('popup', (popup) => popups.push(popup));
+	const frameAttached = page.getByTestId('print-sheet-frame').waitFor({ state: 'attached', timeout }).then(() => 'frame' as const);
+	await page.getByRole('button', { name: 'Teams', exact: true }).click();
+	await page.getByRole('button', { name: 'Print with photos', exact: true }).click();
+
+	// Listen before the click returns so a blank window opened inside the click is caught.
+	const surface = await Promise.any([
+		(async () => {
+			const deadline = Date.now() + timeout;
+			while (Date.now() < deadline) {
+				const popup = popups[0];
+				if (popup) return { kind: 'popup' as const, popup };
+				await new Promise((resolve) => setTimeout(resolve, 50));
+			}
+			throw new Error('print did not open a window');
+		})(),
+		frameAttached.then(() => ({ kind: 'frame' as const }))
+	]);
+
+	if (surface.kind === 'popup') {
+		await expect.poll(() => surface.popup.url(), { timeout: 5_000 }).toMatch(/^blob:/);
+		expect(surface.popup.url()).not.toBe('about:blank');
+		await expect(surface.popup.locator('body')).not.toContainText('Preparing your sheet');
+		await expect(surface.popup.locator('h1')).toHaveText('Photo Racers');
+		return { ...surface, popups };
+	}
+
+	const frame = page.frameLocator('[data-testid="print-sheet-frame"]');
+	await expect(frame.locator('h1')).toHaveText('Photo Racers');
+	for (const popup of popups) {
+		expect(popup.url(), 'a print popup stayed at about:blank').not.toBe('about:blank');
+	}
+	return { kind: 'frame' as const, popups };
+}
+
+async function sheetFrame(page: Page): Promise<Frame> {
+	let found: Frame | undefined;
+	await expect.poll(() => {
+		found = page.frames().find((frame) => frame.url().startsWith('blob:'));
+		return Boolean(found);
+	}).toBeTruthy();
+	return found!;
+}
+
+test('print with photos follows the live Storage redirect', async ({ page }) => {
+	test.setTimeout(120_000);
+	activePolicy = liveContentSecurityPolicy();
+	const response = await saveTeamWithPhoto(page);
+	expect(response?.headers()['content-security-policy'] || '').toContain('https://storage.googleapis.com');
+	const violations = () =>
+		page.evaluate(() => (window as Window & { __csp?: string[] }).__csp?.filter((entry) => entry.includes('storage.googleapis.com')) ?? []);
 
 	const downloadsBeforePrint = storageDownloads;
-	await page.getByRole('button', { name: 'Teams', exact: true }).click();
-	const popupPromise = page.waitForEvent('popup');
-	await page.getByRole('button', { name: 'Print with photos', exact: true }).click();
-	const popup = await popupPromise;
-	await expect(popup.locator('body')).toContainText(/Preparing your sheet|Photo Racers/);
+	const sheet = await openPhotoSheet(page, 20_000);
+	expect(await violations()).toEqual([]);
+	expect(storageDownloads).toBeGreaterThan(downloadsBeforePrint);
 
-	await expect(popup.locator('h1')).toHaveText('Photo Racers', { timeout: 20_000 });
-	await expect(popup.getByRole('button', { name: 'Print', exact: true })).toBeVisible({ timeout: 3_000 });
-	const printed = popup.locator('.vehicle-photos img');
+	if (sheet.kind === 'popup') {
+		const printed = sheet.popup.locator('.vehicle-photos img');
+		await expect(printed).toHaveCount(1);
+		await expect.poll(async () => printed.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBeTruthy();
+		await expect(sheet.popup.getByRole('button', { name: 'Print', exact: true })).toBeVisible();
+		await expect.poll(() => sheet.popup.evaluate(() => Boolean((window as Window & { __printCalled?: boolean }).__printCalled))).toBeTruthy();
+		await sheet.popup.close();
+		return;
+	}
+
+	const frame = page.frameLocator('[data-testid="print-sheet-frame"]');
+	const printed = frame.locator('.vehicle-photos img');
 	await expect(printed).toHaveCount(1);
 	await expect.poll(async () => printed.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBeTruthy();
-	expect(cspViolations).toEqual([]);
-	expect(storageDownloads).toBeGreaterThan(downloadsBeforePrint);
-	await expect.poll(() => popup.url()).toMatch(/^blob:/);
-	await popup.close();
+	await expect.poll(async () => (await sheetFrame(page)).evaluate(() => Boolean((window as Window & { __printCalled?: boolean }).__printCalled))).toBeTruthy();
+	await page.getByTestId('close-print-preview').click();
+	await expect(page.getByTestId('print-sheet-frame')).toHaveCount(0);
+});
+
+test('a blocked photo download still prints the team and never leaves about:blank', async ({ page }) => {
+	test.setTimeout(120_000);
+	const policy = policyWithoutStorageConnect();
+	expect(directiveHosts(policy, 'connect-src')).not.toContain('https://storage.googleapis.com');
+	expect(directiveHosts(policy, 'img-src')).toContain('https://storage.googleapis.com');
+	activePolicy = policy;
+	const response = await saveTeamWithPhoto(page);
+	const header = response?.headers()['content-security-policy'] || '';
+	expect(directiveHosts(header, 'connect-src')).not.toContain('https://storage.googleapis.com');
+
+	const consoleViolations: string[] = [];
+	page.on('console', (msg) => {
+		const text = msg.text();
+		if (text.includes('storage.googleapis.com') && /content security policy|connect-src/i.test(text)) consoleViolations.push(text);
+	});
+	const sheet = await openPhotoSheet(page, 45_000);
+	const violations = await page.evaluate(
+		() => (window as Window & { __csp?: string[] }).__csp?.filter((entry) => entry.includes('storage.googleapis.com')) ?? []
+	);
+	const reported = [...violations, ...consoleViolations];
+	expect(reported, `expected a connect-src violation for the Storage redirect, saw: ${reported.join(' | ')}`).toEqual(
+		expect.arrayContaining([expect.stringMatching(/connect-src/i)])
+	);
+
+	if (sheet.kind === 'popup') {
+		await expect(sheet.popup.locator('.vehicle-photos img')).toHaveCount(0);
+		await expect(sheet.popup.locator('body')).toContainText('Photo Racers');
+		await sheet.popup.close();
+		return;
+	}
+	await expect(page.frameLocator('[data-testid="print-sheet-frame"]').locator('.vehicle-photos img')).toHaveCount(0);
+	await page.getByTestId('close-print-preview').click();
+});
+
+test('a blocked popup prints the photo sheet in this tab', async ({ page }) => {
+	test.setTimeout(120_000);
+	activePolicy = liveContentSecurityPolicy();
+	await saveTeamWithPhoto(page);
+	// Replace open after load. An init-script stub is overwritten by the browser's own popup tracking.
+	await page.evaluate(() => {
+		window.open = () => null;
+	});
+	const popups: Page[] = [];
+	page.on('popup', (popup) => popups.push(popup));
+	await page.getByRole('button', { name: 'Teams', exact: true }).click();
+	await page.getByRole('button', { name: 'Print with photos', exact: true }).click();
+
+	const frame = page.frameLocator('[data-testid="print-sheet-frame"]');
+	await expect(frame.locator('h1')).toHaveText('Photo Racers', { timeout: 20_000 });
+	const printed = frame.locator('.vehicle-photos img');
+	await expect(printed).toHaveCount(1);
+	await expect.poll(async () => printed.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBeTruthy();
+	await expect.poll(async () => (await sheetFrame(page)).evaluate(() => Boolean((window as Window & { __printCalled?: boolean }).__printCalled))).toBeTruthy();
+	expect(popups).toEqual([]);
+	await page.getByTestId('close-print-preview').click();
+	await expect(page.getByTestId('print-sheet-frame')).toHaveCount(0);
 });

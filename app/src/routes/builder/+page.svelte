@@ -1649,8 +1649,6 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			return;
 		}
 
-		// Open before the awaits so the browser still treats this as the click.
-		let photoWindow: Window | null = null;
 		if (withPhotos) {
 			if (!$user) {
 				window.dispatchEvent(new CustomEvent('gaslands-request-sign-in'));
@@ -1662,15 +1660,6 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 				isPrinting = false;
 				return;
 			}
-			photoWindow = window.open('', '_blank', 'width=800,height=600');
-			if (!photoWindow) {
-				alert('Please allow popups to print your team');
-				isPrinting = false;
-				return;
-			}
-			// Static placeholder. The sheet replaces it after the photos download.
-			photoWindow.document.write('<!DOCTYPE html><html><head><title>Print</title></head><body><p>Preparing your sheet…</p></body></html>');
-			photoWindow.document.close();
 		}
 		
 		// First generate QR code for the team
@@ -1855,25 +1844,38 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			// Load the print service on demand so it stays out of the initial bundle
 			const { printTeam: printServiceFunc, printTeamDashboard, printTeamWithPhotos } = await import('$lib/components/printing/PrintService');
 			const finalPrintStyle = printStyle || enhancedDraft.printStyle || 'classic';
-			if (withPhotos && photoWindow) {
-				const grouped = await photosForPrint(savedTeamId || '');
+			if (withPhotos) {
+				const status = document.createElement('div');
+				status.dataset.testid = 'print-photo-status';
+				status.setAttribute('role', 'status');
+				status.textContent = 'Preparing your photo sheet…';
+				status.style.cssText = 'position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:2147483647;padding:10px 16px;background:#1c1917;color:#fff;border-radius:6px;font:600 14px/1.2 system-ui,sans-serif;';
+				document.body.append(status);
 				const releases: Array<() => void> = [];
-				for (const vehicle of enhancedDraft.vehicles) {
-					const local = localPrintPhotos(grouped[vehicle.id] ?? []);
-					releases.push(local.revoke);
-					(vehicle as { printPhotos?: { src: string; caption?: string }[] }).printPhotos = local.photos;
-				}
 				const releasePhotos = () => {
 					for (const release of releases) release();
 				};
 				try {
-					await printTeamWithPhotos(finalPrintStyle, enhancedDraft, photoWindow, releasePhotos);
+					let grouped: Awaited<ReturnType<typeof photosForPrint>> = {};
+					try {
+						grouped = await photosForPrint(savedTeamId || '');
+					} catch (error) {
+						console.error('[printTeam] Could not load photos. Printing the team without them.', error);
+					}
+					for (const vehicle of enhancedDraft.vehicles) {
+						const local = localPrintPhotos(grouped[vehicle.id] ?? []);
+						releases.push(local.revoke);
+						(vehicle as { printPhotos?: { src: string; caption?: string }[] }).printPhotos = local.photos;
+					}
+					await printTeamWithPhotos(finalPrintStyle, enhancedDraft, releasePhotos);
+					console.log("[printTeam] Photo print completed successfully");
+					return true;
 				} catch (error) {
 					releasePhotos();
 					throw error;
+				} finally {
+					status.remove();
 				}
-				console.log("[printTeam] Photo print completed successfully");
-				return true;
 			}
 			if (finalPrintStyle === 'dashboard' || finalPrintStyle.includes('dashboard')) {
 				console.log("[printTeam] Using dedicated dashboard print function");
@@ -1888,7 +1890,6 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		} catch (error) {
 			console.error("[printTeam] Error calling print service:", error);
 			isPrinting = false;
-			photoWindow?.close();
 			alert("There was an error while printing. Please try again.");
 			return false;
 		}

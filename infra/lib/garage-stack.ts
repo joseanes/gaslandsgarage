@@ -130,6 +130,7 @@ export class GarageStack extends cdk.Stack {
     // Photo downloads start at firebasestorage.googleapis.com and redirect to
     // storage.googleapis.com. The redirect has to be allowed too, or the
     // browser blocks it and the photo print window stays blank.
+    // frame-src blob: lets a blocked popup fall back to a sheet in this tab.
     const contentSecurityPolicy = [
       "default-src 'self'",
       "base-uri 'self'",
@@ -141,7 +142,7 @@ export class GarageStack extends cdk.Stack {
       "img-src 'self' data: blob: https://firebasestorage.googleapis.com https://storage.googleapis.com https://tile.openstreetmap.org https://*.basemaps.cartocdn.com https://www.google-analytics.com https://www.googletagmanager.com https://maps.gstatic.com https://maps.googleapis.com https://mirrors.creativecommons.org",
       "font-src 'self' data:",
       `connect-src 'self' https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com https://nominatim.openstreetmap.org https://maps.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://firebasestorage.googleapis.com https://storage.googleapis.com https://firebase.googleapis.com https://firebaseinstallations.googleapis.com https://www.googleapis.com https://${firebaseProjectId}.firebaseapp.com https://us-central1-${firebaseProjectId}.cloudfunctions.net wss://*.firebaseio.com`,
-      `frame-src 'self' https://${firebaseProjectId}.firebaseapp.com https://accounts.google.com https://apis.google.com https://www.youtube.com https://www.youtube-nocookie.com`,
+      `frame-src 'self' blob: https://${firebaseProjectId}.firebaseapp.com https://accounts.google.com https://apis.google.com https://www.youtube.com https://www.youtube-nocookie.com`,
       "worker-src 'self' blob:",
       "manifest-src 'self'"
     ].join('; ');

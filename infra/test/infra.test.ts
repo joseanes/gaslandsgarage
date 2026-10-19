@@ -123,6 +123,8 @@ describe('photo storage CSP', () => {
 		expect(source).toContain('https://storage.googleapis.com');
 		expect(source).toContain('blob:');
 		expect(source).toContain('data:');
+		const frameSrc = source.split('\n').find((line) => line.includes('frame-src'));
+		expect(frameSrc).toContain('blob:');
 	});
 });
 
