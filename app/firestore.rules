@@ -598,11 +598,15 @@ service cloud.firestore {
     function photoRecord(userId, photoId) {
       let data = request.resource.data;
       return data.keys().hasOnly([
-          'photoId', 'userId', 'teamId', 'vehicleId', 'path', 'width', 'height', 'createdAt', 'caption', 'contentType'
+          'photoId', 'userId', 'teamId', 'vehicleId', 'path', 'width', 'height', 'createdAt', 'caption', 'contentType',
+          'showToBuddies', 'showOnShareLink', 'showInGallery'
         ])
         && data.keys().hasAll([
           'photoId', 'userId', 'teamId', 'vehicleId', 'path', 'width', 'height', 'createdAt', 'caption', 'contentType'
         ])
+        && (!('showToBuddies' in data) || data.showToBuddies is bool)
+        && (!('showOnShareLink' in data) || data.showOnShareLink is bool)
+        && (!('showInGallery' in data) || data.showInGallery is bool)
         && data.photoId == photoId
         && data.photoId.matches('^[A-Za-z0-9_-]{8,40}$')
         && data.userId == userId
@@ -645,8 +649,43 @@ service cloud.firestore {
         && request.resource.data.width == resource.data.width
         && request.resource.data.height == resource.data.height
         && request.resource.data.createdAt == resource.data.createdAt
-        && request.resource.data.contentType == resource.data.contentType;
+        && request.resource.data.contentType == resource.data.contentType
+        && request.resource.data.get('showToBuddies', false) == resource.data.get('showToBuddies', false)
+        && request.resource.data.get('showOnShareLink', false) == resource.data.get('showOnShareLink', false)
+        && request.resource.data.get('showInGallery', false) == resource.data.get('showInGallery', false);
       allow delete: if signedIn() && !isDisabled() && userId == request.auth.uid;
+    }
+
+    // Public gallery card. Readable only while it is a published, visible
+    // gallery photo. The account id is not stored here. Clients cannot write.
+    match /sharedPhotos/{photoId} {
+      allow read: if resource.data.hidden == false
+        && resource.data.published == true
+        && resource.data.showInGallery == true;
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // Server-only link between a shared file and its owner. Storage rules may
+    // read this. Clients cannot.
+    match /sharedPhotoPrivate/{photoId} {
+      allow read, write: if false;
+    }
+
+    match /photoReports/{reportId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    match /photoReportRate/{userId} {
+      allow read, write: if false;
+    }
+
+    // Gallery kill switch. requireApproval true holds new gallery photos
+    // until an administrator approves them. Callables write it.
+    match /config/{docId} {
+      allow read: if docId == 'gallery' && isAdmin();
+      allow write: if false;
     }
 
     // Role grants. A player cannot create or edit their own document.

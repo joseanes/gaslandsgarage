@@ -713,6 +713,9 @@
               <a href="/buddies" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600 block" on:click={() => showPlayersMenu = false}>
                 Gaming Buddies
               </a>
+              <a href="/gallery" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600 block" data-testid="gallery-link" on:click={() => showPlayersMenu = false}>
+                Gallery
+              </a>
               <a
                 href={wgeHref}
                 target="_blank"

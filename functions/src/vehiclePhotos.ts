@@ -18,6 +18,7 @@ import {
 	type PhotoContentType,
 	type VehiclePhotoRecord
 } from '../../app/src/lib/photos/model.ts';
+import { deleteSharedPhotosForOwner } from './photoShare.ts';
 const PHOTOS = 'photos';
 const PHOTO_REGION = 'us-central1';
 
@@ -158,9 +159,10 @@ async function deleteStoragePrefix(uid: string): Promise<void> {
 	}
 }
 
-/** Deletes every Storage object under users/{uid}/ and the photo metadata. */
+/** Deletes shared copies, every Storage object under users/{uid}/, and the photo metadata. */
 export async function deleteUserPhotos(uid: string): Promise<void> {
 	if (!UID_PATTERN.test(uid)) return;
+	await deleteSharedPhotosForOwner(uid);
 	await deleteStoragePrefix(uid);
 	const db = getFirestore();
 	const snap = await db.collection('users').doc(uid).collection(PHOTOS).get();

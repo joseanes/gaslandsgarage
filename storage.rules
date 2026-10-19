@@ -1,12 +1,64 @@
 rules_version = '2';
 // Painted-car photos. The signed-in owner can read and write only their own
-// files. Buddies and public share links cannot. Anything outside this path is
-// denied. A matching metadata document is created by reserveVehiclePhoto
-// before the browser uploads.
+// private files. A shared copy lives at shared-photos/{photoId} with no account
+// id. Clients cannot write that path. Reads follow the sharing documents.
 service firebase.storage {
   match /b/{bucket}/o {
     function owner(uid) {
       return request.auth != null && request.auth.uid == uid;
+    }
+
+    function sharedDoc(photoId) {
+      return firestore.get(/databases/(default)/documents/sharedPhotos/$(photoId));
+    }
+
+    function privateDoc(photoId) {
+      return firestore.get(/databases/(default)/documents/sharedPhotoPrivate/$(photoId));
+    }
+
+    function galleryVisible(photoId) {
+      return firestore.exists(/databases/(default)/documents/sharedPhotos/$(photoId))
+        && sharedDoc(photoId).data.hidden == false
+        && sharedDoc(photoId).data.published == true
+        && sharedDoc(photoId).data.showInGallery == true;
+    }
+
+    function shareLinkVisible(photoId) {
+      return firestore.exists(/databases/(default)/documents/sharedPhotoPrivate/$(photoId))
+        && privateDoc(photoId).data.hidden == false
+        && privateDoc(photoId).data.showOnShareLink == true;
+    }
+
+    function acceptedBuddy(ownerUid) {
+      let pair = request.auth.uid < ownerUid
+        ? request.auth.uid + '~' + ownerUid
+        : ownerUid + '~' + request.auth.uid;
+      return request.auth != null
+        && request.auth.uid.matches('^[A-Za-z0-9_-]{1,128}$')
+        && ownerUid.matches('^[A-Za-z0-9_-]{1,128}$')
+        && request.auth.uid != ownerUid
+        && firestore.exists(/databases/(default)/documents/buddies/$(pair))
+        && firestore.get(/databases/(default)/documents/buddies/$(pair)).data.status == 'accepted'
+        && firestore.get(/databases/(default)/documents/buddies/$(pair)).data.members.size() == 2
+        && firestore.get(/databases/(default)/documents/buddies/$(pair)).data.members.hasAll([request.auth.uid, ownerUid]);
+    }
+
+    function buddyVisible(photoId) {
+      return request.auth != null
+        && firestore.exists(/databases/(default)/documents/sharedPhotoPrivate/$(photoId))
+        && privateDoc(photoId).data.hidden == false
+        && privateDoc(photoId).data.showToBuddies == true
+        && acceptedBuddy(privateDoc(photoId).data.ownerUid);
+    }
+
+    function storageAdmin() {
+      return request.auth != null
+        && firestore.exists(/databases/(default)/documents/roles/$(request.auth.uid))
+        && firestore.get(/databases/(default)/documents/roles/$(request.auth.uid)).data.role == 'Administrator'
+        && !(
+          firestore.exists(/databases/(default)/documents/adminUsers/$(request.auth.uid))
+          && firestore.get(/databases/(default)/documents/adminUsers/$(request.auth.uid)).data.disabled == true
+        );
     }
 
     function safeIds(teamId, vehicleId) {
@@ -34,6 +86,12 @@ service firebase.storage {
         && (webpFile(fileName) || jpegFile(fileName));
 
       allow delete: if owner(uid);
+    }
+
+    match /shared-photos/{photoId} {
+      allow read: if photoId.matches('^[A-Za-z0-9_-]{8,40}$')
+        && (storageAdmin() || galleryVisible(photoId) || shareLinkVisible(photoId) || buddyVisible(photoId));
+      allow write: if false;
     }
 
     match /{allPaths=**} {

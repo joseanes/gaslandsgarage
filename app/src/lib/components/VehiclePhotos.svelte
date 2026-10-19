@@ -2,11 +2,15 @@
 	import { onMount } from 'svelte';
 	import { user } from '$lib/firebase';
 	import { PHOTO_PRIVACY_SHORT } from '$lib/photos/model';
+	import { GALLERY_SHARE_COPY, SHARE_BUDDIES_LABEL, SHARE_GALLERY_LABEL, SHARE_LINK_LABEL, type ShareFlags } from '$lib/photos/share';
+	import { setPhotoSharing } from '$lib/services/photoShare';
 	import { deleteVehiclePhoto, listMyPhotos, uploadVehiclePhoto, type VehiclePhoto } from '$lib/services/vehiclePhotos';
 
 	export let teamId: string | null = null;
 	export let vehicleId: string;
 	export let playMode = false;
+	export let viewOnly = false;
+	export let viewPhotos: { photoId: string; url: string; caption: string; vehicleType: string }[] = [];
 
 	let photos: VehiclePhoto[] = [];
 	let caption = '';
@@ -16,7 +20,7 @@
 	let status = '';
 
 	async function refresh() {
-		if (!$user || !teamId) {
+		if (viewOnly || !$user || !teamId) {
 			photos = [];
 			return;
 		}
@@ -85,10 +89,55 @@
 			busy = false;
 		}
 	}
+
+	async function saveFlags(photo: VehiclePhoto, patch: Partial<ShareFlags>, input: HTMLInputElement) {
+		const current =
+			patch.showToBuddies !== undefined
+				? photo.showToBuddies
+				: patch.showOnShareLink !== undefined
+					? photo.showOnShareLink
+					: photo.showInGallery;
+		input.checked = current;
+		const next: ShareFlags = {
+			showToBuddies: photo.showToBuddies,
+			showOnShareLink: photo.showOnShareLink,
+			showInGallery: photo.showInGallery,
+			...patch
+		};
+		busy = true;
+		error = '';
+		status = 'Saving sharing...';
+		try {
+			await setPhotoSharing(photo.photoId, next);
+			status = '';
+			await refresh();
+		} catch (caught) {
+			status = '';
+			error = caught instanceof Error ? caught.message : 'That sharing choice could not be saved.';
+		} finally {
+			busy = false;
+		}
+	}
 </script>
 
+{#if !viewOnly || viewPhotos.length > 0}
 <section class="mb-3 rounded-lg border border-stone-300 bg-white p-3 dark:border-gray-600 dark:bg-gray-900" data-testid="vehicle-photos">
 	<h3 class="text-sm font-semibold uppercase text-stone-800 dark:text-gray-100">Painted car</h3>
+	{#if viewOnly}
+		{#if viewPhotos.length > 0}
+			<ul class="mt-3 grid grid-cols-3 gap-2" data-testid="shared-link-photos">
+				{#each viewPhotos as photo (photo.photoId)}
+					<li class="min-w-0">
+						<img src={photo.url} alt={photo.caption || photo.vehicleType} class="h-24 w-full rounded object-cover bg-stone-100" />
+						<p class="mt-1 truncate text-xs text-stone-700 dark:text-gray-200">{photo.vehicleType}</p>
+						{#if photo.caption}
+							<p class="truncate text-xs text-stone-600 dark:text-gray-300">{photo.caption}</p>
+						{/if}
+					</li>
+				{/each}
+			</ul>
+		{/if}
+	{:else}
 	<p class="mt-1 text-xs leading-snug text-stone-600 dark:text-gray-300" data-testid="photo-privacy">{PHOTO_PRIVACY_SHORT}</p>
 
 	{#if loading}
@@ -96,28 +145,73 @@
 	{/if}
 
 	{#if photos.length > 0}
-		<ul class="mt-3 grid grid-cols-3 gap-2">
+		<ul class="mt-3 space-y-3">
 			{#each photos as photo (photo.photoId)}
-				<li class="min-w-0">
+				<li class="flex min-w-0 gap-3">
 					{#if photo.url}
-						<img src={photo.url} alt={photo.caption || 'Painted car'} class="h-24 w-full rounded object-cover bg-stone-100" />
+						<img src={photo.url} alt={photo.caption || 'Painted car'} class="h-24 w-24 shrink-0 rounded object-cover bg-stone-100" />
 					{:else}
-						<div class="flex h-24 items-center justify-center rounded bg-stone-100 text-xs text-stone-600">Photo saved</div>
+						<div class="flex h-24 w-24 shrink-0 items-center justify-center rounded bg-stone-100 text-xs text-stone-600">Photo saved</div>
 					{/if}
-					{#if photo.caption}
-						<p class="mt-1 truncate text-xs text-stone-700 dark:text-gray-200">{photo.caption}</p>
-					{/if}
-					{#if !playMode}
-						<button
-							type="button"
-							class="mt-1 text-xs text-red-800 underline dark:text-red-200"
-							aria-label="Delete photo"
-							disabled={busy}
-							on:click={() => remove(photo)}
-						>
-							Delete
-						</button>
-					{/if}
+					<div class="min-w-0">
+						{#if photo.caption}
+							<p class="truncate text-xs text-stone-700 dark:text-gray-200">{photo.caption}</p>
+						{/if}
+						{#if !playMode}
+							<button
+								type="button"
+								class="mt-1 text-xs text-red-800 underline dark:text-red-200"
+								aria-label="Delete photo"
+								disabled={busy}
+								on:click={() => remove(photo)}
+							>
+								Delete
+							</button>
+							<fieldset class="mt-2 space-y-1" disabled={busy}>
+								<legend class="sr-only">Sharing for this photo</legend>
+								<label class="flex items-start gap-2 text-xs text-stone-700 dark:text-gray-200">
+									<input
+										type="checkbox"
+										class="mt-0.5"
+										data-testid="share-buddies"
+										checked={photo.showToBuddies}
+										on:change={(event) => {
+											const input = event.currentTarget;
+											if (input instanceof HTMLInputElement) void saveFlags(photo, { showToBuddies: input.checked }, input);
+										}}
+									/>
+									{SHARE_BUDDIES_LABEL}
+								</label>
+								<label class="flex items-start gap-2 text-xs text-stone-700 dark:text-gray-200">
+									<input
+										type="checkbox"
+										class="mt-0.5"
+										data-testid="share-link"
+										checked={photo.showOnShareLink}
+										on:change={(event) => {
+											const input = event.currentTarget;
+											if (input instanceof HTMLInputElement) void saveFlags(photo, { showOnShareLink: input.checked }, input);
+										}}
+									/>
+									{SHARE_LINK_LABEL}
+								</label>
+								<label class="flex items-start gap-2 text-xs text-stone-700 dark:text-gray-200">
+									<input
+										type="checkbox"
+										class="mt-0.5"
+										data-testid="share-gallery"
+										checked={photo.showInGallery}
+										on:change={(event) => {
+											const input = event.currentTarget;
+											if (input instanceof HTMLInputElement) void saveFlags(photo, { showInGallery: input.checked }, input);
+										}}
+									/>
+									{SHARE_GALLERY_LABEL}
+								</label>
+								<p class="text-xs leading-snug text-stone-600 dark:text-gray-300" data-testid="gallery-share-copy">{GALLERY_SHARE_COPY}</p>
+							</fieldset>
+						{/if}
+					</div>
 				</li>
 			{/each}
 		</ul>
@@ -163,4 +257,6 @@
 	{:else if photos.length >= 3 && !playMode}
 		<p class="mt-3 text-sm text-stone-700 dark:text-gray-200">This vehicle already has 3 photos. Delete one to add another.</p>
 	{/if}
+	{/if}
 </section>
+{/if}

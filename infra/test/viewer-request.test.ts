@@ -39,10 +39,12 @@ describe('SvelteKit route discovery', () => {
 	test('lists the app pages and their parent paths', () => {
 		expect(discoverSpaRoutes(appRoutes)).toEqual([
 			'/admin',
+			'/admin/gallery',
 			'/admin/users',
 			'/buddies',
 			'/buddies/:p',
 			'/builder',
+			'/gallery',
 			'/players',
 			'/privacy',
 			'/profile',

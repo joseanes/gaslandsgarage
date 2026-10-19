@@ -7,6 +7,7 @@ import {
 	doc,
 	getDoc,
 	getDocs,
+	orderBy,
 	query,
 	setDoc,
 	updateDoc,
@@ -868,6 +869,75 @@ describe('vehicle photos', () => {
 		await assertFails(getDoc(doc(authed('admin'), 'users', 'player', 'photos', 'photo1234')));
 		await assertFails(getDoc(doc(guest(), 'users', 'player', 'photos', 'photo1234')));
 		await assertSucceeds(deleteDoc(photo));
+	});
+
+	it('lets the owner retitle a photo without changing sharing flags', async () => {
+		await seed(async (database) => {
+			await setDoc(doc(database, 'users', 'player', 'photos', 'photo1234'), {
+				...photoDoc(),
+				showToBuddies: false,
+				showOnShareLink: false,
+				showInGallery: true
+			});
+		});
+		const photo = doc(authed('player'), 'users', 'player', 'photos', 'photo1234');
+		await assertSucceeds(updateDoc(photo, { caption: 'Blue car' }));
+		await assertFails(updateDoc(photo, { showInGallery: false }));
+		await assertFails(updateDoc(photo, { showToBuddies: true }));
+		const saved = await getDoc(photo);
+		expect(saved.data()?.showInGallery).toBe(true);
+		expect(saved.data()?.caption).toBe('Blue car');
+	});
+});
+
+describe('shared gallery photos', () => {
+	function sharedPhoto(overrides: Record<string, unknown> = {}) {
+		return {
+			photoId: 'photo1234',
+			displayName: 'Track Name',
+			vehicleType: 'Car',
+			teamName: 'Racers',
+			caption: 'Red',
+			createdAt: NOW,
+			hidden: false,
+			published: true,
+			showInGallery: true,
+			...overrides
+		};
+	}
+
+	it('lets anyone read a visible gallery photo and blocks client writes', async () => {
+		await seed(async (database) => {
+			await setDoc(doc(database, 'sharedPhotos', 'photo1234'), sharedPhoto());
+			await setDoc(doc(database, 'sharedPhotos', 'photo9999'), sharedPhoto({ photoId: 'photo9999', hidden: true }));
+			await setDoc(doc(database, 'sharedPhotos', 'photo8888'), sharedPhoto({ photoId: 'photo8888', published: false }));
+			await setDoc(doc(database, 'roles', 'admin'), roleDoc());
+			await setDoc(doc(database, 'sharedPhotoPrivate', 'photo1234'), { ownerUid: 'player' });
+			await setDoc(doc(database, 'photoReports', 'photo1234~other'), { photoId: 'photo1234', reporterUid: 'other' });
+			await setDoc(doc(database, 'config', 'gallery'), { requireApproval: false });
+		});
+		const visible = query(
+			collection(guest(), 'sharedPhotos'),
+			where('showInGallery', '==', true),
+			where('hidden', '==', false),
+			where('published', '==', true),
+			orderBy('createdAt', 'desc')
+		);
+		await assertSucceeds(getDocs(visible));
+		await assertSucceeds(getDoc(doc(guest(), 'sharedPhotos', 'photo1234')));
+		await assertFails(getDoc(doc(guest(), 'sharedPhotos', 'photo9999')));
+		await assertFails(getDoc(doc(guest(), 'sharedPhotos', 'photo8888')));
+		await assertSucceeds(getDoc(doc(authed('admin'), 'sharedPhotos', 'photo9999')));
+		await assertFails(setDoc(doc(authed('player'), 'sharedPhotos', 'photo1234'), sharedPhoto({ caption: 'nope' })));
+		await assertFails(getDoc(doc(authed('admin'), 'sharedPhotoPrivate', 'photo1234')));
+		await assertFails(getDoc(doc(guest(), 'sharedPhotoPrivate', 'photo1234')));
+		await assertSucceeds(getDoc(doc(authed('admin'), 'photoReports', 'photo1234~other')));
+		await assertFails(getDoc(doc(authed('player'), 'photoReports', 'photo1234~other')));
+		await assertFails(setDoc(doc(authed('player'), 'photoReports', 'planted'), { photoId: 'photo1234' }));
+		await assertSucceeds(getDoc(doc(authed('admin'), 'config', 'gallery')));
+		await assertFails(getDoc(doc(authed('player'), 'config', 'gallery')));
+		await assertFails(setDoc(doc(authed('admin'), 'config', 'gallery'), { requireApproval: true }));
+		await assertFails(getDoc(doc(authed('player'), 'photoReportRate', 'player')));
 	});
 });
 

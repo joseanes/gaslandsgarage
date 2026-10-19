@@ -282,9 +282,10 @@
 
 <section class="max-w-6xl mx-auto py-8 px-2 text-stone-800 dark:text-gray-100">
 	<h1 class="text-3xl font-bold mb-2">Users</h1>
-	<p class="text-stone-600 dark:text-gray-300 mb-6">
+	<p class="text-stone-600 dark:text-gray-300 mb-2">
 		Administrators can review accounts, change roles, and disable sign-in. Disabled players are signed out and cannot open their saved teams. The teams stay in the garage.
 	</p>
+	<p class="mb-6"><a class="text-amber-800 underline dark:text-amber-300" href="/admin/gallery" data-testid="photo-reports-link">Photo reports</a></p>
 
 	{#if status === 'loading'}
 		<p data-testid="admin-loading">Loading…</p>
