@@ -182,6 +182,7 @@ describe('public car privacy gate', () => {
 			load: load(sharedDoc({ paintingUrl: youtube }))
 		});
 		expect(embed.body).toContain('Painting guide on youtube.com');
+		expect(embed.body).not.toContain('data-testid="add-buddy"');
 		expect(embed.body).toContain('rel="nofollow ugc noopener noreferrer"');
 		expect(embed.body).not.toContain('class="site"');
 	});
@@ -215,6 +216,8 @@ describe('car page HTTP', () => {
 		expect(result.body).toContain('name="twitter:image"');
 		expect(result.body).toContain(IMAGE);
 		expect(result.body).toContain('Casey');
+		expect(result.body).toContain(`href="/gallery?photo=${SHARE_ID}"`);
+		expect(result.body).toContain('data-testid="add-buddy"');
 		expect(result.body).toContain('Heavy Machine Gun');
 		expect(result.body).toContain('Ram');
 		expect(result.body).toContain('>45<');
@@ -230,6 +233,19 @@ describe('car page HTTP', () => {
 		expect(result.body).toContain('class="site"');
 		expect(result.body).toContain('utm_source=copy');
 		expect(result.body).not.toContain('<script>alert');
+	});
+
+	it('omits the gallery buddy link when that player turned requests off', async () => {
+		const closed = await renderCarHttp({
+			method: 'GET',
+			path: `/car/${SHARE_ID}`,
+			bucket: BUCKET,
+			load: load(sharedDoc({ allowGalleryBuddies: false }))
+		});
+		expect(closed.statusCode).toBe(200);
+		expect(closed.body).toContain('Painted by');
+		expect(closed.body).not.toContain('data-testid="add-buddy"');
+		expect(closed.body).not.toContain('ownerUid');
 	});
 
 	it('escapes markup in public text', async () => {

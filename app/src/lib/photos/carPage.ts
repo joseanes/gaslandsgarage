@@ -7,7 +7,7 @@
  * dropped before HTML or JSON leaves this module.
  */
 
-import { BUDDY_FALLBACK_NAME, publicDisplayName } from '../buddies/model';
+import { BUDDY_FALLBACK_NAME, galleryBuddyRequestsAllowed, publicDisplayName } from '../buddies/model';
 import { paintingGuideHtml, paintingGuideLink } from './link';
 import { PHOTO_ID_PATTERN } from './model';
 import {
@@ -296,7 +296,11 @@ export async function renderCarHttp(input: {
 	}
 	const car = publicCarFromDocument(route.shareId, raw, imageUrl);
 	if (!car) return htmlResult(410, route.kind, null, false, head);
-	return htmlResult(200, route.kind, car, false, head);
+	const allowGalleryBuddies =
+		!raw || typeof raw !== 'object' || Array.isArray(raw)
+			? true
+			: galleryBuddyRequestsAllowed((raw as Record<string, unknown>).allowGalleryBuddies);
+	return htmlResult(200, route.kind, car, false, head, allowGalleryBuddies);
 }
 
 function plain(statusCode: number, body: string): CarHttpResult {
@@ -317,7 +321,8 @@ function htmlResult(
 	kind: 'page' | 'embed',
 	car: PublicCar | null,
 	unavailable = false,
-	head = false
+	head = false,
+	allowGalleryBuddies = true
 ): CarHttpResult {
 	const embed = kind === 'embed';
 	const headers: Record<string, string> = {
@@ -334,7 +339,7 @@ function htmlResult(
 	return {
 		statusCode,
 		headers,
-		body: head ? '' : carDocument(kind, car, unavailable)
+		body: head ? '' : carDocument(kind, car, unavailable, allowGalleryBuddies)
 	};
 }
 
@@ -350,7 +355,7 @@ function contentSecurityPolicy(embed: boolean): string {
 	].join('; ');
 }
 
-function carDocument(kind: 'page' | 'embed', car: PublicCar | null, unavailable: boolean): string {
+function carDocument(kind: 'page' | 'embed', car: PublicCar | null, unavailable: boolean, allowGalleryBuddies = true): string {
 	if (!car) {
 		const message = unavailable ? 'This car could not be loaded.' : NOT_SHARED_NOTICE;
 		return `<!DOCTYPE html>
@@ -383,7 +388,7 @@ ${siteHeader()}
 <meta property="og:image:alt" content="${escapeHtml(label)}">
 <meta name="twitter:image" content="${escapeHtml(car.imageUrl)}">
 <meta name="twitter:card" content="summary_large_image">`;
-	const body = embed ? embedBody(car, pageUrl, label) : pageBody(car, label);
+	const body = embed ? embedBody(car, pageUrl, label) : pageBody(car, label, allowGalleryBuddies);
 	return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -467,8 +472,11 @@ ${extraHtml}
 </section>`;
 }
 
-function pageBody(car: PublicCar, label: string): string {
+function pageBody(car: PublicCar, label: string, allowGalleryBuddies = true): string {
 	const caption = car.caption ? `<p class="caption">${escapeHtml(car.caption)}</p>` : '';
+	const buddy = allowGalleryBuddies
+		? `<p class="buddy"><a href="/gallery?photo=${escapeHtml(car.shareId)}" data-testid="add-buddy">Add as buddy</a></p>`
+		: '';
 	const guide = paintingGuideHtml(car.paintingUrl);
 	const team = car.teamName
 		? `<p class="team">${escapeHtml(car.vehicleType)} · ${escapeHtml(car.teamName)}</p>`
@@ -483,6 +491,7 @@ function pageBody(car: PublicCar, label: string): string {
 <p class="kicker">${escapeHtml(car.vehicleType)}</p>
 <h1>${escapeHtml(label)}</h1>
 <p class="by">Painted by ${escapeHtml(car.displayName)}</p>
+${buddy}
 </figcaption>
 </figure>
 <div class="body">
@@ -585,6 +594,8 @@ h1 a,.textlink,.via a{color:#fdba74}
 .guide{display:inline-flex;align-items:center;gap:.4rem;margin:.7rem 0 0;border-radius:999px;border:1px solid #c2410c;background:#0c0a09;color:#ffedd5;padding:.35rem .75rem;font-size:.85rem;font-weight:700;text-decoration:none}
 .guide svg{display:block;flex:0 0 auto}
 .by,.quiet,.note{color:#d6d3d1}
+.buddy{margin:.4rem 0 0}
+.buddy a{color:#fdba74;font-weight:700}
 .game{margin-top:1rem;border-radius:16px;border:1px solid #c2410c;background:linear-gradient(180deg,rgba(254,215,170,.08),transparent 28%),radial-gradient(circle at top,#44403c,#1c1917 62%);padding:.9rem;box-shadow:inset 0 0 0 1px rgba(254,215,170,.12)}
 .gamehead{display:flex;justify-content:space-between;align-items:center;gap:.75rem}
 .game-name{margin:.1rem 0 0;font-size:1.25rem;font-weight:800}

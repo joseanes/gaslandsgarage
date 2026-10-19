@@ -11,8 +11,15 @@ import {
 	createInviteCode,
 	normalizeInviteCode,
 	normalizeSearchQuery,
+	buddyRequestMessage,
+	declineCooldownActive,
+	galleryBuddyRequestsAllowed,
+	publicCarLabel,
 	publicDisplayName,
-	rollingWindow
+	rollingWindow,
+	BUDDY_DECLINE_COOLDOWN_MS,
+	BUDDY_GALLERY_REQUESTS_PER_DAY,
+	BUDDY_GALLERY_RATE_WINDOW_MS
 } from './model';
 
 describe('buddy ids', () => {
@@ -67,6 +74,40 @@ describe('buddy copy names', () => {
 		expect(buddyCopyTeamName('Racers', 'Ada', ['Racers', 'Racers (from Ada)'])).toBe('Racers (from Ada) 2');
 		expect(buddyCopyTeamName('Racers', 'ada@example.com', ['Racers'])).toBe('Racers (from a buddy)');
 		expect(buddyCopyTeamName('  ', 'Ada', [])).toBe('Untitled team');
+	});
+});
+
+describe('gallery buddy requests', () => {
+	it('keeps the gallery open unless the player turned it off', () => {
+		expect(galleryBuddyRequestsAllowed(undefined)).toBe(true);
+		expect(galleryBuddyRequestsAllowed(true)).toBe(true);
+		expect(galleryBuddyRequestsAllowed(false)).toBe(false);
+	});
+
+	it('keeps a short note and drops anything that could be an address', () => {
+		expect(buddyRequestMessage(undefined)).toBe('');
+		expect(buddyRequestMessage('  Nice paint  ')).toBe('Nice paint');
+		expect(buddyRequestMessage('a'.repeat(200))).toHaveLength(200);
+		expect(buddyRequestMessage('a'.repeat(201))).toBeNull();
+		expect(buddyRequestMessage('see me@example.com')).toBeNull();
+		expect(buddyRequestMessage('line\nbreak')).toBe('line break');
+		expect(buddyRequestMessage('bad\u0000note')).toBeNull();
+	});
+
+	it('names the painted car without copying an address', () => {
+		expect(publicCarLabel({ vehicleStats: { name: 'Rust Rocket' }, caption: 'Red', vehicleType: 'Car' })).toBe('Rust Rocket');
+		expect(publicCarLabel({ caption: 'Red door', vehicleType: 'Car' })).toBe('Red door');
+		expect(publicCarLabel({ vehicleStats: { name: 'ada@example.com' }, vehicleType: 'Car' })).toBe('Car');
+		expect(publicCarLabel({})).toBe('painted car');
+	});
+
+	it('holds a declined request for 30 days', () => {
+		const now = Date.parse('2026-10-18T12:00:00.000Z');
+		expect(declineCooldownActive(new Date(now).toISOString(), now + BUDDY_DECLINE_COOLDOWN_MS - 1)).toBe(true);
+		expect(declineCooldownActive(new Date(now).toISOString(), now + BUDDY_DECLINE_COOLDOWN_MS)).toBe(false);
+		expect(declineCooldownActive('not-a-date', now)).toBe(true);
+		expect(BUDDY_GALLERY_REQUESTS_PER_DAY).toBe(20);
+		expect(BUDDY_GALLERY_RATE_WINDOW_MS).toBe(24 * 60 * 60 * 1000);
 	});
 });
 

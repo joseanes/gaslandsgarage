@@ -3,6 +3,7 @@
 	import { dev } from '$app/environment';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
+	import GalleryBuddyButton from '$lib/components/GalleryBuddyButton.svelte';
 	import GalleryCardFace from '$lib/components/GalleryCardFace.svelte';
 	import GalleryUploadDialog from '$lib/components/GalleryUploadDialog.svelte';
 	import LibraryPhotoEditor from '$lib/components/LibraryPhotoEditor.svelte';
@@ -23,7 +24,7 @@
 		type SavedCar
 	} from '$lib/photos/browser';
 	import { galleryCarName, galleryVehicleTypes, selectGalleryPage, type GalleryListRequest } from '$lib/photos/galleryQuery';
-	import { MAX_PHOTOS_PER_ACCOUNT } from '$lib/photos/model';
+	import { MAX_PHOTOS_PER_ACCOUNT, PHOTO_ID_PATTERN } from '$lib/photos/model';
 	import { galleryKeywords, gallerySearchToken, vehicleTypeLabel } from '$lib/photos/share';
 	import { listGalleryPhotosPage, loadPublicCar, reportSharedPhoto, type GalleryPhoto } from '$lib/services/photoShare';
 	import { getUserTeams } from '$lib/services/team';
@@ -59,6 +60,7 @@
 	let keepNotice = false;
 	let density: 'photos' | 'details' = 'details';
 	let revealedId = '';
+	let openedPhoto = '';
 
 	const DENSITY_KEY = 'gaslands-gallery-density';
 
@@ -80,6 +82,11 @@
 		appliedKey = loadKey;
 		void load(false);
 	}
+	$: photoLink = $page.url.searchParams.get('photo') ?? '';
+	$: if (status !== 'loading' && photoLink && photoLink !== openedPhoto && PHOTO_ID_PATTERN.test(photoLink)) {
+		openedPhoto = photoLink;
+		void openSharedPhoto(photoLink);
+	}
 	$: showingMine = state.view === 'mine';
 	$: sortShown = shownSort(state.sort, showingMine);
 
@@ -99,6 +106,34 @@
 			localStorage.setItem(DENSITY_KEY, next);
 		} catch {
 			/* private browsing */
+		}
+	}
+
+	function photoFromCar(car: NonNullable<Awaited<ReturnType<typeof loadPublicCar>>>): GalleryPhoto {
+		return {
+			photoId: car.shareId,
+			displayName: car.displayName,
+			vehicleType: car.vehicleType,
+			teamName: car.teamName,
+			caption: car.caption,
+			createdAt: '',
+			url: car.imageUrl,
+			vehicleStats: car.vehicleStats,
+			paintingUrl: car.paintingUrl
+		};
+	}
+
+	async function openSharedPhoto(id: string) {
+		const found = publicPhotos.find((photo) => photo.photoId === id);
+		if (found) {
+			open = found;
+			return;
+		}
+		try {
+			const car = await loadPublicCar(id);
+			if (car) open = photoFromCar(car);
+		} catch {
+			/* the card stays closed when the photo is not public */
 		}
 	}
 
@@ -732,6 +767,7 @@
 				<ShareCar shareId={open.photoId} carName={galleryCarName(open)} imageUrl={open.url} />
 				<div class="mt-4 flex flex-wrap gap-2">
 					<a class="rounded-md border border-orange-800 px-3 py-2 text-sm text-orange-100" href={carHref(open.photoId)} data-testid="car-page-link">Car page</a>
+					<GalleryBuddyButton photoId={open.photoId} />
 					<button type="button" class="rounded-md px-3 py-2 text-sm amber-button" data-testid="report-photo" disabled={busy} on:click={() => open && report(open)}>
 						{$user ? 'Report photo' : 'Sign in to report'}
 					</button>

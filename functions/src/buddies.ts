@@ -1,26 +1,34 @@
 import { createHash, randomInt } from 'node:crypto';
 import { getAuth } from 'firebase-admin/auth';
-import { getFirestore, type DocumentReference, type Transaction } from 'firebase-admin/firestore';
+import { FieldValue, getFirestore, type DocumentReference, type Transaction } from 'firebase-admin/firestore';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { twilioAccountSid, twilioAuthToken } from './twilioConfig.ts';
 import { twilioEmailConfigured } from '../../app/src/lib/buddies/emailInvite.ts';
+import { type GalleryBuddyOfferName } from '../../app/src/lib/buddies/gallery.ts';
 import {
 	BUDDY_COLLECTIONS,
+	BUDDY_GALLERY_RATE_WINDOW_MS,
+	BUDDY_GALLERY_REQUESTS_PER_DAY,
 	BUDDY_RATE_WINDOW_MS,
 	BUDDY_REQUESTS_PER_HOUR,
 	BUDDY_SEARCHES_PER_HOUR,
 	buddyBlockId,
 	buddyPairId,
 	buddyRequestId,
+	buddyRequestMessage,
 	chosenBuddyName,
 	createInviteCode,
+	declineCooldownActive,
 	displayNameKey,
+	galleryBuddyRequestsAllowed,
 	normalizeInviteCode,
 	normalizeSearchQuery,
+	publicCarLabel,
 	publicDisplayName,
 	rollingWindow,
 	uidOk
 } from '../../app/src/lib/buddies/model.ts';
+import { PHOTO_ID_PATTERN } from '../../app/src/lib/photos/model.ts';
 
 export const BUDDY_REGION = 'us-central1';
 const UNAVAILABLE = 'That player is not available to add.';
@@ -119,6 +127,7 @@ export async function handleGetBuddyInvite(
 	displayName: string;
 	discoverable: boolean;
 	emailInvites: boolean;
+	galleryBuddyRequests: boolean;
 }> {
 	const caller = await assertCaller(uid);
 	logBuddy('invite', caller);
@@ -141,14 +150,20 @@ export async function handleGetBuddyInvite(
 		);
 	}
 	const directory = await db.doc(`${BUDDY_COLLECTIONS.directory}/${caller}`).get();
-	return { code, displayName, discoverable: directory.exists, emailInvites };
+	return {
+		code,
+		displayName,
+		discoverable: directory.exists,
+		emailInvites,
+		galleryBuddyRequests: galleryBuddyRequestsAllowed(snap.get('galleryBuddyRequests'))
+	};
 }
 
 export async function handleSaveBuddyProfile(
 	uid: string | undefined,
 	data: unknown,
 	nowMs = Date.now()
-): Promise<{ displayName: string; discoverable: boolean }> {
+): Promise<{ displayName: string; discoverable: boolean; galleryBuddyRequests: boolean }> {
 	const caller = await assertCaller(uid);
 	const body = asObject(data);
 	const discoverable = body.discoverable === true;
@@ -166,13 +181,20 @@ export async function handleSaveBuddyProfile(
 	const directoryRef = db.doc(`${BUDDY_COLLECTIONS.directory}/${caller}`);
 	const existing = await inviteRef.get();
 	const code = normalizeInviteCode(existing.get('code')) ?? (await freshInviteCode());
-	await db.runTransaction(async (tx) => {
+	const galleryBuddyRequests = await db.runTransaction(async (tx) => {
 		const invite = await tx.get(inviteRef);
+		const allowed =
+			body.galleryBuddyRequests === false
+				? false
+				: body.galleryBuddyRequests === true
+					? true
+					: galleryBuddyRequestsAllowed(invite.get('galleryBuddyRequests'));
 		tx.set(
 			inviteRef,
 			{
 				code: normalizeInviteCode(invite.get('code')) ?? code,
 				displayName: name,
+				galleryBuddyRequests: allowed,
 				createdAt: invite.get('createdAt') || stamp,
 				updatedAt: stamp
 			},
@@ -183,19 +205,53 @@ export async function handleSaveBuddyProfile(
 		} else {
 			tx.delete(directoryRef);
 		}
+		return allowed;
 	});
-	return { displayName: name, discoverable };
+	await syncGalleryBuddyFlag(caller, galleryBuddyRequests);
+	return { displayName: name, discoverable, galleryBuddyRequests };
+}
+
+/** Public cards pick up the opt-out. Absence of the field still means allowed. */
+async function syncGalleryBuddyFlag(uid: string, allowed: boolean): Promise<void> {
+	const db = getFirestore();
+	const owned = await db.collection('sharedPhotoPrivate').where('ownerUid', '==', uid).get();
+	if (owned.empty) return;
+	const pubs = await db.getAll(...owned.docs.map((item) => db.doc(`sharedPhotos/${item.id}`)));
+	let batch = db.batch();
+	let writes = 0;
+	const commit = async () => {
+		if (writes === 0) return;
+		await batch.commit();
+		batch = db.batch();
+		writes = 0;
+	};
+	for (const pub of pubs) {
+		if (!pub.exists) continue;
+		const current = pub.get('allowGalleryBuddies');
+		if (allowed) {
+			if (current === undefined) continue;
+			batch.set(pub.ref, { allowGalleryBuddies: FieldValue.delete() }, { merge: true });
+		} else if (current !== false) {
+			batch.set(pub.ref, { allowGalleryBuddies: false }, { merge: true });
+		} else {
+			continue;
+		}
+		writes += 1;
+		if (writes === 400) await commit();
+	}
+	await commit();
 }
 
 async function consumeRate(
 	tx: Transaction,
 	ref: DocumentReference,
-	field: 'requestAt' | 'searchAt',
+	field: 'requestAt' | 'searchAt' | 'galleryRequestAt',
 	max: number,
-	nowMs: number
+	nowMs: number,
+	windowMs: number
 ): Promise<void> {
 	const snap = await tx.get(ref);
-	const next = rollingWindow(snap.get(field), nowMs, max, BUDDY_RATE_WINDOW_MS);
+	const next = rollingWindow(snap.get(field), nowMs, max, windowMs);
 	if (!next.allowed) throw new HttpsError('resource-exhausted', RATE_LIMITED);
 	tx.set(ref, { [field]: next.stamps }, { merge: true });
 }
@@ -214,7 +270,7 @@ export async function handleSearchBuddyPlayers(
 	const db = getFirestore();
 	const rateRef = db.doc(`${BUDDY_COLLECTIONS.rate}/${caller}`);
 	await db.runTransaction(async (tx) => {
-		await consumeRate(tx, rateRef, 'searchAt', BUDDY_SEARCHES_PER_HOUR, nowMs);
+		await consumeRate(tx, rateRef, 'searchAt', BUDDY_SEARCHES_PER_HOUR, nowMs, BUDDY_RATE_WINDOW_MS);
 	});
 	const snap = await db
 		.collection(BUDDY_COLLECTIONS.directory)
@@ -279,6 +335,48 @@ async function resolveTarget(caller: string, data: unknown): Promise<string> {
 	return target;
 }
 
+type GalleryTarget = { target: string; photoId: string; carName: string };
+
+function requestModes(body: Record<string, unknown>): { code: boolean; uid: boolean; photo: boolean } {
+	return {
+		code: body.code != null && body.code !== '',
+		uid: body.targetUid != null && body.targetUid !== '',
+		photo: body.photoId != null && body.photoId !== ''
+	};
+}
+
+async function resolveGalleryTarget(caller: string, photoId: unknown): Promise<GalleryTarget> {
+	if (typeof photoId !== 'string' || !PHOTO_ID_PATTERN.test(photoId)) {
+		throw new HttpsError('not-found', 'That photo is not in the gallery.');
+	}
+	const db = getFirestore();
+	const [published, stored] = await Promise.all([
+		db.doc(`sharedPhotos/${photoId}`).get(),
+		db.doc(`sharedPhotoPrivate/${photoId}`).get()
+	]);
+	const owner = stored.get('ownerUid');
+	const visible =
+		published.exists &&
+		published.get('hidden') === false &&
+		published.get('published') === true &&
+		published.get('showInGallery') === true;
+	if (!visible || !uidOk(owner)) throw new HttpsError('not-found', 'That photo is not in the gallery.');
+	if (owner === caller) throw new HttpsError('failed-precondition', 'That is your photo.');
+	const invite = await db.doc(`${BUDDY_COLLECTIONS.invites}/${owner}`).get();
+	if (!galleryBuddyRequestsAllowed(invite.get('galleryBuddyRequests'))) {
+		throw new HttpsError('failed-precondition', UNAVAILABLE);
+	}
+	return {
+		target: owner,
+		photoId,
+		carName: publicCarLabel({
+			vehicleType: published.get('vehicleType'),
+			caption: published.get('caption'),
+			vehicleStats: published.get('vehicleStats')
+		})
+	};
+}
+
 export async function handleSendBuddyRequest(
 	uid: string | undefined,
 	data: unknown,
@@ -286,18 +384,41 @@ export async function handleSendBuddyRequest(
 ): Promise<{ status: 'pending' | 'sent'; requestId: string }> {
 	const caller = await assertCaller(uid);
 	const body = asObject(data);
-	const hasCode = body.code != null && body.code !== '';
-	const hasUid = body.targetUid != null && body.targetUid !== '';
-	if (hasCode === hasUid) {
-		throw new HttpsError('invalid-argument', 'Send a request with an invite code or a player from search.');
+	const modes = requestModes(body);
+	const chosen = Number(modes.code) + Number(modes.uid) + Number(modes.photo);
+	if (chosen !== 1) {
+		throw new HttpsError('invalid-argument', 'Send a request with an invite code, a player from search, or a gallery photo.');
+	}
+	let message = '';
+	if (modes.photo) {
+		const note = buddyRequestMessage(body.message);
+		if (note == null) throw new HttpsError('invalid-argument', 'Use a short note without an email address.');
+		message = note;
+	} else if (body.message != null && body.message !== '') {
+		throw new HttpsError('invalid-argument', 'A note can only be sent with a gallery photo.');
 	}
 	logBuddy('send', caller);
 	const db = getFirestore();
 	const rateRef = db.doc(`${BUDDY_COLLECTIONS.rate}/${caller}`);
 	await db.runTransaction(async (tx) => {
-		await consumeRate(tx, rateRef, 'requestAt', BUDDY_REQUESTS_PER_HOUR, nowMs);
+		const snap = await tx.get(rateRef);
+		const hourly = rollingWindow(snap.get('requestAt'), nowMs, BUDDY_REQUESTS_PER_HOUR, BUDDY_RATE_WINDOW_MS);
+		if (!hourly.allowed) throw new HttpsError('resource-exhausted', RATE_LIMITED);
+		const patch: { requestAt: number[]; galleryRequestAt?: number[] } = { requestAt: hourly.stamps };
+		if (modes.photo) {
+			const daily = rollingWindow(
+				snap.get('galleryRequestAt'),
+				nowMs,
+				BUDDY_GALLERY_REQUESTS_PER_DAY,
+				BUDDY_GALLERY_RATE_WINDOW_MS
+			);
+			if (!daily.allowed) throw new HttpsError('resource-exhausted', RATE_LIMITED);
+			patch.galleryRequestAt = daily.stamps;
+		}
+		tx.set(rateRef, patch, { merge: true });
 	});
-	const target = await resolveTarget(caller, data);
+	const gallery = modes.photo ? await resolveGalleryTarget(caller, body.photoId) : null;
+	const target = gallery ? gallery.target : await resolveTarget(caller, data);
 	if (!(await targetIsActive(target))) throw new HttpsError('failed-precondition', UNAVAILABLE);
 	const requestRef = db.doc(`${BUDDY_COLLECTIONS.requests}/${buddyRequestId(caller, target)}`);
 	const reverseRef = db.doc(`${BUDDY_COLLECTIONS.requests}/${buddyRequestId(target, caller)}`);
@@ -321,6 +442,9 @@ export async function handleSendBuddyRequest(
 		if (code && normalizeInviteCode(inviteSnap.get('code')) !== code) {
 			throw new HttpsError('not-found', INVITE_INVALID);
 		}
+		if (gallery && !galleryBuddyRequestsAllowed(inviteSnap.get('galleryBuddyRequests'))) {
+			throw new HttpsError('failed-precondition', UNAVAILABLE);
+		}
 		if (blockOut.exists) {
 			throw new HttpsError('failed-precondition', 'You blocked this player. Unblock them before sending a request.');
 		}
@@ -332,7 +456,14 @@ export async function handleSendBuddyRequest(
 			throw new HttpsError('failed-precondition', 'That player already sent you a request. Accept it from Gaming Buddies.');
 		}
 		if (requestSnap.exists && requestSnap.get('status') === 'pending') return 'pending' as const;
-		tx.set(requestRef, {
+		if (
+			requestSnap.exists &&
+			requestSnap.get('status') === 'declined' &&
+			declineCooldownActive(requestSnap.get('updatedAt'), nowMs)
+		) {
+			throw new HttpsError('failed-precondition', 'That player declined a request. You can try again in 30 days.');
+		}
+		const payload: Record<string, unknown> = {
 			fromUid: caller,
 			toUid: target,
 			fromName,
@@ -340,10 +471,63 @@ export async function handleSendBuddyRequest(
 			status: 'pending',
 			createdAt: stamp,
 			updatedAt: stamp
-		});
+		};
+		if (gallery) {
+			payload.source = 'gallery';
+			payload.photoId = gallery.photoId;
+			payload.carName = gallery.carName;
+			if (message) payload.message = message;
+		}
+		tx.set(requestRef, payload);
 		return 'sent' as const;
 	});
 	return { status, requestId: requestRef.id };
+}
+
+export async function handleGalleryBuddyOffer(
+	uid: string | undefined,
+	data: unknown,
+	nowMs = Date.now()
+): Promise<{ offer: GalleryBuddyOfferName; requestId?: string }> {
+	const photoId = asObject(data).photoId;
+	if (typeof photoId !== 'string' || !PHOTO_ID_PATTERN.test(photoId)) return { offer: 'hidden' };
+	const db = getFirestore();
+	const [published, stored] = await Promise.all([
+		db.doc(`sharedPhotos/${photoId}`).get(),
+		db.doc(`sharedPhotoPrivate/${photoId}`).get()
+	]);
+	const owner = stored.get('ownerUid');
+	const visible =
+		published.exists &&
+		published.get('hidden') === false &&
+		published.get('published') === true &&
+		published.get('showInGallery') === true;
+	if (!visible || !uidOk(owner)) return { offer: 'hidden' };
+	const invite = await db.doc(`${BUDDY_COLLECTIONS.invites}/${owner}`).get();
+	const allowed = galleryBuddyRequestsAllowed(invite.get('galleryBuddyRequests'));
+	if (!uid) return { offer: allowed ? 'sign-in' : 'hidden' };
+	const caller = await assertCaller(uid);
+	if (caller === owner) return { offer: 'hidden' };
+	const [buddy, outgoing, incoming, blockOut, blockIn] = await Promise.all([
+		db.doc(`${BUDDY_COLLECTIONS.buddies}/${buddyPairId(caller, owner)}`).get(),
+		db.doc(`${BUDDY_COLLECTIONS.requests}/${buddyRequestId(caller, owner)}`).get(),
+		db.doc(`${BUDDY_COLLECTIONS.requests}/${buddyRequestId(owner, caller)}`).get(),
+		db.doc(`${BUDDY_COLLECTIONS.blocks}/${buddyBlockId(caller, owner)}`).get(),
+		db.doc(`${BUDDY_COLLECTIONS.blocks}/${buddyBlockId(owner, caller)}`).get()
+	]);
+	if (blockOut.exists || blockIn.exists) return { offer: 'hidden' };
+	if (buddy.exists && buddy.get('status') === 'accepted') return { offer: 'buddies' };
+	if (outgoing.exists && outgoing.get('status') === 'pending') {
+		return { offer: 'sent', requestId: outgoing.id };
+	}
+	if (incoming.exists && incoming.get('status') === 'pending') {
+		return { offer: 'accept', requestId: incoming.id };
+	}
+	if (!allowed) return { offer: 'hidden' };
+	if (outgoing.exists && outgoing.get('status') === 'declined' && declineCooldownActive(outgoing.get('updatedAt'), nowMs)) {
+		return { offer: 'declined' };
+	}
+	return { offer: 'add' };
 }
 
 export async function handleRespondBuddyRequest(
@@ -503,6 +687,10 @@ export const searchBuddyPlayers = onCall(buddyCallableOptions, async (request) =
 
 export const sendBuddyRequest = onCall(buddyCallableOptions, async (request) => {
 	return handleSendBuddyRequest(request.auth?.uid, request.data);
+});
+
+export const galleryBuddyOffer = onCall(buddyCallableOptions, async (request) => {
+	return handleGalleryBuddyOffer(request.auth?.uid, request.data);
 });
 
 export const respondBuddyRequest = onCall(buddyCallableOptions, async (request) => {

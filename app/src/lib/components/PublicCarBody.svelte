@@ -1,4 +1,5 @@
 <script lang="ts">
+	import GalleryBuddyButton from '$lib/components/GalleryBuddyButton.svelte';
 	import PaintingGuideLink from '$lib/components/PaintingGuideLink.svelte';
 	import ShareCar from '$lib/components/ShareCar.svelte';
 	import {
@@ -69,6 +70,11 @@
 				{/if}
 			</h1>
 			<p data-testid="car-owner">Painted by {car.displayName}</p>
+			{#if mode === 'page'}
+				<div class="buddy-row">
+					<GalleryBuddyButton photoId={car.shareId} />
+				</div>
+			{/if}
 		</figcaption>
 	</figure>
 	{#if car.paintingUrl}
@@ -192,6 +198,13 @@
 		bottom: 0;
 		padding: 2.5rem 1.25rem 1rem;
 		background: linear-gradient(transparent, rgba(12, 10, 9, 0.94) 62%);
+	}
+	.buddy-row {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+		align-items: center;
+		margin-top: 0.45rem;
 	}
 	.kicker {
 		margin: 0;

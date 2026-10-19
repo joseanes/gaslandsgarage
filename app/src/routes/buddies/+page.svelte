@@ -4,6 +4,7 @@
 	import { accountSessionReady } from '$lib/admin/session';
 	import { signInWithGoogle, user } from '$lib/firebase';
 	import { SHOW_BUDDY_HIDE_TOGGLE } from '$lib/features/buddyHide';
+	import { sharedPhotoUrl } from '$lib/services/photoShare';
 	import { getUserTeams, setTeamHiddenFromBuddies } from '$lib/services/team';
 	import {
 		buddyErrorMessage,
@@ -36,6 +37,7 @@
 	let code = '';
 	let displayName = '';
 	let discoverable = false;
+	let galleryBuddyRequests = true;
 	let emailInvites = false;
 	let inviteEmail = '';
 	let inviteMessage = '';
@@ -82,6 +84,7 @@
 		code = profile.code;
 		displayName = profile.displayName;
 		discoverable = profile.discoverable;
+		galleryBuddyRequests = profile.galleryBuddyRequests !== false;
 		emailInvites = profile.emailInvites === true;
 		const [links, requests, blocked, own] = await Promise.all([
 			loadBuddyLinks(),
@@ -148,9 +151,10 @@
 
 	function saveProfile() {
 		void run(
-			() => saveBuddyProfile({ displayName, discoverable }).then((saved) => {
+			() => saveBuddyProfile({ displayName, discoverable, galleryBuddyRequests }).then((saved) => {
 				displayName = saved.displayName;
 				discoverable = saved.discoverable;
+				galleryBuddyRequests = saved.galleryBuddyRequests !== false;
 			}),
 			discoverable ? 'Other players can find this name.' : 'Your buddy name was saved.'
 		);
@@ -207,6 +211,15 @@
 			await sendBuddyRequest({ code: inviteFromLink });
 			await goto('/buddies', { replaceState: true, keepFocus: true });
 		}, 'Request sent. They can accept it from Gaming Buddies.');
+	}
+
+	function requestThumb(photoId: string): string {
+		if (!photoId) return '';
+		try {
+			return sharedPhotoUrl(photoId);
+		} catch {
+			return '';
+		}
 	}
 
 	function relationshipLabel(value: string): string {
@@ -333,6 +346,10 @@
 						<input type="checkbox" class="mt-1" bind:checked={discoverable} data-testid="buddy-discoverable" />
 						<span>Let other players find me by this name. Your email stays hidden.</span>
 					</label>
+					<label class="flex items-start gap-2 text-sm">
+						<input type="checkbox" class="mt-1" bind:checked={galleryBuddyRequests} data-testid="buddy-gallery-requests" />
+						<span>Allow buddy requests from the Gallery. On unless you turn it off. The Gallery then hides Add as buddy on your photos.</span>
+					</label>
 					<button type="submit" class={primaryClass} disabled={busy} data-testid="buddy-save-profile">Save</button>
 				</form>
 			</section>
@@ -372,7 +389,20 @@
 					<ul class="mt-3 space-y-2" data-testid="buddy-incoming">
 						{#each incoming as request (request.id)}
 							<li class="flex flex-col gap-2 rounded-lg border border-stone-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between dark:border-gray-700 dark:bg-gray-800">
-								<span><span class="font-medium">{request.fromName}</span> wants to be buddies</span>
+								<div class="flex min-w-0 items-center gap-3">
+									{#if request.photoId && requestThumb(request.photoId)}
+										<img class="h-14 w-14 shrink-0 rounded object-cover" src={requestThumb(request.photoId)} alt="" data-testid="buddy-gallery-thumb" />
+									{/if}
+									<div class="min-w-0">
+										<span><span class="font-medium">{request.fromName}</span> wants to be buddies</span>
+										{#if request.context}
+											<p class="text-sm text-stone-600 dark:text-gray-300" data-testid="buddy-gallery-context">{request.context}</p>
+										{/if}
+										{#if request.message}
+											<p class="text-sm text-stone-700 dark:text-gray-200" data-testid="buddy-request-message">{request.message}</p>
+										{/if}
+									</div>
+								</div>
 								<div class="flex flex-wrap gap-2">
 									<button type="button" class={primaryClass} disabled={busy} data-testid="buddy-accept" on:click={() => run(() => respondBuddyRequest(request.id, 'accept'), 'You are now gaming buddies.')}>Accept</button>
 									<button type="button" class={quietClass} disabled={busy} data-testid="buddy-decline" on:click={() => run(() => respondBuddyRequest(request.id, 'decline'), 'Request declined.')}>Decline</button>

@@ -31,13 +31,14 @@ The functions are 2nd gen, Node.js 22, TypeScript, in `functions/`. Node.js 20 i
 | `renderSharedCar` | Public HTTPS `GET` or `HEAD` | HTML for a public car page and its embed, including Open Graph and Twitter card tags. Reads `sharedPhotos/{photoId}` only. Returns a "no longer shared" page when the photo is not a published, visible gallery share. A painting-guide link is shown only when that photo stored an http(s) URL. The link is escaped and uses `rel="nofollow ugc noopener noreferrer"`. |
 | `syncNewsletterToken` | `userSettings/{uid}` write | When `newsletterOptIn` is true, stores one random unsubscribe token. Does not send mail. |
 | `unsubscribeNewsletter` | Public HTTPS `GET` or `POST` | GET shows a confirm page and changes nothing. POST with the token sets `newsletterOptIn` to false. An RFC 8058 one-click POST is accepted on the same URL. No sign-in. |
-| `getBuddyInvite` | Callable, signed-in user | Returns or creates that account's invite code, and whether email invites are on. |
+| `getBuddyInvite` | Callable, signed-in user | Returns or creates that account's invite code, whether email invites are on, and whether Gallery buddy requests are allowed. That last flag defaults to allowed when it has never been saved. |
 | `sendBuddyInvite` | Callable, signed-in user | Sends one transactional buddy invite through Twilio Email. 10 a day per sender. |
 | `acceptBuddyEmailInvite` | Callable, signed-in user | Accepts a signed email-invite token and writes the buddy link. Single use. |
 | `suppressBuddyEmailInvites` | Public HTTPS `GET` or `POST` | GET shows a confirm page and changes nothing. POST stops future buddy-invite mail to that address. No sign-in. |
-| `saveBuddyProfile` | Callable, signed-in user | Stores the display name buddies see, and the opt-in directory card. |
+| `saveBuddyProfile` | Callable, signed-in user | Stores the display name buddies see, the opt-in directory card, and Allow buddy requests from the Gallery. Turning that off writes `allowGalleryBuddies: false` onto that player's existing public gallery cards. Turning it on removes the field. Absence still means allowed. |
 | `searchBuddyPlayers` | Callable, signed-in user | Prefix search of opted-in display names. No email. 30 searches per hour. |
-| `sendBuddyRequest` | Callable, signed-in user | Sends a request by invite code or by a findable player. 10 requests per hour. |
+| `sendBuddyRequest` | Callable, signed-in user | Sends a request by invite code, by a findable player, or by a public gallery photo id. 10 requests per hour. A gallery photo adds a second cap of 20 a day. A declined request cannot be sent again for 30 days, from any of those doors. The gallery path does not take an email address and does not send mail. |
+| `galleryBuddyOffer` | Callable, optional sign-in | Tells the Gallery or car page which buddy button to show for one public photo. The response has no email address. Signed-out viewers get a sign-in prompt, or nothing when Gallery requests are off. |
 | `respondBuddyRequest` | Callable, signed-in user | Accept, decline, or block an incoming request. Accept writes `buddies/{pairId}`. |
 | `cancelBuddyRequest` | Callable, signed-in user | Cancels a request the caller sent. |
 | `removeBuddy` | Callable, signed-in user | Deletes the accepted link. Access ends immediately. |
@@ -46,6 +47,22 @@ The functions are 2nd gen, Node.js 22, TypeScript, in `functions/`. Node.js 20 i
 Region is `us-central1`. `publishUsageStats` uses 256MiB, a 300 second timeout, and one instance. `syncAuthDisabled`, `queueGameContactEmail`, and `syncNewsletterToken` retry on failure. `syncAuthDisabled` and `queueGameContactEmail` use the platform defaults. `syncNewsletterToken` uses the platform memory and timeout. `exportMyData`, `deleteMyAccount`, `reserveVehiclePhoto`, the photo library callables, the photo-sharing callables, and the gaming-buddy callables use 256MiB, a 60 second timeout, and at most 10 instances. `listVisibleTeamPhotos` also sets `invoker: public` so a team share link can list photos without a sign-in. `unsubscribeNewsletter`, `suppressBuddyEmailInvites`, and `renderSharedCar` use 256MiB, a 30 second timeout, at most 10 instances, and `invoker: public`. The first two are email links. `renderSharedCar` is the public car page CloudFront fetches. None keep a warm instance.
 
 `getBuddyInvite`, `sendBuddyInvite`, `acceptBuddyEmailInvite`, `exportMyData`, and `deleteMyAccount` declare the Twilio secrets. The other buddy callables do not. Email sending stays off until both secrets look like real Twilio credentials (an Account SID starting with `AC`, and an auth token). The placeholder value `disabled` keeps the feature off. The buddies page still shows the copyable invite link and says email invites are coming soon.
+
+A Gallery buddy request reuses `buddyRequests`. The browser sends the public photo id. `sendBuddyRequest` reads `sharedPhotoPrivate` with the Admin SDK to find the owner. It does not return an email address or a separate owner field. The existing request id is still `fromUid~toUid`, and the Gallery does not render it. The request can store `source: gallery`, the photo id, the public car name, and an optional note of at most 200 characters. A note that contains `@` is rejected. The same request shows on Gaming Buddies with the line "found you through your painted car" and the public photo as a thumbnail. Accept, decline, and block are the existing actions. Accept still writes `buddies/{pairId}`, so photos already shared with Show to my Gaming Buddies become visible through `listVisibleTeamPhotos`. No second photo list is created.
+
+In-app requests, including gallery ones, do not send email. There is no recipient switch that turns email on for them. `sendBuddyInvite` is unchanged: the sender types an address, the daily cap stays 10, and `suppressBuddyEmailInvites` plus the opt-out list still apply to that mail only. `allowContactFromPlayers` is the game-request setting and is not consulted here.
+
+No Firestore rules change and no new index. Clients still cannot write `buddyRequests`, `buddyInvites`, `buddyRate`, or `sharedPhotos`. The caps and the 30-day decline window are enforced in `sendBuddyRequest`. Deploy the callables before the button can reach a live project:
+
+```bash
+firebase deploy --only functions:sendBuddyRequest,functions:galleryBuddyOffer,functions:saveBuddyProfile,functions:getBuddyInvite,functions:setPhotoSharing --project=gaslandsgarage-74ce6
+```
+
+`setPhotoSharing` is in that list so a player who already turned Gallery requests off does not publish a new card that still offers the button. `renderSharedCar` reads `allowGalleryBuddies` from the public card it already loads. It does not read `sharedPhotoPrivate`. Redeploy it only if the public car HTML should gain or lose the "Add as buddy" link:
+
+```bash
+firebase deploy --only functions:renderSharedCar --project=gaslandsgarage-74ce6
+```
 
 ## Photo library
 
