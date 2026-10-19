@@ -17,13 +17,14 @@
 	 * This maintains automatic validation while preventing infinite update loops.
 	 */
 	
+	import { setContext, onMount, tick } from 'svelte';
 	import { nanoid } from 'nanoid';
 	import { validateDraft } from '$lib/validate';
 	import { perkCost } from '$lib/validate/calc';
 	import type { Draft, Validation } from '$lib/validate/model';
 	import { encodeDraft, decodeDraft } from '$lib/draft/io';
 	import { normalizeIncomingDraft, withUpgradePerks } from '$lib/draft/importTeam';
-	import { readHeldDraft, writeHeldDraft } from '$lib/draft/hold';
+	import { heldDraftSignature, readHeldDraft, writeHeldDraft } from '$lib/draft/hold';
 	import { countedVehicleTotal, defaultRulesVersion, maxCountedVehicles, normalizeRulesVersion, type RulesVersion } from '$lib/rules/version';
 	import { resolveById } from '$lib/validate/v3/lookup';
 	import { v3BuildSlots } from '$lib/validate/v3/slots';
@@ -43,15 +44,24 @@ import SettingsMenu from '$lib/components/SettingsMenu.svelte';
 	import Tooltip from '$lib/components/Tooltip.svelte';
 	import { user, signInWithGoogle } from '$lib/firebase';
 import { getUserSettings, saveUserSettings, DEFAULT_SETTINGS, type UserSettings } from '$lib/services/settings';
-import { saveTeam, getUserTeams } from '$lib/services/team';
-	import { detachVehiclePhotos, photosForPrint } from '$lib/services/vehiclePhotos';
+import { saveTeam, getUserTeams, getSavedTeamVehicles } from '$lib/services/team';
+	import { detachVehiclePhotos, photosForPrint, vehicleIdsWithPhotos } from '$lib/services/vehiclePhotos';
 	import { listVisibleTeamPhotos, type SharedVehiclePhoto } from '$lib/services/photoShare';
 	import { localPrintPhotos } from '$lib/photos/printPhotos';
 	import { TEAM_ID_PATTERN } from '$lib/photos/model';
 	import { withoutDisallowedGear } from '$lib/builder/stripGear';
 	import { clearStaleChunkReload } from '$lib/staleChunk';
 	import { browser } from '$app/environment';
-	import { onMount } from 'svelte';
+	import SaveForPhotosModal from '$lib/components/SaveForPhotosModal.svelte';
+	import { PHOTO_SAVE_GATE, type PhotoAttachRequest, type PhotoSaveGate } from '$lib/photos/photoSaveGate';
+	import {
+		displacedVehicles,
+		photoSaveReason,
+		readQuickSaveOptions,
+		vehicleIdentityList,
+		type DisplacedVehicle,
+		type VehicleIdentity
+	} from '$lib/photos/saveBeforePhoto';
 	import { fade } from 'svelte/transition';
 	import '../../print.css';
 
@@ -1149,6 +1159,13 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 	let showSettingsModal = false;
 	let activeSettingsTab = 'general'; // Which tab to show in settings: 'general' or 'print'
 	let quickSaving = false;
+	let showPhotoSaveModal = false;
+	let photoModalMode: 'new-team' | 'unsaved' | 'overwrite' | 'name-new' = 'unsaved';
+	let photoModalReturn: 'new-team' | 'unsaved' | 'overwrite' = 'unsaved';
+	let displacedForSave: DisplacedVehicle[] = [];
+	let overwriteUnverified = false;
+	let newTeamNameDraft = '';
+	let pendingPhotoRequest: PhotoAttachRequest | null = null;
 	
 	// Update modal background color based on dark mode
 	$: if (showSettingsModal) {
@@ -1234,12 +1251,14 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 	let playMode = false;
 	/** Signature captured the last time this team was saved, loaded, or started fresh. */
 	let savedSignature = '';
+	/** Cars on the team the last time it was saved or loaded clean in this visit. */
+	let savedVehicleSnapshot: VehicleIdentity[] = [];
 	let holdReady = false;
 
 	function teamSignature() {
-		return JSON.stringify({
+		return heldDraftSignature({
 			teamName,
-			sponsorId,
+			sponsor: sponsorId,
 			maxCans,
 			rulesVersion,
 			vehicles
@@ -1260,13 +1279,96 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		});
 	}
 
+	function captureSavedVehicles() {
+		savedVehicleSnapshot = vehicleIdentityList(vehicles);
+	}
+
 	function markTeamSaved() {
 		savedSignature = teamSignature();
+		captureSavedVehicles();
 		persistHeldDraft();
 	}
 
 	function teamIsDirty() {
 		return teamSignature() !== savedSignature;
+	}
+
+	const photoResumeByVehicle = new Map<string, (request: PhotoAttachRequest) => void | Promise<void>>();
+
+	const photoSaveGate: PhotoSaveGate = {
+		reason(vehicleId: string) {
+			return photoSaveReason({
+				savedTeamId,
+				vehicleId,
+				dirty: teamIsDirty(),
+				savedVehicleIds: savedVehicleSnapshot.map((vehicle) => vehicle.id)
+			});
+		},
+		request(detail) {
+			pendingPhotoRequest = detail;
+			const reason = photoSaveGate.reason(detail.vehicleId);
+			overwriteUnverified = false;
+			displacedForSave = [];
+			photoModalReturn = 'unsaved';
+			if (reason === 'new-team') {
+				photoModalMode = 'new-team';
+				newTeamNameDraft = teamName.trim() || 'My Gaslands Team';
+			} else {
+				photoModalMode = 'unsaved';
+			}
+			showPhotoSaveModal = true;
+		},
+		listen(vehicleId, resume) {
+			photoResumeByVehicle.set(vehicleId, resume);
+			return () => {
+				if (photoResumeByVehicle.get(vehicleId) === resume) photoResumeByVehicle.delete(vehicleId);
+			};
+		}
+	};
+	setContext(PHOTO_SAVE_GATE, photoSaveGate);
+
+	async function resumePhotoAttach() {
+		const request = pendingPhotoRequest;
+		if (!request) return;
+		showPhotoSaveModal = false;
+		await tick();
+		const resume = photoResumeByVehicle.get(request.vehicleId);
+		pendingPhotoRequest = null;
+		if (resume) await resume(request);
+	}
+
+	function cancelPhotoSave() {
+		showPhotoSaveModal = false;
+		pendingPhotoRequest = null;
+		overwriteUnverified = false;
+		displacedForSave = [];
+	}
+
+	function startSaveAsNew() {
+		photoModalReturn = photoModalMode === 'overwrite' ? 'overwrite' : photoModalMode === 'new-team' ? 'new-team' : 'unsaved';
+		newTeamNameDraft = `${teamName.trim() || 'My Gaslands Team'} copy`;
+		photoModalMode = 'name-new';
+	}
+
+	function backFromNewName() {
+		photoModalMode = photoModalReturn;
+	}
+
+	async function vehiclesLostOnQuickSave(): Promise<DisplacedVehicle[] | 'unknown'> {
+		const teamId = savedTeamId;
+		if (!teamId) return [];
+		let saved: unknown = await getSavedTeamVehicles(teamId);
+		if (!saved && savedVehicleSnapshot.length > 0) saved = savedVehicleSnapshot;
+		if (!saved) return 'unknown';
+		const lost = displacedVehicles(saved, vehicles);
+		if (lost.length === 0) return [];
+		try {
+			const withPhotos = new Set(await vehicleIdsWithPhotos(teamId));
+			return lost.map((vehicle) => ({ ...vehicle, hasPhotos: withPhotos.has(vehicle.id) }));
+		} catch (error) {
+			console.error('[quickSave] photos', error);
+			return lost;
+		}
 	}
 
 	function startNewTeam() {
@@ -1504,43 +1606,58 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		}
 	}
 
-	// Quick save team function
-	async function quickSaveTeam() {
+	// Quick save team function. A click event from the header button is ignored.
+	async function quickSaveTeam(raw?: unknown): Promise<boolean> {
+		const options = readQuickSaveOptions(raw);
 		if (!$user) {
 			if (typeof window !== 'undefined') {
 				window.dispatchEvent(new CustomEvent('gaslands-request-sign-in'));
 			}
-			return;
+			return false;
 		}
 
-		if (!teamName.trim()) {
+		const name = (options.name ?? teamName).trim();
+		if (!name) {
 			alert("Please enter a team name before saving.");
-			return;
+			return false;
 		}
 
 		quickSaving = true;
 
 		try {
-			// First check if a team with this name already exists
-			const teamsResult = await getUserTeams();
-			if (!savedTeamId && teamsResult.success && teamsResult.teams) {
-				const existingTeam = teamsResult.teams.find(team => team.teamName === teamName.trim());
+			if (options.asNew) {
+				const teamsResult = await getUserTeams();
+				if (teamsResult.success && teamsResult.teams?.some((team) => team.teamName === name)) {
+					alert(`A team named "${name}" already exists. Choose a different name to save a new team.`);
+					return false;
+				}
+			} else if (!savedTeamId) {
+				// First check if a team with this name already exists
+				const teamsResult = await getUserTeams();
+				if (teamsResult.success && teamsResult.teams) {
+					const existingTeam = teamsResult.teams.find(team => team.teamName === name);
 
-				// If team exists, ask for confirmation before overwriting
-				if (existingTeam) {
-					const confirmOverwrite = confirm(`A team named "${teamName}" already exists. Do you want to overwrite it?`);
-					if (!confirmOverwrite) {
-						quickSaving = false;
-						return; // User canceled the overwrite
+					// If team exists, ask for confirmation before overwriting
+					if (existingTeam) {
+						const confirmOverwrite = confirm(`A team named "${name}" already exists. Do you want to overwrite it?`);
+						if (!confirmOverwrite) return false;
 					}
-
-					// Will proceed to save and overwrite
+				}
+			} else if (!options.force && teamIsDirty()) {
+				const lost = await vehiclesLostOnQuickSave();
+				if (lost === 'unknown' || lost.length > 0) {
+					displacedForSave = lost === 'unknown' ? [] : lost;
+					overwriteUnverified = lost === 'unknown';
+					photoModalReturn = 'overwrite';
+					photoModalMode = 'overwrite';
+					showPhotoSaveModal = true;
+					return false;
 				}
 			}
 
 			// Prepare draft data (similar to TeamsModal.svelte)
 			const draftData = {
-				teamName,
+				teamName: name,
 				sponsor: sponsorId,
 				sponsorId,
 				vehicles,
@@ -1549,22 +1666,50 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			};
 
 			// Save the team. A known id updates that team; a new team is created when the id is clear.
-			const result = await saveTeam(draftData, teamName, savedTeamId ?? undefined);
+			const result = await saveTeam(draftData, name, options.asNew ? undefined : savedTeamId ?? undefined);
 
 			if (result.success) {
+				if (options.name) teamName = name;
 				if (result.teamId) rememberSavedTeam(result.teamId);
 				markTeamSaved();
-				alert("Team saved successfully!");
-			} else {
-				console.error("Failed to save team:", result.error);
-				alert(`Failed to save team: ${result.error}`);
+				if (!options.resumePhoto) showPhotoSaveModal = false;
+				if (!options.quiet) alert("Team saved successfully!");
+				return true;
 			}
+			console.error("Failed to save team:", result.error);
+			alert(`Failed to save team: ${result.error}`);
+			return false;
 		} catch (error) {
 			console.error("Error saving team:", error);
 			alert(`Error saving team: ${error instanceof Error ? error.message : "Unknown error"}`);
+			return false;
 		} finally {
 			quickSaving = false;
 		}
+	}
+
+	async function quickSaveFromPhoto() {
+		const ok = await quickSaveTeam({ quiet: true, resumePhoto: true });
+		if (ok) await resumePhotoAttach();
+	}
+
+	async function saveNamedTeamFromPhoto() {
+		const name = newTeamNameDraft.trim();
+		if (!name) {
+			alert('Please enter a team name before saving.');
+			return;
+		}
+		const asNew = photoModalMode === 'name-new';
+		const ok = await quickSaveTeam({ asNew, name, quiet: true, resumePhoto: true, force: asNew });
+		if (ok) await resumePhotoAttach();
+	}
+
+	async function saveAnywayFromPhoto() {
+		const resume = pendingPhotoRequest != null;
+		const ok = await quickSaveTeam({ force: true, quiet: resume, resumePhoto: resume });
+		if (!ok) return;
+		if (resume) await resumePhotoAttach();
+		else showPhotoSaveModal = false;
 	}
 
 	/* ---------- menu actions ---------- */
@@ -1992,8 +2137,11 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			window.addEventListener('gaslands-menu-action', onMenuAction);
 			onTeamSaved = (event: Event) => {
 				if (!(event instanceof CustomEvent)) return;
-				const teamId = event.detail && typeof event.detail === 'object' ? (event.detail as { teamId?: unknown }).teamId : null;
-				if (typeof teamId === 'string') rememberSavedTeam(teamId);
+				const detail = event.detail && typeof event.detail === 'object' ? (event.detail as { teamId?: unknown; teamName?: unknown }) : {};
+				if (typeof detail.teamId === 'string') rememberSavedTeam(detail.teamId);
+				// The teams dialog saved the cars on screen. Photos can attach, and a reload should not treat that save as unsaved.
+				if (typeof detail.teamName === 'string' && detail.teamName.trim()) teamName = detail.teamName.trim();
+				markTeamSaved();
 			};
 			onTeamDeleted = (event: Event) => {
 				if (!(event instanceof CustomEvent)) return;
@@ -2060,7 +2208,9 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			// Directly assign functions from the component scope to the window
 			window.copyDraftFn = copyDraft;
 			window.openSharePanelFn = openSharePanel;
-			window.quickSaveFn = quickSaveTeam;
+			window.quickSaveFn = async () => {
+				await quickSaveTeam();
+			};
 			window.togglePlayModeFn = togglePlayMode;
 			window.shareLinkFn = shareLink;
 			window.generateQRCodeFn = generateQRCode;
@@ -2261,6 +2411,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 
 		if (options && typeof options.cleanSignature === 'string') {
 			savedSignature = options.cleanSignature;
+			if (savedSignature === teamSignature()) captureSavedVehicles();
 			persistHeldDraft();
 		} else if (savedTeamId) {
 			markTeamSaved();
@@ -4004,6 +4155,21 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 
 
 </section>
+
+<SaveForPhotosModal
+	open={showPhotoSaveModal}
+	mode={photoModalMode}
+	displaced={displacedForSave}
+	unverified={overwriteUnverified}
+	busy={quickSaving}
+	bind:teamNameDraft={newTeamNameDraft}
+	on:quicksave={() => void quickSaveFromPhoto()}
+	on:savenew={startSaveAsNew}
+	on:save={() => void saveNamedTeamFromPhoto()}
+	on:saveanyway={() => void saveAnywayFromPhoto()}
+	on:cancel={cancelPhotoSave}
+	on:back={backFromNewName}
+/>
 
 {#if showRulesAcknowledgmentModal}
   <div

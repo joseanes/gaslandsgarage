@@ -91,6 +91,21 @@ async function listPhotoDocs(): Promise<VehiclePhoto[]> {
 	return photos;
 }
 
+/** Vehicle ids on this team that have a photo attached. Skips download URLs. */
+export async function vehicleIdsWithPhotos(teamId: string): Promise<string[]> {
+	const photos = await listPhotoDocs();
+	const ids = new Set<string>();
+	for (const photo of photos) {
+		const attached = photo.attachments.filter((item) => item.teamId === teamId && item.vehicleId);
+		if (attached.length > 0) {
+			for (const item of attached) ids.add(item.vehicleId);
+		} else if (photo.teamId === teamId && photo.vehicleId) {
+			ids.add(photo.vehicleId);
+		}
+	}
+	return [...ids];
+}
+
 export async function listMyPhotos(): Promise<VehiclePhoto[]> {
 	const { app } = await readyUser();
 	const docs = await listPhotoDocs();
