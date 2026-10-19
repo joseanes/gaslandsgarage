@@ -12,9 +12,21 @@ export const MAX_SOURCE_BYTES = 25 * 1024 * 1024;
 
 export const DEFAULT_STORAGE_BUCKET = 'gaslandsgarage-74ce6.firebasestorage.app';
 
+export const STAGING_PROJECT_ID = 'gaslandsgarage-staging';
+export const STAGING_STORAGE_BUCKET = 'gaslandsgarage-staging.firebasestorage.app';
+
 export function storageBucketName(configured = ''): string {
 	const name = configured.trim();
 	return name.length > 0 ? name : DEFAULT_STORAGE_BUCKET;
+}
+
+/**
+ * Bucket for server code: an explicit FIREBASE_STORAGE_BUCKET wins, the staging
+ * project uses its own bucket, and everything else keeps the production default.
+ */
+export function storageBucketForProject(configured = '', projectId = ''): string {
+	if (configured.trim().length > 0) return configured.trim();
+	return projectId.trim() === STAGING_PROJECT_ID ? STAGING_STORAGE_BUCKET : DEFAULT_STORAGE_BUCKET;
 }
 
 export const PHOTO_PRIVACY_SHORT =

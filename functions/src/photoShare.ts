@@ -9,7 +9,7 @@ import {
 	TEAM_ID_PATTERN,
 	UID_PATTERN,
 	isPhotoContentType,
-	storageBucketName,
+	storageBucketForProject,
 	type PhotoContentType
 } from '../../app/src/lib/photos/model.ts';
 import {
@@ -76,7 +76,10 @@ function asRecord(value: unknown): Record<string, unknown> {
 }
 
 function bucket() {
-	return getStorage().bucket(storageBucketName(process.env.FIREBASE_STORAGE_BUCKET ?? ''));
+	return getStorage().bucket(storageBucketForProject(
+		process.env.FIREBASE_STORAGE_BUCKET ?? '',
+		process.env.GCLOUD_PROJECT ?? process.env.GOOGLE_CLOUD_PROJECT ?? ''
+	));
 }
 
 async function ignoreMissingBucket(task: () => Promise<void>): Promise<void> {

@@ -182,3 +182,29 @@ describe('viewer-request function', () => {
 		expect(code.toLowerCase()).not.toContain('g3e');
 	});
 });
+
+describe('staging viewer-request function', () => {
+	const handler = loadHandler(
+		viewerRequestCode(discoverSpaRoutes(appRoutes), { canonicalHost: 'staging.gaslandsgarage.com', redirectHost: '' })
+	);
+
+	test('keeps staging redirects on the staging host', () => {
+		expect(run(handler, '/').headers?.location?.value).toBe('https://staging.gaslandsgarage.com/builder');
+		expect(run(handler, '/builder', { host: 'staging.gaslandsgarage.com' }).uri).toBe('/index.html');
+	});
+
+	test('does not treat production hosts as aliases', () => {
+		expect(run(handler, '/builder', { host: 'www.gaslandsgarage.com' }).uri).toBe('/index.html');
+	});
+
+	test('production defaults are unchanged', () => {
+		const routes = discoverSpaRoutes(appRoutes);
+		expect(viewerRequestCode(routes)).toBe(
+			viewerRequestCode(routes, { canonicalHost: 'gaslandsgarage.com', redirectHost: 'www.gaslandsgarage.com' })
+		);
+	});
+
+	test('rejects hosts that could break out of the function source', () => {
+		expect(() => viewerRequestCode([], { canonicalHost: "x'+y" })).toThrow();
+	});
+});

@@ -13,7 +13,7 @@ import {
 	cleanCaption,
 	isPhotoContentType,
 	quotaMessage,
-	storageBucketName,
+	storageBucketForProject,
 	vehiclePhotoPath,
 	type PhotoContentType,
 	type VehiclePhotoRecord
@@ -148,7 +148,10 @@ export async function exportVehiclePhotos(uid: string): Promise<{ note: string; 
 }
 
 async function deleteStoragePrefix(uid: string): Promise<void> {
-	const bucket = getStorage().bucket(storageBucketName(process.env.FIREBASE_STORAGE_BUCKET ?? ''));
+	const bucket = getStorage().bucket(storageBucketForProject(
+		process.env.FIREBASE_STORAGE_BUCKET ?? '',
+		process.env.GCLOUD_PROJECT ?? process.env.GOOGLE_CLOUD_PROJECT ?? ''
+	));
 	try {
 		const [files] = await bucket.getFiles({ prefix: `users/${uid}/` });
 		await Promise.all(files.map((file) => file.delete({ ignoreNotFound: true })));
