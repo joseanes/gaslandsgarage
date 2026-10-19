@@ -113,11 +113,22 @@ export const deliverGameContactEmail = onDocumentCreated(
 export { deleteMyAccount, exportMyData };
 
 /**
- * Painted-car photos. The signed-in player reserves a metadata document here.
+ * Painted-car photos. The signed-in player reserves a library file here.
  * The browser then uploads the image. Clients cannot create the document
- * themselves, so the 3-per-vehicle and 100-per-account limits hold.
+ * themselves, so the 100-per-account limit holds. A car can show 3 attachments.
  */
 export { reserveVehiclePhoto } from './vehiclePhotos.ts';
+export {
+	attachLibraryPhoto,
+	cleanupOrphanPhotos,
+	detachLibraryPhoto,
+	detachTeamPhotos,
+	detachVehiclePhotos,
+	migratePhotoLibrary,
+	preparePhotoReplace,
+	renameLibraryPhoto,
+	replaceLibraryPhoto
+} from './photoLibrary.ts';
 
 /**
  * Optional photo sharing. Copies a private photo to shared-photos/{photoId}

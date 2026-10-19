@@ -891,6 +891,29 @@ describe('vehicle photos', () => {
 		expect(saved.data()?.shareVehicleStats).toBe(true);
 		expect(saved.data()?.caption).toBe('Blue car');
 	});
+
+	it('lets the owner retitle a library photo and blocks changes to its attachments', async () => {
+		await seed(async (database) => {
+			await setDoc(doc(database, 'users', 'player', 'photos', 'photo1234'), {
+				...photoDoc(),
+				teamId: '',
+				vehicleId: '',
+				path: 'users/player/photos-library/photo1234.webp',
+				attachments: [{ teamId: 'team1234', vehicleId: 'veh123' }],
+				contentHash: 'a'.repeat(64),
+				shareTeamId: 'team1234',
+				shareVehicleId: 'veh123'
+			});
+		});
+		const photo = doc(authed('player'), 'users', 'player', 'photos', 'photo1234');
+		await assertSucceeds(updateDoc(photo, { caption: 'Still mine' }));
+		await assertFails(updateDoc(photo, { attachments: [] }));
+		await assertFails(updateDoc(photo, { contentHash: 'b'.repeat(64) }));
+		await assertFails(updateDoc(photo, { path: 'users/player/photos-library/other1234.webp' }));
+		const saved = await getDoc(photo);
+		expect(saved.data()?.caption).toBe('Still mine');
+		expect(saved.data()?.attachments).toEqual([{ teamId: 'team1234', vehicleId: 'veh123' }]);
+	});
 });
 
 describe('shared gallery photos', () => {

@@ -48,7 +48,8 @@ describe('vehicle photos', () => {
 		await reserveVehiclePhotoForUser('ada', input);
 		await expect(reserveVehiclePhotoForUser('ada', input)).rejects.toThrow(/3 photos/);
 		const other = await reserveVehiclePhotoForUser('ada', { ...input, vehicleId: 'veh456', caption: '' });
-		expect(first.path).toBe(`users/ada/vehicle-photos/team1234/veh123/${first.photoId}.webp`);
+		expect(first.path).toBe(`users/ada/photos-library/${first.photoId}.webp`);
+		expect(first.attachments).toEqual([{ teamId: 'team1234', vehicleId: 'veh123' }]);
 		expect(other.vehicleId).toBe('veh456');
 		await expect(reserveVehiclePhotoForUser('bob', input)).rejects.toThrow(/Save this team/);
 		await expect(reserveVehiclePhotoForUser('ada', { ...input, vehicleId: 'missing1' })).rejects.toThrow(/not on this team/);
