@@ -13,6 +13,8 @@ import {
   AllowedMethods,
   CachePolicy,
   ResponseHeadersPolicy,
+  HeadersFrameOption,
+  HeadersReferrerPolicy,
   SecurityPolicyProtocol,
   Function,
   FunctionCode,
@@ -97,31 +99,72 @@ export class GarageStack extends cdk.Stack {
       override: true
     };
 
+    // Inline scripts in app.html need 'unsafe-inline'. frame-ancestors and
+    // X-Frame-Options still stop the settings modal from being framed.
+    const contentSecurityPolicy = [
+      "default-src 'self'",
+      "base-uri 'self'",
+      "object-src 'none'",
+      "frame-ancestors 'none'",
+      "form-action 'self'",
+      "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://www.gstatic.com https://maps.googleapis.com https://maps.gstatic.com https://apis.google.com",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: blob: https://tile.openstreetmap.org https://*.basemaps.cartocdn.com https://www.google-analytics.com https://www.googletagmanager.com https://maps.gstatic.com https://maps.googleapis.com https://mirrors.creativecommons.org",
+      "font-src 'self' data:",
+      "connect-src 'self' https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com https://nominatim.openstreetmap.org https://maps.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://firebase.googleapis.com https://firebaseinstallations.googleapis.com https://www.googleapis.com https://gaslandsgarage-74ce6.firebaseapp.com wss://*.firebaseio.com",
+      "frame-src 'self' https://gaslandsgarage-74ce6.firebaseapp.com https://accounts.google.com https://apis.google.com https://www.youtube.com https://www.youtube-nocookie.com",
+      "worker-src 'self' blob:",
+      "manifest-src 'self'"
+    ].join('; ');
+
+    const securityHeaders = {
+      strictTransportSecurity: hsts,
+      contentTypeOptions: { override: true },
+      frameOptions: { frameOption: HeadersFrameOption.DENY, override: true },
+      referrerPolicy: {
+        referrerPolicy: HeadersReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN,
+        override: true
+      },
+      contentSecurityPolicy: { contentSecurityPolicy, override: true }
+    };
+
+    const permissionsPolicy = {
+      header: 'Permissions-Policy',
+      value: 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
+      override: true
+    };
+
     const htmlHeaders = new ResponseHeadersPolicy(this, 'HtmlHeaders', {
       comment: 'index.html and app routes must revalidate. Hashed files are a separate behavior and stay cached.',
-      securityHeadersBehavior: { strictTransportSecurity: hsts },
+      securityHeadersBehavior: securityHeaders,
       customHeadersBehavior: {
-        customHeaders: [{ header: 'Cache-Control', value: 'no-cache', override: true }]
+        customHeaders: [
+          { header: 'Cache-Control', value: 'no-cache', override: true },
+          permissionsPolicy
+        ]
       }
     });
 
     const immutableHeaders = new ResponseHeadersPolicy(this, 'ImmutableHeaders', {
       comment: 'SvelteKit content hashes change when the file changes.',
-      securityHeadersBehavior: { strictTransportSecurity: hsts },
+      securityHeadersBehavior: securityHeaders,
       customHeadersBehavior: {
         customHeaders: [{
           header: 'Cache-Control',
           value: 'public, max-age=31536000, immutable',
           override: true
-        }]
+        }, permissionsPolicy]
       }
     });
 
     const staticHeaders = new ResponseHeadersPolicy(this, 'StaticHeaders', {
       comment: 'Icons, images, robots.txt, and the sitemap.',
-      securityHeadersBehavior: { strictTransportSecurity: hsts },
+      securityHeadersBehavior: securityHeaders,
       customHeadersBehavior: {
-        customHeaders: [{ header: 'Cache-Control', value: 'public, max-age=86400', override: true }]
+        customHeaders: [
+          { header: 'Cache-Control', value: 'public, max-age=86400', override: true },
+          permissionsPolicy
+        ]
       }
     });
 

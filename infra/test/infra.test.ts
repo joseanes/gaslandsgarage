@@ -67,6 +67,17 @@ describe('CDK v2 infra', () => {
 			}
 		});
 
+		const headers = JSON.stringify(template.findResources('AWS::CloudFront::ResponseHeadersPolicy'));
+		expect(headers).toContain("frame-ancestors 'none'");
+		expect(headers).toContain('nominatim.openstreetmap.org');
+		expect(headers).toContain('tile.openstreetmap.org');
+		expect(headers).toContain('googletagmanager.com');
+		expect(headers).toContain('maps.googleapis.com');
+		expect(headers).toContain('DENY');
+		expect(headers).toContain('strict-origin-when-cross-origin');
+		expect(headers).toContain('ContentTypeOptions');
+		expect(headers).toContain('Permissions-Policy');
+
 		const viewerCode = JSON.stringify(template.findResources('AWS::CloudFront::Function'));
 		expect(viewerCode).toContain('www.gaslandsgarage.com');
 		expect(viewerCode).toContain('/builder');

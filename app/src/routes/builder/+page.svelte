@@ -1587,7 +1587,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 				},
 				...printDriverFields(v),
 				// Include full weapon objects with names
-				weaponObjects: v.weapons.map(weaponId => {
+				weaponObjects: v.weapons.flatMap(weaponId => {
 					// Use our robust method to find the base weapon ID
 					const parts = weaponId.split('_');
 					let baseWeaponId = null;
@@ -1608,52 +1608,49 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 					}
 					
 					const weapon = weapons.find(w => w.id === baseWeaponId);
-					return {
+					if (!weapon?.name) return [];
+					return [{
 						id: weaponId,
-						name: weapon?.name || weaponId,
-						facing: v.weaponFacings?.[weaponId] || weapon?.facing || 'front',
-						range: weapon?.range || 'Short',
-						attackDice: weapon?.attackDice || '-',
-						cost: weapon?.cost || 0,
-						specialRules: weapon?.specialRules || '',
+						name: weapon.name,
+						facing: v.weaponFacings?.[weaponId] || weapon.facing || 'front',
+						range: weapon.range || 'Short',
+						attackDice: weapon.attackDice || '-',
+						cost: weapon.cost || 0,
+						specialRules: weapon.specialRules || '',
 						effect: (weapon as { effect?: string } | undefined)?.effect || ''
-					};
+					}];
 				}),
 				// Include full upgrade objects with names
-				upgradeObjects: v.upgrades.map(upgradeId => {
+				upgradeObjects: v.upgrades.flatMap(upgradeId => {
 					const upgrade = upgrades.find(u => u.id === upgradeId);
-					// Debug log for crew property
-					if (upgrade && upgrade.id === 'extra_crewmember') {
-						console.log('Found Extra Crewmember upgrade:', upgrade);
-						console.log('Crew property:', upgrade.crew);
-					}
-					return {
+					if (!upgrade?.name) return [];
+					return [{
 						id: upgradeId,
-						name: upgrade?.name || upgradeId,
-						cost: upgrade?.cost || 0,
-						specialRules: upgrade?.specialRules || '',
-						// Include all stat modifiers
-						crew: upgrade?.crew || 0,
-						crewModifier: upgrade?.crewModifier || 0,
-						hull: upgrade?.hull || 0,
-						hullModifier: upgrade?.hullModifier || 0,
-						handling: upgrade?.handling || 0,
-						handlingModifier: upgrade?.handlingModifier || 0,
-						gear: upgrade?.gear || 0,
-						gearModifier: upgrade?.gearModifier || 0,
-						armour: upgrade?.armour || 0,
+						name: upgrade.name,
+						cost: upgrade.cost || 0,
+						specialRules: upgrade.specialRules || '',
+						crew: upgrade.crew || 0,
+						crewModifier: upgrade.crewModifier || 0,
+						hull: upgrade.hull || 0,
+						hullModifier: upgrade.hullModifier || 0,
+						handling: upgrade.handling || 0,
+						handlingModifier: upgrade.handlingModifier || 0,
+						gear: upgrade.gear || 0,
+						gearModifier: upgrade.gearModifier || 0,
+						armour: upgrade.armour || 0,
 						effect: (upgrade as { effect?: string } | undefined)?.effect || ''
-					};
+					}];
 				}),
 				// Include full perk objects with names
-				perkObjects: v.perks.map(perkId => {
+				perkObjects: v.perks.flatMap(perkId => {
 					const perk = perks.find(p => p.id === perkId);
-					return {
+					if (!perk?.name) return [];
+					return [{
 						id: perkId,
-						name: perk?.name || perkId,
-						level: perk?.level || 1,
-						text: perk?.text || ''
-					};
+						name: perk.name,
+						level: perk.level || 1,
+						text: perk.text || ''
+					}];
 				}),
 				// Include vehicle rules for special rules descriptions
 				vehicleRules: vehicleRules
@@ -1916,7 +1913,8 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 
 			// Check URL parameters for settings tab request
 			const urlParams = new URLSearchParams(window.location.search);
-			if (urlParams.has('openSettingsTab')) {
+			// A framed page must not open settings from the query string. Top-level visits still can.
+			if (urlParams.has('openSettingsTab') && window.top === window.self) {
 				const tabToOpen = urlParams.get('openSettingsTab');
 				console.log("Opening settings tab from URL parameter:", tabToOpen);
 				// Use setTimeout to ensure DOM is fully loaded
@@ -1929,7 +1927,9 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		
 			// Setup message listener for print window communication
 			onPrintMessage = (event: Event) => {
-				const data = (event as MessageEvent).data as { type?: string } | null;
+				const message = event as MessageEvent;
+				if (message.origin !== window.location.origin) return;
+				const data = message.data as { type?: string } | null;
 				if (data && data.type === 'openPrintSettings') {
 					openSettings('print');
 				}
@@ -2150,7 +2150,15 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 
 		// Then check for URL params (these override localStorage)
 		const url = new URL(window.location.href);
-		const encoded = url.searchParams.get('draft');
+		let encoded = url.searchParams.get('draft');
+		if (!encoded) {
+			try {
+				encoded = sessionStorage.getItem('gaslands.pendingDraft');
+				if (encoded) sessionStorage.removeItem('gaslands.pendingDraft');
+			} catch {
+				encoded = null;
+			}
+		}
 		if (encoded) {
 			const imported = decodeDraft(encoded);
 			if (imported) applyImportedDraft(imported);
