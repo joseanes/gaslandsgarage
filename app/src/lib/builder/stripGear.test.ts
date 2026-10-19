@@ -65,6 +65,14 @@ describe('withoutDisallowedGear', () => {
 		expect(withoutDisallowedGear(next, { includeAdvanced: false, clearPerks: false, ...catalogs })).toBe(next);
 	});
 
+	it('treats missing gear lists as empty instead of throwing', () => {
+		const vehicles = [{ type: 'car' } as GearVehicle];
+		const next = withoutDisallowedGear(vehicles, { includeAdvanced: false, clearPerks: true, ...catalogs });
+		expect(next[0].weapons).toEqual([]);
+		expect(next[0].upgrades).toEqual([]);
+		expect(next[0].perks).toEqual([]);
+	});
+
 	it('clears perks once when sponsorships are off and then stays stable', () => {
 		const vehicles = [car()];
 		const next = withoutDisallowedGear(vehicles, { includeAdvanced: true, clearPerks: true, ...catalogs });

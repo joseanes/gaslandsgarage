@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { user } from '$lib/firebase';
-	import { PHOTO_PRIVACY_SHORT } from '$lib/photos/model';
+	import { PHOTO_PRIVACY_SHORT, TEAM_ID_PATTERN, VEHICLE_ID_PATTERN } from '$lib/photos/model';
 	import {
 		GALLERY_SHARE_COPY,
 		SHARE_BUDDIES_LABEL,
@@ -31,17 +31,23 @@
 	let error = '';
 	let status = '';
 
+	function photosCanBeStored(id: string | null, vehicle: string) {
+		return typeof id === 'string' && TEAM_ID_PATTERN.test(id) && typeof vehicle === 'string' && VEHICLE_ID_PATTERN.test(vehicle);
+	}
+
 	async function refresh() {
-		if (viewOnly || !$user || !teamId) {
+		const storedTeamId = teamId;
+		if (viewOnly || !$user || !storedTeamId || !photosCanBeStored(storedTeamId, vehicleId)) {
 			photos = [];
+			library = [];
 			return;
 		}
 		loading = true;
 		error = '';
 		try {
 			const all = await listMyPhotos();
-			photos = all.filter((photo) => photoOnVehicle(photo, teamId, vehicleId));
-			library = all.filter((photo) => !photoOnVehicle(photo, teamId, vehicleId));
+			photos = all.filter((photo) => photoOnVehicle(photo, storedTeamId, vehicleId));
+			library = all.filter((photo) => !photoOnVehicle(photo, storedTeamId, vehicleId));
 		} catch (caught) {
 			error = caught instanceof Error ? caught.message : 'Photos could not be loaded.';
 		} finally {
@@ -56,7 +62,7 @@
 		return stop;
 	});
 
-	$: if (teamId && vehicleId) void refresh();
+	$: if (photosCanBeStored(teamId, vehicleId)) void refresh();
 
 	function requestSignIn() {
 		window.dispatchEvent(new CustomEvent('gaslands-request-sign-in'));
@@ -67,7 +73,7 @@
 		if (!(input instanceof HTMLInputElement)) return;
 		const file = input.files?.[0];
 		input.value = '';
-		if (!file || !teamId || busy) return;
+		if (!file || !teamId || !photosCanBeStored(teamId, vehicleId) || busy) return;
 		busy = true;
 		error = '';
 		status = 'Preparing photo...';
@@ -204,8 +210,13 @@
 </script>
 
 {#if !viewOnly || viewPhotos.length > 0}
-<section class="mb-3 rounded-lg border border-stone-300 bg-white p-3 dark:border-gray-600 dark:bg-gray-900" data-testid="vehicle-photos">
-	<h3 class="text-sm font-semibold uppercase text-stone-800 dark:text-gray-100">Painted car</h3>
+<details class="mt-4 rounded-lg border border-stone-300 bg-white p-3 dark:border-gray-600 dark:bg-gray-900" data-testid="vehicle-photos">
+	<summary class="cursor-pointer text-sm font-semibold uppercase text-stone-800 dark:text-gray-100">
+		Painted car{#if viewOnly ? viewPhotos.length > 0 : photos.length > 0} ({viewOnly ? viewPhotos.length : photos.length}){/if}
+		{#if !viewOnly && $user && !photosCanBeStored(teamId, vehicleId)}
+			<span class="ml-2 font-normal normal-case" data-testid="photos-need-save">Save the team to add photos</span>
+		{/if}
+	</summary>
 	{#if viewOnly}
 		{#if viewPhotos.length > 0}
 			<ul class="mt-3 grid grid-cols-3 gap-2" data-testid="shared-link-photos">
@@ -353,8 +364,8 @@
 		<button type="button" class="mt-3 rounded-md px-3 py-2 text-sm amber-button" on:click={requestSignIn}>
 			Sign in to add photos
 		</button>
-	{:else if !teamId}
-		<p class="mt-3 text-sm text-stone-700 dark:text-gray-200">Save this team before adding photos.</p>
+	{:else if !photosCanBeStored(teamId, vehicleId)}
+		<p class="mt-3 text-sm text-stone-700 dark:text-gray-200" data-testid="photos-need-save">Save the team to add photos</p>
 	{:else if !playMode && photos.length < 3}
 		<fieldset class="mt-3 space-y-1" data-testid="upload-sharing" disabled={busy}>
 			<legend class="text-xs font-medium text-stone-700 dark:text-gray-200">When this photo is added</legend>
@@ -422,5 +433,5 @@
 		<p class="mt-3 text-sm text-stone-700 dark:text-gray-200">This vehicle already has 3 photos. Detach one to add another.</p>
 	{/if}
 	{/if}
-</section>
+</details>
 {/if}

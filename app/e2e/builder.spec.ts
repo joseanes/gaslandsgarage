@@ -88,8 +88,9 @@ test('switching rules versions clears the team, and cancelling keeps it', async 
 	await expect(page.getByTestId('vehicle-limit')).toContainText('first bike is free');
 	await expect(page.locator('#sponsor-select')).toHaveValue('no_sponsor');
 
+	page.on('dialog', (dialog) => dialog.accept());
 	await page.reload();
-	await expect(page.locator('#rules-version')).toHaveValue('2');
+	await expect(page.locator('#rules-version')).toHaveValue('3');
 	await expect(page.getByText('Your team has no vehicles yet')).toBeVisible();
 });
 
@@ -109,8 +110,11 @@ test('a shared draft does not come back after the rules version changes', async 
 	await expect(page.getByText('Your team has no vehicles yet')).toBeVisible();
 	await expect(page.locator('#sponsor-select')).toHaveValue('rutherford');
 
+	page.on('dialog', (dialog) => dialog.accept());
 	await page.reload();
-	await expect(page.locator('#rules-version')).toHaveValue('2');
+	await expect(page).not.toHaveURL(/draft=/);
+	await expect(page.locator('#rules-version')).toHaveValue('3');
+	await expect(page.locator('#sponsor-select')).toHaveValue('rutherford');
 	await expect(page.getByText('Your team has no vehicles yet')).toBeVisible();
 });
 
