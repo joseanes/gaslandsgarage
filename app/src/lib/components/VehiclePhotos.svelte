@@ -36,16 +36,18 @@
 	}
 
 	async function refresh() {
-		if (viewOnly || !$user || !photosCanBeStored(teamId, vehicleId)) {
+		const storedTeamId = teamId;
+		if (viewOnly || !$user || !storedTeamId || !photosCanBeStored(storedTeamId, vehicleId)) {
 			photos = [];
+			library = [];
 			return;
 		}
 		loading = true;
 		error = '';
 		try {
 			const all = await listMyPhotos();
-			photos = all.filter((photo) => photoOnVehicle(photo, teamId, vehicleId));
-			library = all.filter((photo) => !photoOnVehicle(photo, teamId, vehicleId));
+			photos = all.filter((photo) => photoOnVehicle(photo, storedTeamId, vehicleId));
+			library = all.filter((photo) => !photoOnVehicle(photo, storedTeamId, vehicleId));
 		} catch (caught) {
 			error = caught instanceof Error ? caught.message : 'Photos could not be loaded.';
 		} finally {

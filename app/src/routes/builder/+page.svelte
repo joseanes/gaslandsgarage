@@ -712,7 +712,9 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			return v;
 		});
 		
-		// Manual trigger validation update to ensure costs are recalculated
+		// The card cost updates immediately. The header total has to move in the same turn,
+		// or a second weapon looks unpaid until a later validation pass.
+		totalCans = calculateTotalCansDirectly();
 		setTimeout(() => updateValidation(), 0);
 	}
 
