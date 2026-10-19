@@ -42,6 +42,8 @@
     // Props
     export let vehicle: TeamVehicle;
     export let teamId: string | null = null;
+    export let sharedPhotos: { photoId: string; url: string; caption: string; vehicleType: string }[] = [];
+    export let photoViewOnly = false;
 
     // A loaded vehicle often has no facings map. Re-check when the prop is replaced,
     // or the facing <select> reads a missing object and the card fails to render.
@@ -695,7 +697,7 @@
     
     <!-- Vehicle details - Hidden when collapsed -->
     <div class="px-1 py-2" class:hidden={collapsed}>
-        <VehiclePhotos {teamId} vehicleId={vehicle.id} {playMode} />
+        <VehiclePhotos {teamId} vehicleId={vehicle.id} {playMode} viewOnly={photoViewOnly} viewPhotos={sharedPhotos} />
 
         {#if vehicleType && vehicleType.armour !== undefined && vehicleType.armour !== null}
             <div class="flex flex-wrap gap-2 mb-3 text-xs">

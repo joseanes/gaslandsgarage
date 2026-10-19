@@ -120,6 +120,20 @@ export { deleteMyAccount, exportMyData };
 export { reserveVehiclePhoto } from './vehiclePhotos.ts';
 
 /**
+ * Optional photo sharing. Copies a private photo to shared-photos/{photoId}
+ * and writes a public gallery document with no account id. Clients cannot
+ * write those documents or files.
+ */
+export {
+	listVisibleTeamPhotos,
+	moderateGallery,
+	refreshSharedVehicleStats,
+	removeSharedPhotoOnDelete,
+	reportPhoto,
+	setPhotoSharing
+} from './photoShare.ts';
+
+/**
  * Gaming buddies. Links are created only here, with the Admin SDK.
  * Clients cannot write `buddies`, requests, blocks, invites, or the directory.
  */

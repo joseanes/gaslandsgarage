@@ -423,6 +423,7 @@ describe('account privacy', () => {
 			'buddyEmailSuppress',
 			'buddyInvites',
 			'buddyRequests',
+			'config',
 			'gameContactEmailRate',
 			'gameContacts',
         'mapPlacements',
@@ -430,12 +431,16 @@ describe('account privacy', () => {
         'newsletterTokens',
         'openToGames',
         'openToGamesBoard',
+        'photoReportRate',
+        'photoReports',
         'playerMap',
         'playerMapBoard',
         'playerMapOwners',
         'playerMapPrivate',
         'playerProfiles',
         'roles',
+        'sharedPhotoPrivate',
+        'sharedPhotos',
         'stats',
         'teams',
         'userSettings',
@@ -455,7 +460,10 @@ describe('account privacy', () => {
       const data = exported.data as Record<string, unknown>;
       expect(exported.uid).toBe(ada);
       expect(exported.auth).toMatchObject({ email: 'ada@example.com', displayName: 'Ada Lovelace', disabled: false });
-      expect(exported.omitted).toEqual({ 'stats/public': OMITTED_NOTE });
+      expect(exported.omitted).toEqual({
+        'stats/public': OMITTED_NOTE,
+        'config/gallery': 'Site-wide gallery setting. Deleting an account does not change it.'
+      });
       expect(JSON.stringify(exported)).not.toContain('Keepers');
       expect(JSON.stringify(exported)).not.toContain('grace@example.com');
       expect(JSON.stringify(exported)).not.toContain('Stay');

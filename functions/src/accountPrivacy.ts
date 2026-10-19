@@ -13,6 +13,7 @@ import { emailAddressHash, normalizeInviteEmail, twilioEmailConfigured } from '.
 import { MAIL_COLLECTION, mailDocId } from './contactEmail.ts';
 import { twilioAccountSid, twilioAuthToken } from './twilioConfig.ts';
 import { deleteUserPhotos, exportVehiclePhotos } from './vehiclePhotos.ts';
+import { deleteReporterPhotoState } from './photoShare.ts';
 
 /** Same region as the other functions. Kept local to avoid an import cycle with index.ts. */
 export const PRIVACY_REGION = 'us-central1';
@@ -52,6 +53,12 @@ const BUDDY_EMAIL_SUPPRESS = 'buddyEmailSuppress';
 const STATS = 'stats';
 const ACCOUNT_CONTROL = 'accountControl';
 const GAME_CONTACT_EMAIL_RATE = 'gameContactEmailRate';
+/** Site-wide gallery switch. An account download skips it, and deletion leaves it in place. */
+const GALLERY_CONFIG = 'config';
+const SHARED_PHOTOS = 'sharedPhotos';
+const SHARED_PHOTO_PRIVATE = 'sharedPhotoPrivate';
+const PHOTO_REPORTS = 'photoReports';
+const PHOTO_REPORT_RATE = 'photoReportRate';
 const BOARD_DOC = 'public';
 const TOMBSTONE = 'deleted';
 const DELETED_NAME = 'Deleted player';
@@ -475,6 +482,7 @@ export async function eraseAccount(uid: string): Promise<string[]> {
   await db.doc(`${GAME_CONTACT_EMAIL_RATE}/${uid}`).delete();
   steps.push('photos');
   await deleteUserPhotos(uid);
+  await deleteReporterPhotoState(uid);
   steps.push('auth');
   try {
     await getAuth().deleteUser(uid);
@@ -552,6 +560,11 @@ export async function exportAccount(uid: string): Promise<Record<string, unknown
 
 	const buddyData = await buddyExport(uid, email);
 	const vehiclePhotos = await exportVehiclePhotos(uid);
+	const [ownedShares, filedReports, reportRate] = await Promise.all([
+		db.collection(SHARED_PHOTO_PRIVATE).where('ownerUid', '==', uid).get(),
+		db.collection(PHOTO_REPORTS).where('reporterUid', '==', uid).get(),
+		db.doc(`${PHOTO_REPORT_RATE}/${uid}`).get()
+	]);
 	const privateDoc = entryId ? await db.doc(`${PLAYER_MAP_PRIVATE}/${entryId}`).get() : null;
   const mapDoc = entryId ? await db.doc(`${PLAYER_MAP}/${entryId}`).get() : null;
   const ownsPin = entryId !== null;
@@ -571,7 +584,10 @@ export async function exportAccount(uid: string): Promise<Record<string, unknown
     exportedAt: new Date().toISOString(),
     uid,
     auth,
-    omitted: { [`${STATS}/public`]: OMITTED_NOTE },
+    omitted: {
+			[`${STATS}/public`]: OMITTED_NOTE,
+			[`${GALLERY_CONFIG}/gallery`]: 'Site-wide gallery setting. Deleting an account does not change it.'
+		},
     data: {
       [USERS]: docJson(userDoc),
       [`${USERS}/{uid}/${TEAMS}`]: queryJson(legacyTeams.docs),
@@ -594,7 +610,11 @@ export async function exportAccount(uid: string): Promise<Record<string, unknown
 			[MAIL_COLLECTION]: [...mailSnaps.values()].map((item) => mailForSubject(item.id, item.data() ?? {}, email)),
 			[PRIVACY_RATE]: docJson(rateDoc),
 			...buddyData,
-			vehiclePhotos
+			vehiclePhotos,
+			[SHARED_PHOTOS]: 'Shared copies are removed with the account. This download lists the private share records and has no image link.',
+			[SHARED_PHOTO_PRIVATE]: queryJson(ownedShares.docs),
+			[PHOTO_REPORTS]: queryJson(filedReports.docs),
+			[PHOTO_REPORT_RATE]: docJson(reportRate)
 		}
 	};
 }

@@ -44,6 +44,7 @@ import SettingsMenu from '$lib/components/SettingsMenu.svelte';
 import { getUserSettings, saveUserSettings, DEFAULT_SETTINGS, type UserSettings } from '$lib/services/settings';
 import { saveTeam, getUserTeams } from '$lib/services/team';
 	import { deleteVehiclePhotos, photosForPrint } from '$lib/services/vehiclePhotos';
+	import { listVisibleTeamPhotos, type SharedVehiclePhoto } from '$lib/services/photoShare';
 	import { localPrintPhotos } from '$lib/photos/printPhotos';
 	import { TEAM_ID_PATTERN } from '$lib/photos/model';
 	import { withoutDisallowedGear } from '$lib/builder/stripGear';
@@ -216,6 +217,9 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 	let vehicles: Veh[] = [];
 	const SAVED_TEAM_KEY = 'gaslands-saved-team-id';
 	let savedTeamId: string | null = null;
+	let sharedLinkTeamId: string | null = null;
+	let linkPhotos: SharedVehiclePhoto[] = [];
+	let linkPhotosKey = '';
 	if (typeof window !== 'undefined') {
 		try {
 			const storedTeamId = sessionStorage.getItem(SAVED_TEAM_KEY);
@@ -1501,6 +1505,8 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		const encoded = encodeDraft(currentDraft);
 		const url = new URL(window.location.href);
 		url.searchParams.set('draft', encoded);
+		if (savedTeamId) url.searchParams.set('team', savedTeamId);
+		else url.searchParams.delete('team');
 		const next = `${url.pathname}${url.search}${url.hash}`;
 		history.replaceState(history.state, '', next);
 		shareUrl = url.toString();
@@ -2243,6 +2249,9 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		const draft = decodeDraft(importString.trim());
 		if (draft && applyImportedDraft(draft)) {
 			rememberSavedTeam(null);
+			sharedLinkTeamId = null;
+			linkPhotos = [];
+			linkPhotosKey = '';
 			importString = '';
 			showImportModal = false;
 			showSharePanel = false;
@@ -2270,6 +2279,8 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 				encoded = null;
 			}
 		}
+		const teamParam = url.searchParams.get('team');
+		sharedLinkTeamId = teamParam && TEAM_ID_PATTERN.test(teamParam) ? teamParam : null;
 		if (encoded) {
 			const imported = decodeDraft(encoded);
 			if (imported) {
@@ -2280,6 +2291,20 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		// Capture before the empty-team reactive write replaces sessionStorage.
 		pendingTeamAction = takeTeamMenuAction();
 		pendingTeamSnapshot = peekCurrentTeam();
+	}
+
+	async function loadSharedLinkPhotos(teamId: string) {
+		try {
+			linkPhotos = await listVisibleTeamPhotos(teamId, 'link');
+		} catch (error) {
+			console.error('[shared link photos]', error);
+			linkPhotos = [];
+		}
+	}
+
+	$: if (browser && sharedLinkTeamId && sharedLinkTeamId !== savedTeamId && linkPhotosKey !== sharedLinkTeamId) {
+		linkPhotosKey = sharedLinkTeamId;
+		void loadSharedLinkPhotos(sharedLinkTeamId);
 	}
 	
 	/* ---------- setting changes effects ---------- */
@@ -3555,6 +3580,8 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 								<VehicleCard
 									{vehicle}
 									teamId={savedTeamId}
+									photoViewOnly={sharedLinkTeamId != null && sharedLinkTeamId !== savedTeamId}
+									sharedPhotos={sharedLinkTeamId != null && sharedLinkTeamId !== savedTeamId ? linkPhotos.filter((photo) => photo.vehicleId === vehicle.id) : []}
 									vehicleTypes={sortedVehicleTypes}
 									{weapons}
 									{upgrades}

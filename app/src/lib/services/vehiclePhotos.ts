@@ -11,11 +11,16 @@ import {
 	type VehiclePhotoRecord
 } from '../photos/model';
 import type { PrintPhotoBlob } from '../photos/printPhotos';
+import { clearPhotoSharing } from './photoShare';
 
 export { PHOTO_PRIVACY_SHORT };
 
 export interface VehiclePhoto extends VehiclePhotoRecord {
 	url: string;
+	showToBuddies: boolean;
+	showOnShareLink: boolean;
+	showInGallery: boolean;
+	shareVehicleStats: boolean;
 }
 
 function plainError(error: unknown, fallback: string): Error {
@@ -54,17 +59,21 @@ function asPhoto(data: Record<string, unknown>, url: string): VehiclePhoto | nul
 		createdAt: String(data.createdAt ?? ''),
 		caption: typeof data.caption === 'string' ? data.caption : '',
 		contentType: data.contentType === 'image/jpeg' ? 'image/jpeg' : 'image/webp',
+		showToBuddies: data.showToBuddies === true,
+		showOnShareLink: data.showOnShareLink === true,
+		showInGallery: data.showInGallery === true,
+		shareVehicleStats: data.shareVehicleStats === true,
 		url
 	};
 }
 
-async function listPhotoDocs(): Promise<VehiclePhotoRecord[]> {
+async function listPhotoDocs(): Promise<VehiclePhoto[]> {
 	const { uid } = await readyUser();
 	const { collection, getDocs } = await import('firebase/firestore');
 	const { db } = await import('../firebase');
 	if (!db) throw new Error('Photos are not available right now.');
 	const snap = await getDocs(collection(db, 'users', uid, 'photos'));
-	const photos: VehiclePhotoRecord[] = [];
+	const photos: VehiclePhoto[] = [];
 	for (const item of snap.docs) {
 		const photo = asPhoto(item.data() as Record<string, unknown>, '');
 		if (photo) photos.push(photo);
@@ -163,7 +172,7 @@ export async function uploadVehiclePhoto(input: {
 	try {
 		await uploadBytes(stored.storageRef, compressed.blob, { contentType: compressed.contentType });
 		const url = await getDownloadURL(stored.storageRef);
-		return { ...reserved, url };
+		return { ...reserved, showToBuddies: false, showOnShareLink: false, showInGallery: false, shareVehicleStats: false, url };
 	} catch (error) {
 		await deleteVehiclePhoto(reserved).catch(() => undefined);
 		throw plainError(error, 'That photo could not be uploaded.');
@@ -171,6 +180,7 @@ export async function uploadVehiclePhoto(input: {
 }
 
 export async function deleteVehiclePhoto(photo: Pick<VehiclePhotoRecord, 'photoId' | 'path'>): Promise<void> {
+	await clearPhotoSharing(photo.photoId);
 	const { uid, app } = await readyUser();
 	const { db } = await import('../firebase');
 	if (!db) throw new Error('Photos are not available right now.');

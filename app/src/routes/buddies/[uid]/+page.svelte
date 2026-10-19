@@ -12,10 +12,12 @@
 		stageBuddyTeamCopy,
 		type BuddyTeam
 	} from '$lib/services/buddies';
+	import { listVisibleTeamPhotos, type SharedVehiclePhoto } from '$lib/services/photoShare';
 
 	let status: 'loading' | 'signed-out' | 'ready' | 'denied' | 'error' = 'loading';
 	let buddyName = 'Gaming buddy';
 	let teams: BuddyTeam[] = [];
+	let photosByTeam: Record<string, SharedVehiclePhoto[]> = {};
 	let notice = '';
 	let loadedKey = '';
 
@@ -72,6 +74,18 @@
 			}
 			buddyName = buddy.displayName;
 			teams = await loadBuddyTeams(otherUid);
+			const grouped: Record<string, SharedVehiclePhoto[]> = {};
+			await Promise.all(
+				teams.map(async (team) => {
+					try {
+						grouped[team.id] = await listVisibleTeamPhotos(team.id, 'buddies');
+					} catch (error) {
+						console.error('Could not load shared photos', error);
+						grouped[team.id] = [];
+					}
+				})
+			);
+			photosByTeam = grouped;
 			status = 'ready';
 		} catch (error) {
 			if (denied(error)) {
@@ -149,6 +163,19 @@
 						maxCans={cansOf(team)}
 						vehicles={vehiclesOf(team)}
 					/>
+					{#if (photosByTeam[team.id] ?? []).length > 0}
+						<ul class="grid grid-cols-3 gap-2" data-testid="buddy-shared-photos">
+							{#each photosByTeam[team.id] as photo (photo.photoId)}
+								<li class="min-w-0">
+									<img src={photo.url} alt={photo.caption || photo.vehicleType} class="h-24 w-full rounded object-cover bg-stone-100" />
+									<p class="mt-1 truncate text-xs">{photo.vehicleType}</p>
+									{#if photo.caption}
+										<p class="truncate text-xs text-stone-600 dark:text-gray-300">{photo.caption}</p>
+									{/if}
+								</li>
+							{/each}
+						</ul>
+					{/if}
 					<button type="button" class={primaryClass} data-testid="buddy-load-copy" on:click={() => loadCopy(team)}>
 						Load a copy in the builder
 					</button>

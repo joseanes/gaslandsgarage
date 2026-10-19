@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { PHOTO_PRIVACY_SHORT } from '$lib/photos/model';
+	import { GALLERY_SHARE_COPY, SHARE_GALLERY_LABEL, SHARE_STATS_LABEL, STATS_SHARE_COPY } from '$lib/photos/share';
 	const linkClass = 'text-amber-600 dark:text-amber-400 hover:underline';
 </script>
 
@@ -73,7 +74,8 @@
 		</p>
 		<p>
 			A share link or QR code puts the build in the link itself. Anyone you give that link to can open
-			that build. The link is not an account, and it does not include your email or your photos.
+			that build. The link is not an account, and it does not include your email. A photo appears on
+			that link only when you turn on "Show on my team share link" for that photo.
 		</p>
 
 		<h2 class="text-xl font-bold mt-8 mb-3">Photos of your cars</h2>
@@ -87,10 +89,20 @@
 			we store.
 		</p>
 		<p>
-			Only you can see the photos, while you are signed in. Buddies cannot see them. A share link does
-			not include them. An administrator cannot open them from the users page. Print with photos puts
-			them on a sheet in your own browser. Deleting a photo removes that file. Deleting the vehicle or
-			the team removes that vehicle's photos. Deleting your account removes every photo.
+			Sharing is off until you turn it on for that photo. Adding a photo asks "{SHARE_GALLERY_LABEL}" and
+			"{SHARE_STATS_LABEL}". Both start off, and you can change them later. "Show to my Gaming Buddies"
+			lets a buddy who can already see that team see the photo. "Show on my team share link" shows it to
+			anyone who opens that link. "{SHARE_GALLERY_LABEL}" puts it on the Gallery page, which is under
+			Players and Events. {GALLERY_SHARE_COPY} "{SHARE_STATS_LABEL}" {STATS_SHARE_COPY} The snapshot is
+			copied from the saved team, updated when that vehicle changes, and removed from the Gallery when
+			you turn stats sharing off. The Gallery shows the display name you chose in Gaslands Garage, the
+			vehicle type, the caption, and those stats only when you shared them. It does not show your Google
+			name, your email, or your account id.
+		</p>
+		<p>
+			A shared photo is a separate copy. Unsharing, deleting the photo, deleting the vehicle or the
+			team, or deleting your account removes that copy. Photos are still never used outside Gaslands
+			Garage. Print with photos puts your own photos on a sheet in your browser.
 		</p>
 
 		<h2 class="text-xl font-bold mt-8 mb-3">Gaming buddies</h2>
