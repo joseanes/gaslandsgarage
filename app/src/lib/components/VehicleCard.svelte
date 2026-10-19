@@ -6,6 +6,8 @@
     import { loadWeaponSpecialRules } from '$lib/rules/loadRules';
     import { perkCost } from '$lib/validate/calc';
     import Tooltip from './Tooltip.svelte';
+    import AddCombobox from './AddCombobox.svelte';
+    import { perkAddOptions, upgradeAddOptions, weaponAddOptions } from '$lib/builder/gearAddOptions';
     import type { Perk, Upgrade, Vehicle, VehicleRule, Weapon } from '$lib/rules/types';
     import { resolveById } from '$lib/validate/v3/lookup';
     import { v3BuildSlots } from '$lib/validate/v3/slots';
@@ -128,15 +130,6 @@
         dispatch('addPerk', { vehicleId: vehicle.id, perkId });
     }
 
-    let weaponSearch = '';
-    let upgradeSearch = '';
-    let perkSearch = '';
-
-    function matchesQuery(name: string, query: string) {
-        const needle = query.trim().toLowerCase();
-        return needle.length === 0 || name.toLowerCase().includes(needle);
-    }
-    
     function removePerk(index: number) {
         dispatch('removePerk', { vehicleId: vehicle.id, perkIndex: index });
     }
@@ -179,6 +172,18 @@
     $: maxBuildSlots = v3Slots ? v3Slots.capacity : (vehicleType?.buildSlots ?? 2);
     // Recalculate slots whenever weapons or upgrades change
     $: usedBuildSlots = v3Slots ? v3Slots.used : calculateUsedBuildSlots(vehicle);
+    $: slotContext = {
+        rulesVersion,
+        vehicleType,
+        maxBuildSlots,
+        usedBuildSlots,
+        resolvedWeapons,
+        resolvedUpgrades,
+        capacity: v3Slots?.capacity ?? null
+    };
+    $: weaponOptions = weaponAddOptions(filteredWeapons, slotContext);
+    $: upgradeOptions = upgradeAddOptions(filteredUpgrades, slotContext);
+    $: perkOptions = perkAddOptions(filteredPerks);
 
     function patch(partial: Partial<TeamVehicle>) {
         dispatch('patch', { vehicleId: vehicle.id, patch: partial });
@@ -1095,81 +1100,18 @@
                 </ul>
             {/if}
             
-            <div class="relative">
-                <label for="search-weapon-{vehicle.id}" class="sr-only">Search weapons</label>
-                <input
-                    id="search-weapon-{vehicle.id}"
-                    type="search"
-                    class="w-full mb-1 py-1 px-2 border border-stone-300 rounded bg-white text-stone-800 text-sm"
-                    placeholder="Search weapons"
-                    bind:value={weaponSearch}
-                />
-                <label for="add-weapon-{vehicle.id}" class="sr-only">Add a weapon</label>
-                <select
-                    id="add-weapon-{vehicle.id}"
-                    class="w-full py-1 px-2 border border-stone-300 rounded bg-white text-stone-800 appearance-none pr-10 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 text-sm"
-                    on:change={e => {
-                        const target = e.target as HTMLSelectElement;
-                        const weaponId = target.value;
-                        if (weaponId) {
-                            addWeapon(weaponId, 'front');
-                            // Reset selection and blur to force UI refresh
-                            target.value = "";
-                            target.blur();
-                            setTimeout(() => {
-                                // Force reactivity by recalculating slots
-                                usedBuildSlots = calculateUsedBuildSlots(vehicle);
-                            }, 50);
-                        }
-                    }}
-                    disabled={!filteredWeapons.some(w => w.slots === 0) && usedBuildSlots >= maxBuildSlots}
-                >
-                    <option value="" disabled selected>+ Add weapon</option>
-                    
-                    <!-- Move Machine Gun to the top of the list -->
-                    {#if true}
-                        {@const machineGun = filteredWeapons.find(w => w.id === 'machine_gun')}
-                        {#if machineGun && matchesQuery(machineGun.name, weaponSearch)}
-                            {@const weaponSlots = machineGun.slots}
-                            {@const canAddWeapon = rulesVersion === 3
-                                ? v3BuildSlots(vehicleType || { buildSlots: maxBuildSlots }, [...resolvedWeapons, machineGun], resolvedUpgrades).used <= (v3Slots?.capacity ?? maxBuildSlots)
-                                : (weaponSlots === 0 || usedBuildSlots + weaponSlots <= maxBuildSlots)}
-                            <option
-                                value={machineGun.id}
-                                disabled={!canAddWeapon}
-                                class={!canAddWeapon ? 'text-gray-400' : ''}
-                            >
-                                {machineGun.name}
-                                {weaponSlots === 0 ? " (0 Slots)" : ` (${weaponSlots} slot${weaponSlots > 1 ? 's' : ''})`}
-                                {machineGun.cost ? ` (${machineGun.cost} cans)` : ""}
-                                {!canAddWeapon ? " - Insufficient slots" : ""}
-                            </option>
-                        {/if}
-                    {/if}
-                    
-                    {#each filteredWeapons.filter(w => w.id !== 'machine_gun' && matchesQuery(w.name, weaponSearch)).slice().sort((a, b) => a.name.localeCompare(b.name)) as w}
-                        {@const weaponSlots = w.slots}
-                        {@const canAddWeapon = rulesVersion === 3
-                            ? v3BuildSlots(vehicleType || { buildSlots: maxBuildSlots }, [...resolvedWeapons, w], resolvedUpgrades).used <= (v3Slots?.capacity ?? maxBuildSlots)
-                            : (weaponSlots === 0 || usedBuildSlots + weaponSlots <= maxBuildSlots)}
-                        <option
-                            value={w.id}
-                            disabled={!canAddWeapon}
-                            class={!canAddWeapon ? 'text-gray-400' : ''}
-                        >
-                            {w.name}
-                            {weaponSlots === 0 ? " (0 Slots)" : ` (${weaponSlots} slot${weaponSlots > 1 ? 's' : ''})`}
-                            {w.cost ? ` (${w.cost} cans)` : ""}
-                            {!canAddWeapon ? " - Insufficient slots" : ""}
-                        </option>
-                    {/each}
-                </select>
-                <div class="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none">
-                    <svg class="w-4 h-4 text-stone-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path d="M19 9l-7 7-7-7"></path>
-                    </svg>
-                </div>
-            </div>
+            <AddCombobox
+                id="add-weapon-{vehicle.id}"
+                label="Add a weapon"
+                placeholder="+ Add weapon… (type to search)"
+                options={weaponOptions}
+                on:select={(event) => {
+                    addWeapon(event.detail.id, 'front');
+                    setTimeout(() => {
+                        usedBuildSlots = calculateUsedBuildSlots(vehicle);
+                    }, 50);
+                }}
+            />
             
 
         </div>
@@ -1271,54 +1213,18 @@
                 </ul>
             {/if}
             
-            <div class="relative">
-                <label for="search-upgrade-{vehicle.id}" class="sr-only">Search upgrades</label>
-                <input
-                    id="search-upgrade-{vehicle.id}"
-                    type="search"
-                    class="w-full mb-1 py-1 px-2 border border-stone-300 rounded bg-white text-stone-800 text-sm"
-                    placeholder="Search upgrades"
-                    bind:value={upgradeSearch}
-                />
-                <label for="add-upgrade-{vehicle.id}" class="sr-only">Add an upgrade</label>
-                <select
-                    id="add-upgrade-{vehicle.id}"
-                    class="w-full py-1 px-2 border border-stone-300 rounded bg-white text-stone-800 appearance-none pr-10 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 text-sm"
-                    on:change={e => {
-                        const target = e.target as HTMLSelectElement;
-                        const upgradeId = target.value;
-                        if (upgradeId) {
-                            addUpgrade(upgradeId);
-                            // Reset selection and blur to force UI refresh
-                            target.value = "";
-                            target.blur();
-                            setTimeout(() => {
-                                // Force reactivity by recalculating slots
-                                usedBuildSlots = calculateUsedBuildSlots(vehicle);
-                            }, 50);
-                        }
-                    }}
-                    disabled={!filteredUpgrades.some(u => u.slots === 0 || u.isTrailer) && usedBuildSlots >= maxBuildSlots}
-                >
-                    <option value="" disabled selected>+ Add upgrade</option>
-                    {#each filteredUpgrades.filter(u => matchesQuery(u.name, upgradeSearch)).slice().sort((a, b) => a.name.localeCompare(b.name)) as u}
-                        {@const upgradeSlots = u.slots}
-                        {@const canAddUpgrade = rulesVersion === 3
-                            ? v3BuildSlots(vehicleType || { buildSlots: maxBuildSlots }, resolvedWeapons, [...resolvedUpgrades, u]).used <= (v3Slots?.capacity ?? maxBuildSlots)
-                            : (upgradeSlots === 0 || usedBuildSlots + upgradeSlots <= maxBuildSlots)}
-                        <option
-                            value={u.id}
-                            disabled={!canAddUpgrade}
-                            class={!canAddUpgrade ? 'text-gray-400' : ''}
-                        >
-                            {u.name}
-                            {upgradeSlots === 0 ? " (0 Slots)" : ` (${upgradeSlots} slot${upgradeSlots > 1 ? 's' : ''})`}
-                            {u.cost ? ` (${u.cost} cans)` : ""}
-                            {!canAddUpgrade ? " - Insufficient slots" : ""}
-                        </option>
-                    {/each}
-                </select>
-            </div>
+            <AddCombobox
+                id="add-upgrade-{vehicle.id}"
+                label="Add an upgrade"
+                placeholder="+ Add upgrade… (type to search)"
+                options={upgradeOptions}
+                on:select={(event) => {
+                    addUpgrade(event.detail.id);
+                    setTimeout(() => {
+                        usedBuildSlots = calculateUsedBuildSlots(vehicle);
+                    }, 50);
+                }}
+            />
         </div>
         
         <!-- Trailer Upgrades section - Only shown when vehicle has a trailer -->
@@ -1455,34 +1361,13 @@
                 </ul>
             {/if}
 
-            <div class="relative">
-                <label for="search-perk-{vehicle.id}" class="sr-only">Search perks</label>
-                <input
-                    id="search-perk-{vehicle.id}"
-                    type="search"
-                    class="w-full mb-1 py-1 px-2 border border-stone-300 rounded bg-white text-stone-800 text-sm"
-                    placeholder="Search perks"
-                    bind:value={perkSearch}
-                />
-                <label for="add-perk-{vehicle.id}" class="sr-only">Add a perk</label>
-                <select
-                    id="add-perk-{vehicle.id}"
-                    class="w-full py-1 px-2 border border-stone-300 rounded bg-white text-stone-800 appearance-none pr-10 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 text-sm"
-                    on:change={e => {
-                        const target = e.target as HTMLSelectElement;
-                        const perkId = target.value;
-                        if (perkId) {
-                            addPerk(perkId);
-                            target.value = ""; // Reset selection
-                        }
-                    }}
-                >
-                    <option value="" disabled selected>+ Add perk</option>
-                    {#each filteredPerks.filter(p => matchesQuery(p.name, perkSearch)).slice().sort((a, b) => a.name.localeCompare(b.name)) as p}
-                        <option value={p.id}>{p.name}{p.cost ? ` (${p.cost} cans)` : ""}</option>
-                    {/each}
-                </select>
-            </div>
+            <AddCombobox
+                id="add-perk-{vehicle.id}"
+                label="Add a perk"
+                placeholder="+ Add perk… (type to search)"
+                options={perkOptions}
+                on:select={(event) => addPerk(event.detail.id)}
+            />
 
             <!-- Special Rules Section - Only in Edit Mode -->
             {#if vehicleTypes.find(vt => vt.id === vehicle.type)?.specialRules}

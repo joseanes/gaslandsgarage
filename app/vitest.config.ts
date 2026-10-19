@@ -19,6 +19,8 @@ export default defineConfig({
     },
   },
   resolve: {
+    // Svelte 5's server entry has no mount(). Component tests need the browser build.
+    conditions: ['browser'],
     alias: {
       $lib: '/src/lib',
       $app: '/node_modules/@sveltejs/kit/src/runtime/app',
