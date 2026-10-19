@@ -38,7 +38,34 @@ function escapeHtml(value: unknown): string {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/** Rules text may include p, br, strong, em, b, and i. Every other tag is escaped. */
+function sanitizeRulesHtml(value: unknown): string {
+  const raw = String(value ?? '');
+  return raw
+    .split(/(<[^>]*>)/g)
+    .map((part) => {
+      if (!part.startsWith('<')) {
+        return escapeHtml(part).replace(/&amp;(nbsp|amp|lt|gt|quot|#\d+|#x[0-9a-fA-F]+);/g, '&$1;');
+      }
+      const match = /^<\/?\s*(p|br|strong|em|b|i)\b[^>]*>$/i.exec(part);
+      if (!match) return escapeHtml(part);
+      const tag = match[1].toLowerCase();
+      if (tag === 'br') return '<br>';
+      return part.startsWith('</') ? `</${tag}>` : `<${tag}>`;
+    })
+    .join('');
+}
+
+/** QR images are data URLs we generated. Anything else is dropped, not interpolated. */
+function safeQrSrc(value: unknown): string {
+  const src = String(value ?? '').trim();
+  if (!/^data:image\/(?:png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/.test(src)) return '';
+  return src;
 }
 
 function ruleKey(value: unknown): string {
@@ -106,8 +133,8 @@ function resolvedPrintStats(vehicle: any) {
 
 function editionSponsorNote(rulesVersion: number | undefined, sponsor: any): string {
   if (rulesVersion !== 3 || !sponsor || typeof sponsor !== 'object') return '';
-  const requirement = sponsor.requirement ? `<div>Requirement: ${sponsor.requirement}</div>` : '';
-  const perk = sponsor.perkName ? `<div>${sponsor.perkName}: ${sponsor.perkText || ''}</div>` : '';
+  const requirement = sponsor.requirement ? `<div>Requirement: ${escapeHtml(sponsor.requirement)}</div>` : '';
+  const perk = sponsor.perkName ? `<div>${escapeHtml(sponsor.perkName)}: ${sanitizeRulesHtml(sponsor.perkText || '')}</div>` : '';
   return requirement + perk;
 }
 
@@ -259,7 +286,7 @@ export function generatePrintableHtml(data: PrintHtmlData): string {
       sponsorPerksHtml += `
       <div class="sponsor-perks-section">
         <h3>Available Perk Classes</h3>
-        <p>${perksClasses.join(', ')}</p>
+        <p>${escapeHtml(perksClasses.join(', '))}</p>
       </div>`;
     }
 
@@ -322,8 +349,8 @@ export function generatePrintableHtml(data: PrintHtmlData): string {
         if (perk && perk.name) {
           sponsorPerksHtml += `
           <li>
-            <div class="perk-name">${perk.name}</div>
-            <div class="perk-text">${perk.text || ''}</div>
+            <div class="perk-name">${escapeHtml(perk.name)}</div>
+            <div class="perk-text">${sanitizeRulesHtml(perk.text || '')}</div>
           </li>`;
         }
       });
@@ -345,8 +372,8 @@ export function generatePrintableHtml(data: PrintHtmlData): string {
         if (perk && perk.name) {
           sponsorPerksHtml += `
           <li>
-            <div class="perk-name">${perk.name}</div>
-            <div class="perk-text">${perk.text || ''}</div>
+            <div class="perk-name">${escapeHtml(perk.name)}</div>
+            <div class="perk-text">${sanitizeRulesHtml(perk.text || '')}</div>
           </li>`;
         }
       });
@@ -424,12 +451,12 @@ export function generatePrintableHtml(data: PrintHtmlData): string {
         
         if (ruleDescription) {
           fullDescription += `<div class="rule-item">
-            <div class="rule-name">${ruleName}</div>
-            <div class="rule-description">${ruleDescription}</div>
+            <div class="rule-name">${escapeHtml(ruleName)}</div>
+            <div class="rule-description">${sanitizeRulesHtml(ruleDescription)}</div>
           </div>`;
         } else {
           fullDescription += `<div class="rule-item">
-            <div class="rule-name">${ruleName}</div>
+            <div class="rule-name">${escapeHtml(ruleName)}</div>
           </div>`;
         }
       });
@@ -447,11 +474,11 @@ export function generatePrintableHtml(data: PrintHtmlData): string {
       Array.from(allWeapons.values()).forEach(weapon => {
         equipmentDescriptionsHtml += `
         <li>
-          <div class="equipment-name">${weapon.name}</div>
+          <div class="equipment-name">${escapeHtml(weapon.name)}</div>
           <div class="equipment-details">
-            <span class="equipment-stat">Cost: ${weapon.cost} cans</span>
-            <span class="equipment-stat">Attack Dice: ${weapon.attackDice !== '-' ? weapon.attackDice : 'N/A'}</span>
-            <span class="equipment-stat">Default Facing: ${weapon.facing || 'Front'}</span>
+            <span class="equipment-stat">Cost: ${escapeHtml(weapon.cost)} cans</span>
+            <span class="equipment-stat">Attack Dice: ${escapeHtml(weapon.attackDice !== '-' ? weapon.attackDice : 'N/A')}</span>
+            <span class="equipment-stat">Default Facing: ${escapeHtml(weapon.facing || 'Front')}</span>
             ${weapon.specialRules || weapon.effect ? `
             <div class="equipment-rules">
               <div class="special-rules-header">Special Rules:</div>
@@ -478,9 +505,9 @@ export function generatePrintableHtml(data: PrintHtmlData): string {
       Array.from(allUpgrades.values()).forEach(upgrade => {
         equipmentDescriptionsHtml += `
         <li>
-          <div class="equipment-name">${upgrade.name}</div>
+          <div class="equipment-name">${escapeHtml(upgrade.name)}</div>
           <div class="equipment-details">
-            <span class="equipment-stat">Cost: ${upgrade.cost} cans</span>
+            <span class="equipment-stat">Cost: ${escapeHtml(upgrade.cost)} cans</span>
             ${upgrade.specialRules || upgrade.effect ? `
             <div class="equipment-rules">
               <div class="special-rules-header">Special Rules:</div>
@@ -503,7 +530,7 @@ export function generatePrintableHtml(data: PrintHtmlData): string {
   <!DOCTYPE html>
   <html>
   <head>
-    <title>Gaslands Team: ${teamName}</title>
+    <title>Gaslands Team: ${escapeHtml(teamName)}</title>
     <meta charset="utf-8">
     <style>
       body {
@@ -806,7 +833,7 @@ export function generatePrintableHtml(data: PrintHtmlData): string {
     <div class="print-header">
       <h1>${escapeHtml(teamName)}</h1>
       <div class="team-info">
-        <div>Total: ${actualTotalCans} / ${maxCans} cans</div>
+        <div>Total: ${escapeHtml(actualTotalCans)} / ${escapeHtml(maxCans)} cans</div>
         <div>Sponsor: ${escapeHtml(sponsorName)}</div>
         ${editionSponsorNote(rulesVersion, sponsor)}
       </div>
@@ -858,8 +885,8 @@ export function generatePrintableHtml(data: PrintHtmlData): string {
       </div>
 
       <div class="qr-section">
-        ${qrCode ?
-          `<img src="${qrCode}" class="qr-code" alt="QR Code for team" style="width:120px; height:120px; border:1px solid #000; background:#fff;">` :
+        ${safeQrSrc(qrCode) ?
+          `<img src="${safeQrSrc(qrCode)}" class="qr-code" alt="QR Code for team" style="width:120px; height:120px; border:1px solid #000; background:#fff;">` :
           `<div style="width:120px; height:120px; border:1px solid #000; background:#fff; text-align:center; line-height:120px; font-size:10px;">
             Visit gaslandsgarage.com
           </div>`
@@ -928,7 +955,7 @@ function generateDashboardHtml(data: PrintHtmlData): string {
   <!DOCTYPE html>
   <html>
   <head>
-    <title>Gaslands Dashboard: ${teamName}</title>
+    <title>Gaslands Dashboard: ${escapeHtml(teamName)}</title>
     <meta charset="utf-8">
     <style>
       body {
@@ -1215,14 +1242,14 @@ function generateDashboardHtml(data: PrintHtmlData): string {
     <div class="sponsor-header">
       <div>
         <div class="sponsor-name">${escapeHtml(sponsorName)}</div>
-        <div class="sponsor-description">${sponsorDescription}</div>
+        <div class="sponsor-description">${escapeHtml(sponsorDescription)}</div>
         ${editionSponsorNote(rulesVersion, sponsor)}
       </div>
       <div style="text-align: right;">
-        <div class="sponsor-name">${actualTotalCans} / ${maxCans} cans</div>
+        <div class="sponsor-name">${escapeHtml(actualTotalCans)} / ${escapeHtml(maxCans)} cans</div>
         <div class="sponsor-description">Total team cost</div>
-        ${qrCode
-          ? `<img src="${qrCode}" alt="QR code for this team" style="width:64px; height:64px; margin-top:6px; border:1px solid #000; background:#fff;"><div class="sponsor-description">gaslandsgarage.com</div>`
+        ${safeQrSrc(qrCode)
+          ? `<img src="${safeQrSrc(qrCode)}" alt="QR code for this team" style="width:64px; height:64px; margin-top:6px; border:1px solid #000; background:#fff;"><div class="sponsor-description">gaslandsgarage.com</div>`
           : ''}
       </div>
     </div>
@@ -1378,7 +1405,7 @@ function generateVehicleDashboardHtml(vehicle: any, sponsorName: string, rulesVe
         let attackDice = weapon.attackDice || '0D6';
         // Ensure number has "D6" suffix
         if (typeof attackDice === 'number' || /^\d+$/.test(attackDice)) {
-          attackDice = `${attackDice}D6`;
+          attackDice = `${escapeHtml(attackDice)}D6`;
         }
         
         // Generate ammo boxes based on weapon special rules
@@ -1431,12 +1458,12 @@ function generateVehicleDashboardHtml(vehicle: any, sponsorName: string, rulesVe
         // Add row to table (matching reference image layout)
         weaponsTableHtml += `
         <tr>
-          <td>${weaponName}</td>
-          <td>${facing}</td>
-          <td>${range}</td>
-          <td>${attackDice}</td>
+          <td>${escapeHtml(weaponName)}</td>
+          <td>${escapeHtml(facing)}</td>
+          <td>${escapeHtml(range)}</td>
+          <td>${escapeHtml(attackDice)}</td>
           <td>${ammoBoxesHtml}</td>
-          <td>${specialRules}</td>
+          <td>${escapeHtml(specialRules)}</td>
         </tr>`;
       });
     }
@@ -1457,7 +1484,7 @@ function generateVehicleDashboardHtml(vehicle: any, sponsorName: string, rulesVe
         const upgradeRules = upgrade.specialRules || '';
         
         // Just show the upgrade name, no rules in the vehicle card
-        upgradesHtml += `<div style="margin-bottom: 5px;"><strong>${upgradeName}</strong></div>`;
+        upgradesHtml += `<div style="margin-bottom: 5px;"><strong>${escapeHtml(upgradeName)}</strong></div>`;
       });
     } else {
       upgradesHtml = '<div style="text-align: center;">No upgrades installed</div>';
@@ -1473,8 +1500,8 @@ function generateVehicleDashboardHtml(vehicle: any, sponsorName: string, rulesVe
         
         perksTableHtml += `
         <tr>
-          <td style="font-weight: bold; width: 25%;">${perkName}</td>
-          <td>${perkText}</td>
+          <td style="font-weight: bold; width: 25%;">${escapeHtml(perkName)}</td>
+          <td>${sanitizeRulesHtml(perkText)}</td>
         </tr>`;
       });
     } else {
@@ -1485,7 +1512,7 @@ function generateVehicleDashboardHtml(vehicle: any, sponsorName: string, rulesVe
     }
     
     // Combine vehicle type and perks/abilities for the subheader
-    const weightLabel = /^\d+$/.test(String(weight)) ? `Weight ${weight}` : weight;
+    const weightLabel = /^\d+$/.test(String(weight)) ? `Weight ${escapeHtml(weight)}` : weight;
     const vehicleTypePerks = [
       weightLabel,
       typeName
@@ -1517,10 +1544,10 @@ function generateVehicleDashboardHtml(vehicle: any, sponsorName: string, rulesVe
       <div class="vehicle-header">
         <div>
           <div>${escapeHtml(name)}</div>
-          <div class="vehicle-type-perks">${vehicleTypePerks.join(', ')}</div>
+          <div class="vehicle-type-perks">${escapeHtml(vehicleTypePerks.join(', '))}</div>
         </div>
         <div>
-          <strong>${cost} cans</strong>
+          <strong>${escapeHtml(cost)} cans</strong>
         </div>
       </div>
       
@@ -1532,14 +1559,14 @@ function generateVehicleDashboardHtml(vehicle: any, sponsorName: string, rulesVe
         
         <div class="dashboard-stats">
           <div class="stat-row" style="flex: 1; margin-right: 20px;">
-            <div class="stat-item">Handling <span>${handling}</span></div>
-            <div class="stat-item" style="margin-right: 20px;">Crew <span>${crew}</span></div>
+            <div class="stat-item">Handling <span>${escapeHtml(handling)}</span></div>
+            <div class="stat-item" style="margin-right: 20px;">Crew <span>${escapeHtml(crew)}</span></div>
           </div>
           
           <div style="display: flex; gap: 15px;">
             <div class="stat-box">
               <div class="stat-box-label">Max Gear</div>
-              <div class="stat-box-value">${maxGear}</div>
+              <div class="stat-box-value">${escapeHtml(maxGear)}</div>
             </div>
             
             <div class="stat-box">
@@ -1591,7 +1618,7 @@ function generateVehicleDashboardHtml(vehicle: any, sponsorName: string, rulesVe
     `;
   } catch (error) {
     console.error("[PrintService] Error generating dashboard HTML:", error);
-    return `<div class="dashboard-card">Error generating dashboard: ${error instanceof Error ? error.message : String(error)}</div>`;
+    return `<div class="dashboard-card">Error generating dashboard: ${escapeHtml(error instanceof Error ? error.message : String(error))}</div>`;
   }
 }
 
@@ -1644,7 +1671,7 @@ function generateVehicleCardHtml(vehicle: any, rulesVersion?: number): string {
         const facing = weapon.facing || 'front';
         const attackDice = weapon.attackDice || '-';
         
-        weaponsHtml += `<li>${weaponName} (${facing}) ${attackDice !== '-' ? attackDice + 'D' : ''}</li>`;
+        weaponsHtml += `<li>${escapeHtml(weaponName)} (${escapeHtml(facing)}) ${escapeHtml(attackDice !== '-' ? attackDice + 'D' : '')}</li>`;
       });
       
       weaponsHtml += '</ul></div>';
@@ -1663,7 +1690,7 @@ function generateVehicleCardHtml(vehicle: any, rulesVersion?: number): string {
           weaponName = 'Unknown Weapon';
         }
         
-        weaponsHtml += `<li>${weaponName}</li>`;
+        weaponsHtml += `<li>${escapeHtml(weaponName)}</li>`;
       });
       
       weaponsHtml += '</ul></div>';
@@ -1676,7 +1703,7 @@ function generateVehicleCardHtml(vehicle: any, rulesVersion?: number): string {
       
       upgradeObjects.forEach((upgrade: any) => {
         const upgradeName = upgrade.name || 'Unknown Upgrade';
-        upgradesHtml += `<li>${upgradeName}</li>`;
+        upgradesHtml += `<li>${escapeHtml(upgradeName)}</li>`;
       });
       
       upgradesHtml += '</ul></div>';
@@ -1695,7 +1722,7 @@ function generateVehicleCardHtml(vehicle: any, rulesVersion?: number): string {
           upgradeName = 'Unknown Upgrade';
         }
         
-        upgradesHtml += `<li>${upgradeName}</li>`;
+        upgradesHtml += `<li>${escapeHtml(upgradeName)}</li>`;
       });
       
       upgradesHtml += '</ul></div>';
@@ -1709,7 +1736,7 @@ function generateVehicleCardHtml(vehicle: any, rulesVersion?: number): string {
       perkObjects.forEach((perk: any) => {
         const perkName = perk.name || 'Unknown Perk';
         const level = perk.level || 1;
-        perksHtml += `<li>${perkName} ${level > 1 ? `(Level ${level})` : ''}</li>`;
+        perksHtml += `<li>${escapeHtml(perkName)} ${level > 1 ? `(Level ${escapeHtml(level)})` : ''}</li>`;
       });
       
       perksHtml += '</ul></div>';
@@ -1728,7 +1755,7 @@ function generateVehicleCardHtml(vehicle: any, rulesVersion?: number): string {
           perkName = 'Unknown Perk';
         }
         
-        perksHtml += `<li>${perkName}</li>`;
+        perksHtml += `<li>${escapeHtml(perkName)}</li>`;
       });
       
       perksHtml += '</ul></div>';
@@ -1749,14 +1776,14 @@ function generateVehicleCardHtml(vehicle: any, rulesVersion?: number): string {
       <div class="card-header">
         <div>
           <div class="vehicle-name">${escapeHtml(name)}</div>
-          <div class="vehicle-type">${vehicleTypeName}</div>
+          <div class="vehicle-type">${escapeHtml(vehicleTypeName)}</div>
           ${(() => {
             const edition = editionFields(vehicle, rulesVersion);
             if (!edition) return '';
             return `<div class="vehicle-type">Driver: ${edition.driver}</div><div class="vehicle-type">Perk classes: ${edition.classes}</div>`;
           })()}
         </div>
-        <div class="vehicle-cost">${cost} cans</div>
+        <div class="vehicle-cost">${escapeHtml(cost)} cans</div>
       </div>
       
       <div class="hull-track">
@@ -1768,19 +1795,19 @@ function generateVehicleCardHtml(vehicle: any, rulesVersion?: number): string {
         <div class="stats-grid">
           <div class="stat-item">
             <span class="stat-label">Handling</span>
-            <span class="stat-value">${handling}</span>
+            <span class="stat-value">${escapeHtml(handling)}</span>
           </div>
           <div class="stat-item">
             <span class="stat-label">Gear</span>
-            <span class="stat-value">${gear}</span>
+            <span class="stat-value">${escapeHtml(gear)}</span>
           </div>
           <div class="stat-item">
             <span class="stat-label">Crew</span>
-            <span class="stat-value">${crew}</span>
+            <span class="stat-value">${escapeHtml(crew)}</span>
           </div>
           <div class="stat-item">
             <span class="stat-label">Weight</span>
-            <span class="stat-value">${weight}</span>
+            <span class="stat-value">${escapeHtml(weight)}</span>
           </div>
           ${(() => {
             const edition = editionFields(vehicle, rulesVersion);
@@ -1797,7 +1824,7 @@ function generateVehicleCardHtml(vehicle: any, rulesVersion?: number): string {
     `;
   } catch (error) {
     console.error("[PrintService] Error generating vehicle card HTML:", error);
-    return `<div class="vehicle-card">Error generating vehicle card: ${error instanceof Error ? error.message : String(error)}</div>`;
+    return `<div class="vehicle-card">Error generating vehicle card: ${escapeHtml(error instanceof Error ? error.message : String(error))}</div>`;
   }
 }
 
@@ -1893,12 +1920,12 @@ function generateEquipmentDescriptionsHtml(vehicles: any[], rulesVersion?: numbe
       
       if (ruleDescription) {
         fullDescription += `<div style="margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px dotted #ccc;">
-          <div style="font-weight: bold; margin-bottom: 3px; color: #444;">${ruleName}</div>
-          <div>${ruleDescription}</div>
+          <div style="font-weight: bold; margin-bottom: 3px; color: #444;">${escapeHtml(ruleName)}</div>
+          <div>${sanitizeRulesHtml(ruleDescription)}</div>
         </div>`;
       } else {
         fullDescription += `<div style="margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px dotted #ccc;">
-          <div style="font-weight: bold; color: #444;">${ruleName}</div>
+          <div style="font-weight: bold; color: #444;">${escapeHtml(ruleName)}</div>
           <div>Special rule description not available.</div>
         </div>`;
       }
@@ -1916,7 +1943,7 @@ function generateEquipmentDescriptionsHtml(vehicles: any[], rulesVersion?: numbe
     if (rulesVersion === 3) {
       rowsHtml += `
     <tr style="border-bottom: 1px solid #ddd;">
-      <td style="padding: 8px; text-align: left; vertical-align: top; font-weight: bold;">${escapeHtml(weapon.name)} (${weapon.cost} cans)</td>
+      <td style="padding: 8px; text-align: left; vertical-align: top; font-weight: bold;">${escapeHtml(weapon.name)} (${escapeHtml(weapon.cost)} cans)</td>
       <td style="padding: 8px; text-align: left;">${escapeHtml(weapon.specialRules || '')}${weapon.effect ? `<div>${escapeHtml(weapon.effect)}</div>` : ''}</td>
     </tr>`;
       return;
@@ -1958,10 +1985,10 @@ function generateEquipmentDescriptionsHtml(vehicles: any[], rulesVersion?: numbe
     
     rowsHtml += `
     <tr style="border-bottom: 1px solid #ddd;">
-      <td style="padding: 8px; text-align: left; vertical-align: top; font-weight: bold;">${weapon.name} (${weapon.cost} cans)</td>
+      <td style="padding: 8px; text-align: left; vertical-align: top; font-weight: bold;">${escapeHtml(weapon.name)} (${escapeHtml(weapon.cost)} cans)</td>
       <td style="padding: 8px; text-align: left;">
         ${directRuleMatch ? 
-          `<div style="margin-bottom: 10px;">${directRuleMatch}</div>` : 
+          `<div style="margin-bottom: 10px;">${sanitizeRulesHtml(directRuleMatch)}</div>` : 
           (weapon.specialRules ? getRuleDescription(weapon.specialRules, weapon.id) : 'No special rules')
         }
       </td>
@@ -1973,7 +2000,7 @@ function generateEquipmentDescriptionsHtml(vehicles: any[], rulesVersion?: numbe
     if (rulesVersion === 3) {
       rowsHtml += `
     <tr style="border-bottom: 1px solid #ddd;">
-      <td style="padding: 8px; text-align: left; vertical-align: top; font-weight: bold;">${escapeHtml(upgrade.name)} (${upgrade.cost} cans)</td>
+      <td style="padding: 8px; text-align: left; vertical-align: top; font-weight: bold;">${escapeHtml(upgrade.name)} (${escapeHtml(upgrade.cost)} cans)</td>
       <td style="padding: 8px; text-align: left;">${escapeHtml(upgrade.specialRules || '')}${upgrade.effect ? `<div>${escapeHtml(upgrade.effect)}</div>` : ''}</td>
     </tr>`;
       return;
@@ -2006,10 +2033,10 @@ function generateEquipmentDescriptionsHtml(vehicles: any[], rulesVersion?: numbe
     
     rowsHtml += `
     <tr style="border-bottom: 1px solid #ddd;">
-      <td style="padding: 8px; text-align: left; vertical-align: top; font-weight: bold;">${upgrade.name} (${upgrade.cost} cans)</td>
+      <td style="padding: 8px; text-align: left; vertical-align: top; font-weight: bold;">${escapeHtml(upgrade.name)} (${escapeHtml(upgrade.cost)} cans)</td>
       <td style="padding: 8px; text-align: left;">
         ${directRuleMatch ? 
-          `<div style="margin-bottom: 10px;">${directRuleMatch}</div>` : 
+          `<div style="margin-bottom: 10px;">${sanitizeRulesHtml(directRuleMatch)}</div>` : 
           (upgrade.specialRules ? getRuleDescription(upgrade.specialRules, undefined, upgrade.name) : 'No special rules')
         }
       </td>
@@ -2115,11 +2142,11 @@ function generatePerkDescriptionsHtml(vehicles: any[], sponsorPerks: any): strin
   let otherPerksHtml = '';  // For any perks that don't have a type
   
   perkMap.forEach(perk => {
-    const levelText = perk.level > 1 ? ` (Level ${perk.level})` : '';
+    const levelText = perk.level > 1 ? ` (Level ${escapeHtml(perk.level)})` : '';
     const perkRow = `
     <tr style="border-bottom: 1px solid #ddd;">
-      <td style="padding: 8px; text-align: left; vertical-align: top; font-weight: bold;">${perk.name}${levelText}</td>
-      <td style="padding: 8px; text-align: left;">${perk.text || 'No description available'}</td>
+      <td style="padding: 8px; text-align: left; vertical-align: top; font-weight: bold;">${escapeHtml(perk.name)}${escapeHtml(levelText)}</td>
+      <td style="padding: 8px; text-align: left;">${sanitizeRulesHtml(perk.text || 'No description available')}</td>
     </tr>`;
     
     if (perk.type === 'sponsor') {
@@ -2226,8 +2253,8 @@ function generateVehicleSpecialRulesHtml(vehicles: any[]): string {
   specialRulesArray.forEach(rule => {
     rulesHtml += `
     <tr style="border-bottom: 1px solid #ddd;">
-      <td style="padding: 8px; text-align: left; vertical-align: top; font-weight: bold;">${rule.name}</td>
-      <td style="padding: 8px; text-align: left;">${rule.description && rule.description.includes('<p>') ? rule.description : `<p>${rule.description}</p>`}</td>
+      <td style="padding: 8px; text-align: left; vertical-align: top; font-weight: bold;">${escapeHtml(rule.name)}</td>
+      <td style="padding: 8px; text-align: left;">${rule.description && rule.description.includes('<p>') ? rule.description : `<p>${sanitizeRulesHtml(rule.description)}</p>`}</td>
     </tr>`;
   });
   
@@ -2292,8 +2319,8 @@ function generateRosterPerksHtml(vehicles: any[], sponsorPerks: any): string {
       if (perk.type === 'sponsor') {
         html += `
         <div style="margin-bottom: 8px; padding: 8px; background-color: #fff; border-radius: 3px; border-left: 3px solid #d97706;">
-          <div style="font-weight: bold; font-size: 10pt; color: #333;">${perk.name}</div>
-          <div style="font-size: 9pt; color: #666; margin-top: 2px;">${perk.text}</div>
+          <div style="font-weight: bold; font-size: 10pt; color: #333;">${escapeHtml(perk.name)}</div>
+          <div style="font-size: 9pt; color: #666; margin-top: 2px;">${sanitizeRulesHtml(perk.text)}</div>
         </div>`;
       }
     });
@@ -2311,8 +2338,8 @@ function generateRosterPerksHtml(vehicles: any[], sponsorPerks: any): string {
     purchasedPerks.forEach(perk => {
       html += `
       <div style="margin-bottom: 8px; padding: 8px; background-color: #fff; border-radius: 3px; border-left: 3px solid #10b981;">
-        <div style="font-weight: bold; font-size: 10pt; color: #333;">${perk.name}</div>
-        <div style="font-size: 9pt; color: #666; margin-top: 2px;">${perk.text}</div>
+        <div style="font-weight: bold; font-size: 10pt; color: #333;">${escapeHtml(perk.name)}</div>
+        <div style="font-size: 9pt; color: #666; margin-top: 2px;">${sanitizeRulesHtml(perk.text)}</div>
       </div>`;
     });
     
@@ -2382,15 +2409,15 @@ function generateRosterHtml(data: PrintHtmlData): string {
       vehiclesHtml += `
       <div class="vehicle-section">
         <div class="vehicle-header">
-          <h3><span class="vehicle-title">${escapeHtml(name)}</span> <span class="vehicle-type">${escapeHtml(vehicleTypeName)}</span> <span class="vehicle-cost">${cost} cans</span></h3>
+          <h3><span class="vehicle-title">${escapeHtml(name)}</span> <span class="vehicle-type">${escapeHtml(vehicleTypeName)}</span> <span class="vehicle-cost">${escapeHtml(cost)} cans</span></h3>
         </div>
         
         <div class="stats-row">
-          <div class="stat"><span class="stat-label">Handling</span> ${handling}</div>
-          <div class="stat"><span class="stat-label">Max Gear</span> ${maxGear}</div>
-          <div class="stat"><span class="stat-label">Crew</span> ${crew}</div>
-          <div class="stat"><span class="stat-label">Hull</span> ${hull}</div>
-          <div class="stat"><span class="stat-label">Weight</span> ${weight}</div>
+          <div class="stat"><span class="stat-label">Handling</span> ${escapeHtml(handling)}</div>
+          <div class="stat"><span class="stat-label">Max Gear</span> ${escapeHtml(maxGear)}</div>
+          <div class="stat"><span class="stat-label">Crew</span> ${escapeHtml(crew)}</div>
+          <div class="stat"><span class="stat-label">Hull</span> ${escapeHtml(hull)}</div>
+          <div class="stat"><span class="stat-label">Weight</span> ${escapeHtml(weight)}</div>
           ${(() => {
             const edition = editionFields(vehicle, rulesVersion);
             if (!edition) return '';
@@ -2429,7 +2456,7 @@ function generateRosterHtml(data: PrintHtmlData): string {
         // Only add the rules section if this vehicle type has specific rules
         if (rulesList.length > 0) {
           vehiclesHtml += `<div class="rules-section">`;
-          vehiclesHtml += `<div class="vehicle-rules">Vehicle Rules: ${rulesList.join(', ')}</div>`;
+          vehiclesHtml += `<div class="vehicle-rules">Vehicle Rules: ${escapeHtml(rulesList.join(', '))}</div>`;
           vehiclesHtml += `</div>`;
         }
       }
@@ -2448,14 +2475,14 @@ function generateRosterHtml(data: PrintHtmlData): string {
               || 'front';
             
             vehiclesHtml += `<li>
-              <span class="equipment-name">${weapon.name || 'Unknown'}</span>
+              <span class="equipment-name">${escapeHtml(weapon.name || 'Unknown')}</span>
               <span class="equipment-details">`;
             
             // Build details
-            const details = [`Facing: ${facing}`];
-            if (weapon.attackDice && weapon.attackDice !== '-') details.push(`Attack: ${weapon.attackDice}`);
-            if (weapon.range && weapon.range !== '-') details.push(`Range: ${weapon.range}`);
-            if (weapon.cost) details.push(`${weapon.cost} cans`);
+            const details = [`Facing: ${escapeHtml(facing)}`];
+            if (weapon.attackDice && weapon.attackDice !== '-') details.push(`Attack: ${escapeHtml(weapon.attackDice)}`);
+            if (weapon.range && weapon.range !== '-') details.push(`Range: ${escapeHtml(weapon.range)}`);
+            if (weapon.cost) details.push(`${escapeHtml(weapon.cost)} cans`);
             
             vehiclesHtml += details.join(' | ');
             vehiclesHtml += `</span>`;
@@ -2463,7 +2490,7 @@ function generateRosterHtml(data: PrintHtmlData): string {
             // Add special rules if they exist and are enabled
             if (weapon.specialRules && showEquipmentDescriptions) {
               vehiclesHtml += `<div class="special-rules">
-                <span class="rules-label">Special:</span> ${weapon.specialRules}
+                <span class="rules-label">Special:</span> ${escapeHtml(weapon.specialRules)}
               </div>`;
             }
             
@@ -2485,17 +2512,17 @@ function generateRosterHtml(data: PrintHtmlData): string {
         upgradeObjects.forEach((upgrade: any) => {
           if (upgrade) {
             vehiclesHtml += `<li>
-              <span class="equipment-name">${upgrade.name || 'Unknown Upgrade'}</span>`;
+              <span class="equipment-name">${escapeHtml(upgrade.name || 'Unknown Upgrade')}</span>`;
             
             // Add cost if available
             if (upgrade.cost) {
-              vehiclesHtml += `<span class="equipment-details">${upgrade.cost} cans</span>`;
+              vehiclesHtml += `<span class="equipment-details">${escapeHtml(upgrade.cost)} cans</span>`;
             }
             
             // Add special rules if they exist and are enabled
             if (upgrade.specialRules && showEquipmentDescriptions) {
               vehiclesHtml += `<div class="special-rules">
-                <span class="rules-label">Special:</span> ${upgrade.specialRules}
+                <span class="rules-label">Special:</span> ${escapeHtml(upgrade.specialRules)}
               </div>`;
             }
             
@@ -2517,11 +2544,11 @@ function generateRosterHtml(data: PrintHtmlData): string {
         perkObjects.forEach((perk: any) => {
           if (perk) {
             vehiclesHtml += `<li>
-              <span class="equipment-name">${perk.name || 'Unknown Perk'}</span>`;
+              <span class="equipment-name">${escapeHtml(perk.name || 'Unknown Perk')}</span>`;
             
             // Add descriptions if enabled
             if (perk.text && showPerkDescriptions) {
-              vehiclesHtml += `<div class="perk-description">${perk.text}</div>`;
+              vehiclesHtml += `<div class="perk-description">${sanitizeRulesHtml(perk.text)}</div>`;
             }
             
             vehiclesHtml += `</li>`;
@@ -2543,7 +2570,7 @@ function generateRosterHtml(data: PrintHtmlData): string {
   return `<!DOCTYPE html>
   <html>
   <head>
-    <title>${teamName} - Gaslands Roster</title>
+    <title>${escapeHtml(teamName)} - Gaslands Roster</title>
     <meta charset="utf-8">
     <style>
       body {
@@ -2763,7 +2790,7 @@ function generateRosterHtml(data: PrintHtmlData): string {
       <div class="team-info">
         <div>Sponsor: ${escapeHtml(sponsorName)}</div>
         ${editionSponsorNote(rulesVersion, sponsor)}
-        <div>Team Cost: ${actualTotalCans} / ${maxCans} cans</div>
+        <div>Team Cost: ${escapeHtml(actualTotalCans)} / ${escapeHtml(maxCans)} cans</div>
       </div>
     </div>
     
@@ -2775,8 +2802,8 @@ function generateRosterHtml(data: PrintHtmlData): string {
     ${generateRosterPerksHtml(vehicles, sponsorPerks)}
     
     <div class="qr-section">
-      ${qrCode ?
-        `<img src="${qrCode}" class="qr-code" alt="QR Code for team">
+      ${safeQrSrc(qrCode) ?
+        `<img src="${safeQrSrc(qrCode)}" class="qr-code" alt="QR Code for team">
         <div class="qr-caption">Scan to load this team</div>` :
         ''
       }
@@ -2786,6 +2813,43 @@ function generateRosterHtml(data: PrintHtmlData): string {
     </div>
   </body>
   </html>`;
+}
+
+const PRINT_CHROME = `
+<style>
+  @media print { .print-chrome { display: none !important; } }
+</style>
+<div class="print-chrome" style="position:fixed;top:10px;right:10px;z-index:1000;display:flex;gap:8px;">
+  <button type="button" onclick="window.print()" style="padding:8px 16px;background:#2563eb;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">Print</button>
+  <button type="button" onclick="try{localStorage.setItem('openPrintSettings', String(Date.now()));}catch(e){} window.close();" style="padding:8px 16px;background:#047857;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">Change Print Settings</button>
+  <button type="button" onclick="window.close()" style="padding:8px 16px;background:#d97706;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">Close Window</button>
+</div>`;
+
+/**
+ * Opens the sheet from a blob URL and drops window.opener before any other script.
+ * document.write into a blank window of this origin can read Auth storage if a value is left unescaped.
+ */
+function openPrintDocument(html: string): void {
+  const guarded = html.includes('<head>')
+    ? html.replace('<head>', '<head><script>window.opener=null;</script>')
+    : html;
+  const payload = guarded.includes('</body>')
+    ? guarded.replace('</body>', `${PRINT_CHROME}</body>`)
+    : `${guarded}${PRINT_CHROME}`;
+  const blob = new Blob([payload], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const printWindow = window.open(url, '_blank', 'width=800,height=600');
+  if (!printWindow) {
+    URL.revokeObjectURL(url);
+    alert('Please allow popups to print your team');
+    return;
+  }
+  try {
+    printWindow.opener = null;
+  } catch {
+    /* the document script clears opener as well */
+  }
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 /**
@@ -2866,43 +2930,7 @@ export async function printTeamDashboard(draft: PrintDraft): Promise<void> {
     
     // Call the generateDashboardHtml function to create the full dashboard HTML
     const dashboardHtml = generateDashboardHtml(printData);
-    
-    // Open and populate print window
-    const printWindow = window.open('', '_blank', 'width=800,height=600');
-    if (!printWindow) {
-      alert('Please allow popups to print your team');
-      return;
-    }
-    
-    // Write simplified HTML
-    printWindow.document.write(dashboardHtml);
-    
-    // Add CSS to hide buttons when printing
-    const printMediaStyle = printWindow.document.createElement('style');
-    printMediaStyle.textContent = `
-      @media print {
-        button {
-          display: none !important;
-        }
-      }
-    `;
-    printWindow.document.head.appendChild(printMediaStyle);
-    
-    printWindow.document.close();
-    
-    // Add unified print buttons
-    addPrintButtons(printWindow);
-    
-    // No longer auto-printing
-    setTimeout(() => {
-      try {
-        // Just make sure the content is fully loaded
-        console.log("[PrintService] Dashboard print window ready for user interaction");
-      } catch (printError) {
-        console.error("[PrintService] Error during dashboard window preparation:", printError);
-        alert('Error preparing the print view. Please try again.');
-      }
-    }, 1000);
+    openPrintDocument(dashboardHtml);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("[PrintService] Error in printTeamDashboard:", error);
@@ -3065,64 +3093,8 @@ export async function printTeam(printStyle: string, draft: PrintDraft): Promise<
     
     // Generate printable HTML
     const printHtml = generatePrintableHtml(printData);
-    
-    // Log the HTML for debugging
     console.log("[PrintService] Generated HTML length:", printHtml.length);
-    console.log("[PrintService] Generated HTML contains dashboard:", printHtml.includes("dashboard-card"));
-    
-    // Open a new window for printing
-    const printWindow = window.open('', '_blank', 'width=800,height=600');
-    
-    if (!printWindow) {
-      console.error("[PrintService] Failed to open print window");
-      alert('Please allow popups to print your team');
-      return;
-    }
-    
-    // Write HTML to print window
-    printWindow.document.write(printHtml);
-    
-    // Add CSS to hide buttons when printing
-    const printMediaStyle = printWindow.document.createElement('style');
-    printMediaStyle.textContent = `
-      @media print {
-        button {
-          display: none !important;
-        }
-      }
-    `;
-    printWindow.document.head.appendChild(printMediaStyle);
-    
-    printWindow.document.close();
-    
-    // Debug the new window
-    console.log("[PrintService] Created print window with document length:", 
-      printWindow.document.documentElement.innerHTML.length);
-    
-    // Check for vehicle cards in the new window
-    const vehicleCards = printWindow.document.querySelectorAll('.vehicle-card');
-    console.log("[PrintService] Vehicle cards in print window:", vehicleCards.length);
-    
-    // Print after a delay to ensure content is loaded
-    setTimeout(() => {
-      try {
-        // Double check vehicle cards are present
-        const vehicleCardsCheck = printWindow.document.querySelectorAll('.vehicle-card');
-        console.log("[PrintService] Vehicle cards before printing:", vehicleCardsCheck.length);
-        
-        // Add unified print buttons (Print, Change Print Settings, Close Window)
-        addPrintButtons(printWindow);
-        
-        // We no longer automatically open the print dialog
-        // The user can use the Print button if they want to print
-        
-        // We no longer automatically close the window
-        // User must close it manually with the close button
-      } catch (printError) {
-        console.error("[PrintService] Error during printing:", printError);
-        alert('Error during printing. Please try again.');
-      }
-    }, 1000); // Increased timeout for content loading
+    openPrintDocument(printHtml);
     
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -3146,80 +3118,6 @@ export async function printTeam(printStyle: string, draft: PrintDraft): Promise<
       alert('There was an error preparing for printing. Please try again or try a different print style.');
     }
   }
-}
-
-/**
- * Add standard print buttons to any print window - unified across all print styles
- * Order: Print (blue), Change Print Settings (green), Close Window (orange)
- */
-function addPrintButtons(printWindow: Window): void {
-  // Create Print button (blue, leftmost)
-  const printButton = printWindow.document.createElement('button');
-  printButton.innerHTML = 'Print';
-  printButton.style.position = 'fixed';
-  printButton.style.top = '10px';
-  printButton.style.right = '340px'; // Leftmost
-  printButton.style.padding = '8px 16px';
-  printButton.style.backgroundColor = '#2563eb'; // Blue
-  printButton.style.color = 'white';
-  printButton.style.border = 'none';
-  printButton.style.borderRadius = '4px';
-  printButton.style.cursor = 'pointer';
-  printButton.style.zIndex = '1000';
-  printButton.style.fontWeight = 'bold';
-  printButton.addEventListener('click', function() {
-    printWindow.print();
-  });
-  
-  // Create Change Print Settings button (green, middle)
-  const settingsButton = printWindow.document.createElement('button');
-  settingsButton.innerHTML = 'Change Print Settings';
-  settingsButton.style.position = 'fixed';
-  settingsButton.style.top = '10px';
-  settingsButton.style.right = '150px'; // Middle
-  settingsButton.style.padding = '8px 16px';
-  settingsButton.style.backgroundColor = '#047857'; // Green
-  settingsButton.style.color = 'white';
-  settingsButton.style.border = 'none';
-  settingsButton.style.borderRadius = '4px';
-  settingsButton.style.cursor = 'pointer';
-  settingsButton.style.zIndex = '1000';
-  settingsButton.style.fontWeight = 'bold';
-  settingsButton.addEventListener('click', function() {
-    try {
-      const timestamp = new Date().getTime();
-      localStorage.setItem('openPrintSettings', timestamp.toString());
-      if (window.opener && typeof window.opener.openSettings === 'function') {
-        window.opener.openSettings('print');
-      }
-    } catch (err) {
-      console.error("Error setting localStorage:", err);
-    }
-    printWindow.close();
-  });
-  
-  // Create Close Window button (orange, rightmost)
-  const closeButton = printWindow.document.createElement('button');
-  closeButton.innerHTML = 'Close Window';
-  closeButton.style.position = 'fixed';
-  closeButton.style.top = '10px';
-  closeButton.style.right = '10px'; // Rightmost
-  closeButton.style.padding = '8px 16px';
-  closeButton.style.backgroundColor = '#d97706'; // Orange
-  closeButton.style.color = 'white';
-  closeButton.style.border = 'none';
-  closeButton.style.borderRadius = '4px';
-  closeButton.style.cursor = 'pointer';
-  closeButton.style.zIndex = '1000';
-  closeButton.style.fontWeight = 'bold';
-  closeButton.addEventListener('click', function() {
-    printWindow.close();
-  });
-  
-  // Add buttons to document in order
-  printWindow.document.body.insertBefore(printButton, printWindow.document.body.firstChild);
-  printWindow.document.body.insertBefore(settingsButton, printWindow.document.body.firstChild);
-  printWindow.document.body.insertBefore(closeButton, printWindow.document.body.firstChild);
 }
 
 /**
