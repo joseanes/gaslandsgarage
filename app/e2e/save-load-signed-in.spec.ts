@@ -105,7 +105,7 @@ test('a signed-in player can save, load, update, quick-save, and delete v2 and v
 
 	await page.reload({ waitUntil: 'domcontentloaded' });
 	await expect(page.getByRole('button', { name: email.split('@')[0] })).toBeVisible();
-	await expect(page.locator('#rules-version')).toHaveValue('2');
+	await expect(page.locator('#rules-version')).toHaveValue('3');
 
 	dialog = await openTeams(page);
 	await dialog.getByText('Version Three Crew', { exact: true }).locator('xpath=ancestor::div[contains(@class,"rounded-lg")][1]').getByRole('button', { name: 'Load' }).click();
@@ -127,7 +127,7 @@ test('a signed-in player can save, load, update, quick-save, and delete v2 and v
 	await expect(page.locator('#rules-version')).toHaveValue('3');
 
 	await page.reload({ waitUntil: 'domcontentloaded' });
-	await expect(page.locator('#rules-version')).toHaveValue('2');
+	await expect(page.locator('#rules-version')).toHaveValue('3');
 	dialog = await openTeams(page);
 	await dialog.getByText('Refuelled Racers', { exact: true }).locator('xpath=ancestor::div[contains(@class,"rounded-lg")][1]').getByRole('button', { name: 'Load' }).click();
 	await expect(page.locator('#rules-version')).toHaveValue('2');
@@ -161,6 +161,7 @@ test('a signed-in player can save, load, update, quick-save, and delete v2 and v
 	await expect(page.getByRole('listitem').filter({ hasText: 'Powder Keg' })).toBeVisible();
 
 	await page.getByLabel('Vehicle Name').fill('Hauler Two');
+	await expect(page.getByLabel('Vehicle Name')).toHaveValue('Hauler Two');
 	const beforeQuickSave = notices.length;
 	await page.getByRole('button', { name: 'Quick Save' }).click();
 	await expect.poll(() => notices.slice(beforeQuickSave).some((message) => message.includes('Team saved successfully'))).toBeTruthy();

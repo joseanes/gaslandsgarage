@@ -6,7 +6,8 @@ import {
 	peekCurrentTeam,
 	rememberCurrentTeam,
 	rememberTeamMenuAction,
-	takeTeamMenuAction
+	takeTeamMenuAction,
+	teamActionNeedsTeam
 } from './teamMenu';
 
 afterEach(() => {
@@ -18,6 +19,8 @@ describe('team menu hand-off', () => {
 	it('builds a builder url that opens the requested action', () => {
 		expect(builderPathForTeamAction('myteams')).toBe('/builder?open=myteams');
 		expect(builderPathForTeamAction('import')).toBe('/builder?open=import');
+		expect(builderPathForTeamAction('new')).toBe('/builder?open=new');
+		expect(teamActionNeedsTeam('new')).toBe(false);
 	});
 
 	it('prefers the open query, then drops it and the session flag', () => {
