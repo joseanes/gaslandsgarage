@@ -76,14 +76,35 @@ service firebase.storage {
         && request.resource.contentType == 'image/jpeg';
     }
 
+    function photoRecord(uid, photoId) {
+      return /databases/(default)/documents/users/$(uid)/photos/$(photoId);
+    }
+
+    // The callable creates users/{uid}/photos/{photoId} inside the quota transaction.
+    // Clients cannot create that document, so a file can exist only after a reservation
+    // that already counted toward 3 per vehicle and 100 per account.
+    function reservedPhoto(uid, teamId, vehicleId, fileName) {
+      let photoId = fileName.split('\\.')[0];
+      let record = photoRecord(uid, photoId);
+      return photoId.matches('^[A-Za-z0-9_-]{8,40}$')
+        && firestore.exists(record)
+        && firestore.get(record).data.userId == uid
+        && firestore.get(record).data.teamId == teamId
+        && firestore.get(record).data.vehicleId == vehicleId
+        && firestore.get(record).data.path == 'users/' + uid + '/vehicle-photos/' + teamId + '/' + vehicleId + '/' + fileName
+        && firestore.get(record).data.contentType == request.resource.contentType;
+    }
+
     match /users/{uid}/vehicle-photos/{teamId}/{vehicleId}/{fileName} {
       allow read: if owner(uid) && safeIds(teamId, vehicleId);
 
-      // About 1.5 MiB. Delete is separate so a delete is not required to send a content type.
+      // About 1.5 MiB. Delete is separate so a delete is not required to send a content type
+      // or to still have the reservation document.
       allow create, update: if owner(uid)
         && safeIds(teamId, vehicleId)
         && request.resource.size <= 1572864
-        && (webpFile(fileName) || jpegFile(fileName));
+        && (webpFile(fileName) || jpegFile(fileName))
+        && reservedPhoto(uid, teamId, vehicleId, fileName);
 
       allow delete: if owner(uid);
     }

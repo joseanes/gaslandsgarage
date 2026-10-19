@@ -39,26 +39,81 @@ function file(uid: string | null, path: string) {
 	return ref(context.storage(), path);
 }
 
+async function reserve(input: {
+	photoId?: string;
+	teamId?: string;
+	vehicleId?: string;
+	fileName?: string;
+	contentType?: string;
+	path?: string;
+	userId?: string;
+} = {}) {
+	const photoId = input.photoId ?? 'photo1234';
+	const teamId = input.teamId ?? 'team1234';
+	const vehicleId = input.vehicleId ?? 'veh123';
+	const fileName = input.fileName ?? `${photoId}.webp`;
+	const contentType = input.contentType ?? 'image/webp';
+	const userId = input.userId ?? 'alice';
+	const path = input.path ?? `users/${userId}/vehicle-photos/${teamId}/${vehicleId}/${fileName}`;
+	await testEnv.withSecurityRulesDisabled(async (context) => {
+		await setDoc(doc(context.firestore(), 'users', userId, 'photos', photoId), {
+			photoId,
+			userId,
+			teamId,
+			vehicleId,
+			path,
+			width: 8,
+			height: 8,
+			createdAt: '2026-10-19T00:00:00.000Z',
+			caption: '',
+			contentType
+		});
+	});
+	return path;
+}
+
 describe('vehicle photo storage', () => {
-	it('lets the owner upload and read a webp or jpeg under 1.5 MiB', async () => {
+	it('lets the owner upload and read a webp or jpeg under 1.5 MiB when a reservation matches', async () => {
+		await reserve();
+		await assertSucceeds(uploadBytes(file('alice', ownerPath), webp, { contentType: 'image/webp' }));
 		await assertSucceeds(uploadBytes(file('alice', ownerPath), webp, { contentType: 'image/webp' }));
 		await assertSucceeds(getBytes(file('alice', ownerPath)));
-		const jpegPath = 'users/alice/vehicle-photos/team1234/veh123/photo1234.jpg';
+		const jpegPath = await reserve({
+			photoId: 'photojpeg',
+			fileName: 'photojpeg.jpg',
+			contentType: 'image/jpeg'
+		});
 		await assertSucceeds(uploadBytes(file('alice', jpegPath), webp, { contentType: 'image/jpeg' }));
 	});
 
+	it('denies an upload that has no matching reservation', async () => {
+		await assertFails(uploadBytes(file('alice', ownerPath), webp, { contentType: 'image/webp' }));
+		await reserve({ contentType: 'image/jpeg' });
+		await assertFails(uploadBytes(file('alice', ownerPath), webp, { contentType: 'image/webp' }));
+		await reserve({ vehicleId: 'other123', path: ownerPath });
+		await assertFails(uploadBytes(file('alice', ownerPath), webp, { contentType: 'image/webp' }));
+		await reserve({ path: 'users/alice/vehicle-photos/team1234/veh999/photo1234.webp' });
+		await assertFails(uploadBytes(file('alice', ownerPath), webp, { contentType: 'image/webp' }));
+		await testEnv.clearFirestore();
+		await reserve({ userId: 'bob' });
+		await assertFails(uploadBytes(file('alice', ownerPath), webp, { contentType: 'image/webp' }));
+	});
+
 	it('denies other people, signed-out readers, other paths, png, and oversized files', async () => {
+		await reserve();
 		await assertSucceeds(uploadBytes(file('alice', ownerPath), webp, { contentType: 'image/webp' }));
 		await assertFails(getBytes(file('bob', ownerPath)));
 		await assertFails(getBytes(file(null, ownerPath)));
 		await assertFails(deleteObject(file('bob', ownerPath)));
 		await assertFails(uploadBytes(file('alice', 'users/alice/notes/photo1234.webp'), webp, { contentType: 'image/webp' }));
 		await assertFails(uploadBytes(file('alice', ownerPath.replace('.webp', '.png')), webp, { contentType: 'image/png' }));
+		await reserve({ photoId: 'photo9999', fileName: 'photo9999.webp' });
 		await assertFails(
 			uploadBytes(file('alice', 'users/alice/vehicle-photos/team1234/veh123/photo9999.webp'), new Uint8Array(1_572_865), {
 				contentType: 'image/webp'
 			})
 		);
+		await testEnv.clearFirestore();
 		await assertSucceeds(deleteObject(file('alice', ownerPath)));
 	});
 });
