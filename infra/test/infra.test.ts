@@ -116,12 +116,15 @@ describe('CDK v2 infra', () => {
 });
 
 describe('photo storage CSP', () => {
-	test('allows Firebase Storage once a Content-Security-Policy is present', () => {
+	test('allows Firebase Storage and the download redirect once a Content-Security-Policy is present', () => {
 		const source = readFileSync(join(__dirname, '../lib/garage-stack.ts'), 'utf8');
 		if (!source.includes('Content-Security-Policy')) return;
 		expect(source).toContain('https://firebasestorage.googleapis.com');
+		expect(source).toContain('https://storage.googleapis.com');
 		expect(source).toContain('blob:');
 		expect(source).toContain('data:');
+		const frameSrc = source.split('\n').find((line) => line.includes('frame-src'));
+		expect(frameSrc).toContain('blob:');
 	});
 });
 
