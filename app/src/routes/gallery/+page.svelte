@@ -2,6 +2,7 @@
 	import { dev } from '$app/environment';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
+	import GalleryCardFace from '$lib/components/GalleryCardFace.svelte';
 	import LibraryPhotoEditor from '$lib/components/LibraryPhotoEditor.svelte';
 	import ShareCar from '$lib/components/ShareCar.svelte';
 	import { user } from '$lib/firebase';
@@ -19,10 +20,10 @@
 		type PhotoView,
 		type SavedCar
 	} from '$lib/photos/browser';
-	import { carLabel, statRows } from '$lib/photos/carPage';
+	import { galleryCarName, galleryVehicleTypes, selectGalleryPage, type GalleryListRequest } from '$lib/photos/galleryQuery';
 	import { MAX_PHOTOS_PER_ACCOUNT } from '$lib/photos/model';
-	import { vehicleTypeLabel } from '$lib/photos/share';
-	import { listGalleryPhotos, listGalleryPhotosByPlayer, loadPublicCar, reportSharedPhoto, type GalleryPhoto } from '$lib/services/photoShare';
+	import { galleryKeywords, gallerySearchToken, vehicleTypeLabel } from '$lib/photos/share';
+	import { listGalleryPhotosPage, loadPublicCar, reportSharedPhoto, type GalleryPhoto } from '$lib/services/photoShare';
 	import { getUserTeams } from '$lib/services/team';
 	import {
 		cleanupMyPhotoOrphans,
@@ -40,10 +41,17 @@
 	let knownNames: string[] = [];
 	let nameDraft = '';
 	let seenName = '';
+	let searchDraft = '';
+	let seenSearch = '';
 	let open: GalleryPhoto | null = null;
 	let notice = '';
 	let noticeError = false;
 	let busy = false;
+	let paging = false;
+	let hasMore = false;
+	let pageCursor: unknown = null;
+	let fixturePage = 0;
+	let fixtureDeck: GalleryPhoto[] | null = null;
 	let uploadCaption = '';
 	let appliedKey = '';
 	let ticket = 0;
@@ -57,11 +65,18 @@
 		seenName = state.playerName;
 		nameDraft = state.playerName;
 	}
-	$: loadKey = `${$user?.uid ?? 'anon'}|${state.view}|${state.playerName}|${dev && $page.url.searchParams.get('fixture') === '1' ? '1' : '0'}`;
+	$: if (state.search !== seenSearch) {
+		seenSearch = state.search;
+		searchDraft = state.search;
+	}
+	$: fixtureOn = dev && $page.url.searchParams.get('fixture') === '1';
+	$: loadKey = `${$user?.uid ?? 'anon'}|${state.view}|${state.playerName}|${state.vehicleType}|${state.sort}|${state.search}|${fixtureOn ? '1' : '0'}`;
 	$: if (loadKey !== appliedKey) {
 		appliedKey = loadKey;
 		void load(false);
 	}
+	$: showingMine = state.view === 'mine';
+	$: sortShown = shownSort(state.sort, showingMine);
 
 	function requestSignIn() {
 		window.dispatchEvent(new CustomEvent('gaslands-request-sign-in'));
@@ -74,6 +89,21 @@
 
 	function setBusy(value: boolean) {
 		busy = value;
+	}
+
+	function shownSort(sort: PhotoSort, mine: boolean): PhotoSort {
+		if (mine) return sort === 'oldest' || sort === 'used' ? sort : 'newest';
+		return sort === 'oldest' || sort === 'cans-high' || sort === 'cans-low' ? sort : 'newest';
+	}
+
+	function galleryRequest(browserState: PhotoBrowserState): GalleryListRequest {
+		const sort = shownSort(browserState.sort, false);
+		return {
+			sort: sort === 'oldest' || sort === 'cans-high' || sort === 'cans-low' ? sort : 'newest',
+			vehicleType: browserState.vehicleType,
+			displayName: browserState.view === 'player' ? browserState.playerName : '',
+			search: browserState.search
+		};
 	}
 
 	function setState(patch: Partial<PhotoBrowserState>) {
@@ -93,6 +123,15 @@
 		}
 		notify('', false);
 		setState({ view: 'player', playerName: safe });
+	}
+
+	function commitSearch(value: string) {
+		notify('', false);
+		setState({ search: value.trim().replace(/\s+/g, ' ').slice(0, 40) });
+	}
+
+	function closeOnEscape(event: KeyboardEvent) {
+		if (event.key === 'Escape' && open) open = null;
 	}
 
 	function rememberNames(photos: GalleryPhoto[]) {
@@ -143,6 +182,16 @@
 		return new Set(found.filter((id) => id.length > 0));
 	}
 
+	function applyFixture(browserState: PhotoBrowserState, pageIndex: number, append: boolean) {
+		if (!fixtureDeck) return;
+		const result = selectGalleryPage(fixtureDeck, galleryRequest(browserState), pageIndex);
+		publicPhotos = append ? [...publicPhotos, ...result.photos] : result.photos;
+		fixturePage = pageIndex + 1;
+		hasMore = result.hasMore;
+		pageCursor = null;
+		rememberNames(fixtureDeck);
+	}
+
 	async function load(quiet: boolean) {
 		const current = ++ticket;
 		const browserState = parsePhotoBrowser($page.url.searchParams);
@@ -151,6 +200,9 @@
 		const preserveNotice = keepNotice;
 		keepNotice = false;
 		if (!quiet && !preserveNotice) notice = '';
+		pageCursor = null;
+		fixturePage = 0;
+		hasMore = false;
 		if (browserState.view === 'mine' && !signedIn) {
 			if (current !== ticket) return;
 			publicPhotos = [];
@@ -161,52 +213,36 @@
 			status = 'signed-out';
 			return;
 		}
+		if (browserState.view === 'player' && !browserState.playerName) {
+			if (current !== ticket) return;
+			publicPhotos = [];
+			open = null;
+			status = 'ready';
+			return;
+		}
 		if (!quiet) status = 'loading';
 		try {
-			let nextPublic: GalleryPhoto[] = [];
-			let nextLibrary: VehiclePhoto[] = [];
-			let nextCars: SavedCar[] = [];
-			let nextPublished = new Set<string>();
 			if (browserState.view === 'mine') {
 				await migrateMyPhotoLibrary().catch(() => undefined);
 				await cleanupMyPhotoOrphans().catch(() => undefined);
 				if (current !== ticket) return;
-				nextLibrary = await listMyPhotos();
-				nextCars = await loadCars();
-				nextPublished = await publishedShareIds(nextLibrary);
+				library = await listMyPhotos();
+				cars = await loadCars();
+				publishedIds = await publishedShareIds(library);
+				publicPhotos = [];
 			} else if (fixture) {
-				const sample = (await import('$lib/photos/carPageFixture')).sampleGalleryPhoto();
-				const named = browserState.view === 'player' ? browserState.playerName : '';
-				nextPublic = browserState.view === 'player' && (!named || sample.displayName !== named) ? [] : [sample];
-				rememberNames([sample]);
-				nextPublished = new Set(nextPublic.map((photo) => photo.photoId));
-			} else if (browserState.view === 'player') {
-				const [matched, recent] = await Promise.all([
-					browserState.playerName ? listGalleryPhotosByPlayer(browserState.playerName) : Promise.resolve([]),
-					listGalleryPhotos()
-				]);
+				if (!fixtureDeck) fixtureDeck = (await import('$lib/photos/carPageFixture')).sampleGalleryDeck();
 				if (current !== ticket) return;
-				nextPublic = matched;
-				rememberNames(recent);
-				rememberNames(matched);
-				const ownedPhotos = await ownedLibrary();
-				nextLibrary = ownedPhotos.photos;
-				nextCars = ownedPhotos.saved;
-				nextPublished = new Set(nextPublic.map((photo) => photo.photoId));
+				applyFixture(browserState, 0, false);
 			} else {
-				nextPublic = await listGalleryPhotos();
+				const pageResult = await listGalleryPhotosPage(galleryRequest(browserState));
 				if (current !== ticket) return;
-				rememberNames(nextPublic);
-				const ownedPhotos = await ownedLibrary();
-				nextLibrary = ownedPhotos.photos;
-				nextCars = ownedPhotos.saved;
-				nextPublished = new Set(nextPublic.map((photo) => photo.photoId));
+				publicPhotos = pageResult.photos;
+				pageCursor = pageResult.cursor;
+				hasMore = pageResult.hasMore;
+				rememberNames(pageResult.photos);
 			}
 			if (current !== ticket) return;
-			publicPhotos = nextPublic;
-			library = nextLibrary;
-			cars = nextCars;
-			publishedIds = nextPublished;
 			if (open && !publicPhotos.some((photo) => photo.photoId === open?.photoId)) open = null;
 			status = 'ready';
 		} catch (error) {
@@ -216,24 +252,34 @@
 		}
 	}
 
-	async function ownedLibrary(): Promise<{ photos: VehiclePhoto[]; saved: SavedCar[] }> {
-		if (!$user) return { photos: [], saved: [] };
+	async function loadMore() {
+		if (!hasMore || paging || showingMine) return;
+		const current = ticket;
+		const browserState = parsePhotoBrowser($page.url.searchParams);
+		paging = true;
 		try {
-			const photos = await listMyPhotos();
-			const saved = photos.length > 0 ? await loadCars() : [];
-			return { photos, saved };
-		} catch {
-			return { photos: [], saved: [] };
+			if (dev && $page.url.searchParams.get('fixture') === '1') {
+				applyFixture(browserState, fixturePage, true);
+			} else {
+				const pageResult = await listGalleryPhotosPage(galleryRequest(browserState), pageCursor);
+				if (current !== ticket) return;
+				const seen = new Set(publicPhotos.map((photo) => photo.photoId));
+				publicPhotos = [...publicPhotos, ...pageResult.photos.filter((photo) => !seen.has(photo.photoId))];
+				pageCursor = pageResult.cursor;
+				hasMore = pageResult.hasMore;
+				rememberNames(pageResult.photos);
+			}
+		} catch (error) {
+			if (current !== ticket) return;
+			notify(error instanceof Error ? error.message : 'More photos could not be loaded.', true);
+		} finally {
+			if (current === ticket) paging = false;
 		}
 	}
 
 	function carHref(photoId: string): string {
 		const preview = dev && $page.url.searchParams.get('fixture') === '1' ? '?fixture=1' : '';
 		return `/car/${photoId}${preview}`;
-	}
-
-	function publicCarName(photo: GalleryPhoto): string {
-		return carLabel({ vehicleType: photo.vehicleType, vehicleStats: photo.vehicleStats });
 	}
 
 	async function report(photo: GalleryPhoto) {
@@ -286,32 +332,37 @@
 		}
 	}
 
-	function owned(photoId: string): VehiclePhoto | undefined {
-		return library.find((photo) => photo.photoId === photoId);
+	function libraryMatches(photo: VehiclePhoto): boolean {
+		const types = attachmentVehicleTypes(photo.attachments, cars);
+		if (!matchesVehicleType(types, state.vehicleType)) return false;
+		if (!state.search.trim()) return true;
+		const token = gallerySearchToken(state.search);
+		if (!token) return false;
+		const keywords = galleryKeywords({
+			caption: photo.caption,
+			carName: ownCarName(photo.attachments, cars),
+			vehicleType: types.join(' '),
+			displayName: ''
+		});
+		return keywords.includes(token);
 	}
 
 	$: libraryRows = sortPhotos(
-		library.filter((photo) => matchesVehicleType(attachmentVehicleTypes(photo.attachments, cars), state.vehicleType)),
-		state.sort,
+		library.filter((photo) => libraryMatches(photo)),
+		shownSort(state.sort, true),
 		(photo) => ({
 			createdAt: photo.createdAt,
 			carName: ownCarName(photo.attachments, cars),
 			usedCount: photo.attachments.length
 		})
 	);
-	$: publicRows = sortPhotos(
-		publicPhotos.filter((photo) => matchesVehicleType([photo.vehicleType], state.vehicleType)),
-		state.sort,
-		(photo) => ({ createdAt: photo.createdAt, carName: publicCarName(photo), usedCount: 0 })
-	);
 	$: typeOptions = typeChoices(
-		state.view === 'mine'
-			? library.flatMap((photo) => attachmentVehicleTypes(photo.attachments, cars))
-			: publicPhotos.map((photo) => photo.vehicleType),
+		showingMine
+			? [...galleryVehicleTypes(), ...library.flatMap((photo) => attachmentVehicleTypes(photo.attachments, cars))]
+			: galleryVehicleTypes(),
 		state.vehicleType
 	);
-	$: showingMine = state.view === 'mine';
-	$: visibleCount = showingMine ? libraryRows.length : publicRows.length;
+	$: visibleCount = showingMine ? libraryRows.length : publicPhotos.length;
 	$: sourceCount = showingMine ? library.length : publicPhotos.length;
 </script>
 
@@ -320,10 +371,15 @@
 	<meta name="description" content="Photos of painted Gaslands cars. Your photos, or the ones players published to the Gallery." />
 </svelte:head>
 
-<section class="mx-auto max-w-6xl px-2 py-8 text-stone-800 dark:text-gray-100" data-testid="gallery-page">
+<svelte:window on:keydown={closeOnEscape} />
+
+<section class="mx-auto max-w-[90rem] px-3 py-8 text-stone-800 dark:text-gray-100" data-testid="gallery-page">
 	<h1 class="mb-2 text-3xl font-bold">Photos</h1>
-	<p class="mb-6 max-w-2xl text-stone-600 dark:text-gray-300">
-		Painted cars. My photos lists the pictures on your account. Anyone else only sees photos a player published to the Gallery, with their Gaslands display name.
+	<p class="mb-2 max-w-2xl text-stone-600 dark:text-gray-300">
+		Painted cars from the wastes. My photos is your own stack. Anyone else only sees a car a player published to the Gallery.
+	</p>
+	<p class="mb-6 max-w-2xl text-xs text-stone-500 dark:text-gray-400">
+		Search matches one word. Cars shared before that word list existed still appear here, and join search or a cans sort the next time they are saved.
 	</p>
 
 	<div class="mb-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
@@ -393,7 +449,7 @@
 			<select
 				class="{fieldClass} ml-2"
 				data-testid="gallery-sort"
-				value={state.sort}
+				value={sortShown}
 				on:change={(event) => {
 					const sort = event.currentTarget instanceof HTMLSelectElement ? (event.currentTarget.value as PhotoSort) : 'newest';
 					setState({ sort });
@@ -401,9 +457,35 @@
 			>
 				<option value="newest">Newest</option>
 				<option value="oldest">Oldest</option>
-				<option value="car">Car name</option>
-				<option value="used">Most used</option>
+				{#if showingMine}
+					<option value="used">Most used</option>
+				{:else}
+					<option value="cans-high">Cans, high</option>
+					<option value="cans-low">Cans, low</option>
+				{/if}
 			</select>
+		</label>
+		<label class="text-sm">
+			Search
+			<input
+				class="{fieldClass} ml-2"
+				data-testid="gallery-search"
+				placeholder="One word"
+				aria-label="Search photos"
+				value={searchDraft}
+				on:input={(event) => {
+					searchDraft = event.currentTarget instanceof HTMLInputElement ? event.currentTarget.value : '';
+				}}
+				on:change={(event) => {
+					if (event.currentTarget instanceof HTMLInputElement) commitSearch(event.currentTarget.value);
+				}}
+				on:keydown={(event) => {
+					if (event.key === 'Enter' && event.currentTarget instanceof HTMLInputElement) {
+						event.preventDefault();
+						commitSearch(event.currentTarget.value);
+					}
+				}}
+			/>
 		</label>
 	</div>
 
@@ -441,109 +523,77 @@
 				<p data-testid="photo-library-empty">No photos yet.</p>
 			{:else if state.view === 'player' && !state.playerName}
 				<p>Choose a Gaslands display name.</p>
+			{:else if state.search.trim()}
+				<p>No photos match that search.</p>
+			{:else if state.vehicleType !== 'All'}
+				<p>No photos of that vehicle type.</p>
 			{:else if state.view === 'player'}
 				<p>No shared photos for that player.</p>
 			{:else}
 				<p data-testid="gallery-empty">No shared photos yet.</p>
 			{/if}
 		{:else if visibleCount === 0}
-			<p>No photos of that vehicle type.</p>
-		{:else}
-			<ul class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3" data-testid={showingMine ? 'photo-library' : 'gallery-grid'}>
-				{#if showingMine}
-					{#each libraryRows as photo (photo.photoId)}
-						<li>
-							<LibraryPhotoEditor
-								{photo}
-								{cars}
-								{busy}
-								{setBusy}
-								{notify}
-								reload={() => load(true)}
-								showShare={publishedIds.has(photo.photoId)}
-								shareCarName={ownCarName(photo.attachments, cars)}
-								carPageHref={publishedIds.has(photo.photoId) ? carHref(photo.photoId) : ''}
-							/>
-						</li>
-					{/each}
-				{:else}
-					{#each publicRows as photo (photo.photoId)}
-						{@const mine = owned(photo.photoId)}
-						<li class="rounded-lg border border-stone-200 bg-white p-2 dark:border-gray-700 dark:bg-gray-900">
-							{#if mine}
-								<LibraryPhotoEditor
-									photo={mine}
-									{cars}
-									{busy}
-									{setBusy}
-									{notify}
-									reload={() => load(true)}
-									showShare={true}
-									shareCarName={publicCarName(photo)}
-									carPageHref={carHref(photo.photoId)}
-								/>
-							{:else}
-								<button type="button" class="w-full text-left" data-testid="gallery-card" on:click={() => (open = photo)}>
-									<img src={photo.url} alt={photo.caption || `${photo.displayName} ${photo.vehicleType}`} class="h-40 w-full rounded-lg bg-stone-100 object-cover" />
-									<p class="mt-2 truncate text-sm font-medium">{photo.displayName}</p>
-									<p class="truncate text-xs text-stone-600 dark:text-gray-300">{photo.vehicleType}</p>
-									{#if photo.caption}
-										<p class="truncate text-xs text-stone-700 dark:text-gray-200">{photo.caption}</p>
-									{/if}
-									{#if photo.vehicleStats}
-										<dl class="mt-1 space-y-0.5 text-xs text-stone-700 dark:text-gray-200" data-testid="gallery-stats">
-											{#each statRows(photo.vehicleStats) as row}
-												<div class="flex gap-1">
-													<dt class="font-medium">{row.label}</dt>
-													<dd class="min-w-0 truncate">{row.value}</dd>
-												</div>
-											{/each}
-										</dl>
-									{/if}
-								</button>
-								<div class="mt-2">
-									<ShareCar shareId={photo.photoId} carName={publicCarName(photo)} compact />
-									<a class="mt-1 inline-block text-xs font-medium text-amber-800 underline dark:text-amber-300" href={carHref(photo.photoId)} data-testid="car-page-link">Car page</a>
-								</div>
-							{/if}
-						</li>
-					{/each}
-				{/if}
+			<p>{state.search.trim() ? 'No photos match that search.' : 'No photos of that vehicle type.'}</p>
+		{:else if showingMine}
+			<ul class="grid grid-cols-1 items-start gap-4 sm:grid-cols-2 lg:grid-cols-3" data-testid="photo-library">
+				{#each libraryRows as photo (photo.photoId)}
+					<li>
+						<LibraryPhotoEditor
+							{photo}
+							{cars}
+							{busy}
+							{setBusy}
+							{notify}
+							reload={() => load(true)}
+							showShare={publishedIds.has(photo.photoId)}
+							shareCarName={ownCarName(photo.attachments, cars)}
+							carPageHref={publishedIds.has(photo.photoId) ? carHref(photo.photoId) : ''}
+						/>
+					</li>
+				{/each}
 			</ul>
+		{:else}
+			<ul class="grid grid-cols-1 items-start gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5" data-testid="gallery-grid">
+				{#each publicPhotos as photo (photo.photoId)}
+					<li>
+						<button
+							type="button"
+							class="group block h-full w-full rounded-xl text-left transition duration-200 hover:-translate-y-1 hover:shadow-xl hover:shadow-orange-950/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-500"
+							data-testid="gallery-card"
+							aria-label="Open {galleryCarName(photo)} by {photo.displayName}"
+							on:click={() => (open = photo)}
+						>
+							<GalleryCardFace {photo} />
+						</button>
+					</li>
+				{/each}
+			</ul>
+			{#if hasMore}
+				<div class="mt-6 flex justify-center">
+					<button type="button" class="rounded-md px-4 py-2 text-sm amber-button" data-testid="gallery-load-more" disabled={paging} on:click={() => void loadMore()}>
+						{paging ? 'Loading…' : 'Load more'}
+					</button>
+				</div>
+			{/if}
 		{/if}
 	{/if}
 </section>
 
 {#if open}
-	<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" role="dialog" aria-modal="true" aria-label="Shared photo" data-testid="gallery-lightbox">
-		<div class="max-h-full w-full max-w-3xl overflow-auto rounded-xl bg-white p-4 text-stone-800 dark:bg-gray-900 dark:text-gray-100">
-			<img src={open.url} alt={open.caption || `${open.displayName} ${open.vehicleType}`} class="max-h-[70vh] w-full rounded-lg object-contain bg-stone-100" />
-			<p class="mt-3 text-lg font-semibold">{open.displayName}</p>
-			<p>{open.vehicleType}{#if open.teamName} · {open.teamName}{/if}</p>
-			{#if open.caption}
-				<p class="mt-1">{open.caption}</p>
-			{/if}
-			{#if open.vehicleStats}
-				<dl class="mt-3 grid grid-cols-1 gap-1 text-sm sm:grid-cols-2" data-testid="gallery-stats">
-					{#each statRows(open.vehicleStats) as row}
-						<div>
-							<dt class="text-xs font-medium text-stone-500 dark:text-gray-400">{row.label}</dt>
-							<dd>{row.value}</dd>
-						</div>
-					{/each}
-				</dl>
-			{/if}
-			<div class="mt-4">
-				<ShareCar shareId={open.photoId} carName={publicCarName(open)} />
-			</div>
-			<div class="mt-4 flex flex-wrap gap-2">
-				<a class="rounded-md border border-stone-300 px-3 py-2 text-sm dark:border-gray-600" href={carHref(open.photoId)} data-testid="car-page-link">Car page</a>
-				<button type="button" class="rounded-md px-3 py-2 text-sm amber-button" data-testid="report-photo" disabled={busy} on:click={() => open && report(open)}>
-					{$user ? 'Report photo' : 'Sign in to report'}
-				</button>
-				<button type="button" class="rounded-md border border-stone-300 px-3 py-2 text-sm dark:border-gray-600" on:click={() => (open = null)}>
-					Close
-				</button>
+	<div class="fixed inset-0 z-50 flex items-end justify-center bg-stone-950/80 p-3 sm:items-center" role="dialog" aria-modal="true" aria-label="Shared photo" data-testid="gallery-lightbox">
+		<div class="max-h-full w-full max-w-xl overflow-auto">
+			<GalleryCardFace photo={open} layout="detail" />
+			<div class="mt-3 rounded-xl border border-stone-300 bg-white p-4 text-stone-800 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100">
+				<ShareCar shareId={open.photoId} carName={galleryCarName(open)} />
+				<div class="mt-4 flex flex-wrap gap-2">
+					<a class="rounded-md border border-stone-300 px-3 py-2 text-sm dark:border-gray-600" href={carHref(open.photoId)} data-testid="car-page-link">Car page</a>
+					<button type="button" class="rounded-md px-3 py-2 text-sm amber-button" data-testid="report-photo" disabled={busy} on:click={() => open && report(open)}>
+						{$user ? 'Report photo' : 'Sign in to report'}
+					</button>
+					<button type="button" class="rounded-md border border-stone-300 px-3 py-2 text-sm dark:border-gray-600" on:click={() => (open = null)}>
+						Close
+					</button>
+				</div>
 			</div>
 		</div>
 	</div>

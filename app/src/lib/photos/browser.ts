@@ -6,13 +6,14 @@
 import { publicDisplayName } from '../buddies/model';
 
 export type PhotoView = 'all' | 'mine' | 'player';
-export type PhotoSort = 'newest' | 'oldest' | 'car' | 'used';
+export type PhotoSort = 'newest' | 'oldest' | 'cans-high' | 'cans-low' | 'used';
 
 export interface PhotoBrowserState {
 	view: PhotoView;
 	playerName: string;
 	vehicleType: string;
 	sort: PhotoSort;
+	search: string;
 }
 
 export interface SortablePhoto {
@@ -29,7 +30,7 @@ export interface SavedCar {
 	carName: string;
 }
 
-const SORTS: PhotoSort[] = ['newest', 'oldest', 'car', 'used'];
+const SORTS: PhotoSort[] = ['newest', 'oldest', 'cans-high', 'cans-low', 'used'];
 
 export function parsePhotoBrowser(params: URLSearchParams): PhotoBrowserState {
 	const viewRaw = params.get('view');
@@ -37,11 +38,13 @@ export function parsePhotoBrowser(params: URLSearchParams): PhotoBrowserState {
 	const sortRaw = params.get('sort');
 	const sort: PhotoSort = SORTS.includes(sortRaw as PhotoSort) ? (sortRaw as PhotoSort) : 'newest';
 	const type = (params.get('type') ?? 'All').trim().replace(/\s+/g, ' ');
+	const search = (params.get('q') ?? '').trim().replace(/\s+/g, ' ').slice(0, 40);
 	return {
 		view,
 		playerName: view === 'player' ? (publicDisplayName(params.get('name')) ?? '') : '',
 		vehicleType: type.length > 0 ? type.slice(0, 80) : 'All',
-		sort
+		sort,
+		search
 	};
 }
 
@@ -53,6 +56,7 @@ export function photoBrowserSearch(state: PhotoBrowserState, current?: URLSearch
 	if (state.view === 'player' && state.playerName) params.set('name', state.playerName);
 	if (state.vehicleType && state.vehicleType !== 'All') params.set('type', state.vehicleType);
 	if (state.sort !== 'newest') params.set('sort', state.sort);
+	if (state.search) params.set('q', state.search);
 	const query = params.toString();
 	return query ? `?${query}` : '';
 }
@@ -61,7 +65,6 @@ export function comparePhotos(sort: PhotoSort, a: SortablePhoto, b: SortablePhot
 	const byTime = b.createdAt.localeCompare(a.createdAt);
 	const byName = a.carName.localeCompare(b.carName, undefined, { sensitivity: 'base' });
 	if (sort === 'oldest') return -byTime || byName;
-	if (sort === 'car') return byName || byTime;
 	if (sort === 'used') return b.usedCount - a.usedCount || byTime || byName;
 	return byTime || byName;
 }

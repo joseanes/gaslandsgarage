@@ -19,7 +19,10 @@ export const STATS_SHARE_COPY =
 export const REPORT_HIDE_THRESHOLD = 3;
 export const REPORTS_PER_HOUR = 10;
 export const REPORT_WINDOW_MS = 60 * 60 * 1000;
-export const GALLERY_PAGE_LIMIT = 60;
+/** Public Gallery page size. The next page uses a cursor, not a bigger limit. */
+export const GALLERY_PAGE_SIZE = 24;
+const KEYWORD_LIMIT = 24;
+const KEYWORD_STOP = new Set(['an', 'and', 'for', 'in', 'my', 'of', 'on', 'or', 'the', 'to', 'with']);
 
 export interface ShareFlags {
 	showToBuddies: boolean;
@@ -76,6 +79,9 @@ export interface PublicSharedPhoto {
 	hidden: boolean;
 	published: boolean;
 	showInGallery: boolean;
+	keywords: string[];
+	/** Present when this car shares its stats, so cans can be ordered without reading the snapshot. */
+	cans?: number;
 	vehicleStats?: VehicleStatsSnapshot;
 }
 
@@ -233,6 +239,65 @@ function assertNoIdentity(value: unknown): void {
 	}
 }
 
+function searchableText(value: unknown): string {
+	if (typeof value !== 'string') return '';
+	return value
+		.replace(/[^\s@]+@[^\s@]+/g, ' ')
+		.replace(/[\u0000-\u001f]/g, ' ')
+		.trim();
+}
+
+/** Lowercased words for one `array-contains` search. Addresses are removed before splitting. */
+export function galleryKeywords(input: {
+	caption?: unknown;
+	carName?: unknown;
+	vehicleType?: unknown;
+	weapons?: unknown;
+	displayName?: unknown;
+}): string[] {
+	const weapons = Array.isArray(input.weapons) ? input.weapons.map((item) => searchableText(item)).join(' ') : '';
+	const sources = [input.carName, input.caption, input.vehicleType, weapons, input.displayName];
+	const keywords: string[] = [];
+	const seen = new Set<string>();
+	for (const source of sources) {
+		const text = searchableText(source).toLowerCase();
+		for (const token of text.split(/[^\p{L}\p{N}]+/u)) {
+			if (token.length < 2 || token.length > 24 || KEYWORD_STOP.has(token) || seen.has(token)) continue;
+			seen.add(token);
+			keywords.push(token);
+			if (keywords.length >= KEYWORD_LIMIT) return keywords;
+		}
+	}
+	return keywords;
+}
+
+/** One search word. Several words use the longest, because a query can contain only one array. */
+export function gallerySearchToken(raw: unknown): string {
+	const keywords = galleryKeywords({ caption: raw });
+	return keywords.slice().sort((a, b) => b.length - a.length || a.localeCompare(b))[0] ?? '';
+}
+
+/**
+ * Fields written with the public card. `cans` is omitted when stats are not
+ * shared, so a cans sort does not treat a photo-only card as costing zero.
+ */
+export function sharedPhotoSearchPatch(input: {
+	caption?: unknown;
+	displayName?: unknown;
+	vehicleType?: unknown;
+	vehicleStats?: VehicleStatsSnapshot | null;
+}): { keywords: string[]; cans?: number } {
+	const stats = input.vehicleStats ?? null;
+	const keywords = galleryKeywords({
+		caption: input.caption,
+		carName: stats?.name ?? '',
+		vehicleType: input.vehicleType,
+		weapons: stats?.weapons ?? [],
+		displayName: input.displayName
+	});
+	return stats ? { keywords, cans: stats.cans } : { keywords };
+}
+
 /** Public gallery document. The account id is not a field. Stats are omitted unless sharing them is on. */
 export function publicSharedPhoto(input: {
 	photoId: string;
@@ -247,19 +312,30 @@ export function publicSharedPhoto(input: {
 	vehicleStats?: unknown;
 }): PublicSharedPhoto {
 	if (!PHOTO_ID_PATTERN.test(input.photoId)) throw new Error('That photo could not be shared.');
+	const caption = cleanCaption(input.caption);
+	const stats = sanitizeVehicleStats(input.vehicleStats);
+	const search = sharedPhotoSearchPatch({
+		caption,
+		displayName: input.displayName,
+		vehicleType: input.vehicleType,
+		vehicleStats: stats
+	});
 	const photo: PublicSharedPhoto = {
 		photoId: input.photoId,
 		displayName: input.displayName,
 		vehicleType: input.vehicleType,
 		teamName: cleanTeamName(input.teamName),
-		caption: cleanCaption(input.caption),
+		caption,
 		createdAt: input.createdAt,
 		hidden: input.hidden === true,
 		published: input.published === true,
-		showInGallery: input.showInGallery === true
+		showInGallery: input.showInGallery === true,
+		keywords: search.keywords
 	};
-	const stats = sanitizeVehicleStats(input.vehicleStats);
-	if (stats) photo.vehicleStats = stats;
+	if (stats && search.cans !== undefined) {
+		photo.vehicleStats = stats;
+		photo.cans = search.cans;
+	}
 	assertNoIdentity(photo);
 	return photo;
 }

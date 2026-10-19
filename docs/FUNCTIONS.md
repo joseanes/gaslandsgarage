@@ -151,15 +151,9 @@ What the function does:
 
 No Firestore rules change and no new index for a car page. A car page is one document read by id. The browser page uses the existing `sharedPhotos` read rule, which already requires a published, visible gallery photo. Storage rules already allow the image only in that same case.
 
-The Photos page (Gallery under Players and Events, and My Photos in Settings, which opens that page with your photos selected) can also list one player's public photos. That query is `showInGallery == true`, `hidden == false`, `published == true`, `displayName ==` the Gaslands display name, `orderBy createdAt desc`. It needs a second composite index on collection `sharedPhotos`:
+The Photos page (Gallery under Players and Events, and My Photos in Settings, which opens that page with your photos selected) lists the public Gallery 24 photos at a time. Each page is `showInGallery == true`, `hidden == false`, `published == true`, then any of vehicle type, display name, and one `keywords` `array-contains`, ordered by `createdAt` or `cans`. The cursor is `startAfter` the last snapshot. `keywords` is a list of lowercase words from the caption, car name, vehicle type, weapons, and display name, written when the photo is published or when its caption or shared stats are saved. There is no backfill job. A photo shared before that field existed still appears in the newest and oldest lists. It is missing from search and from a cans sort until the next save. Likes are not stored, so there is no most-liked sort. My photos stays the account library (100 photos) and is not this query.
 
-- `showInGallery` ASC
-- `hidden` ASC
-- `published` ASC
-- `displayName` ASC
-- `createdAt` DESC
-
-The older `sharedPhotos` index, without `displayName`, stays. It serves the full Gallery list. Vehicle type and the other sorts run in the browser. This filter does not add a Cloud Function or a rules change. Deploy the index before the site that contains the player filter is published:
+`firestore.indexes.json` has every composite index those combinations need on collection `sharedPhotos` (32 indexes: the filters above, each with `createdAt` and `cans` ascending and descending). Deploy them before the site that pages the Gallery is published:
 
 ```bash
 firebase deploy --only firestore:indexes --project=gaslandsgarage-74ce6

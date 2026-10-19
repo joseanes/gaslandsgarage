@@ -22,6 +22,7 @@ import {
 	photoReportId,
 	publicSharedPhoto,
 	sanitizeVehicleStats,
+	sharedPhotoSearchPatch,
 	shareFlags,
 	sharedPhotoObjectPath,
 	vehicleTypeLabel
@@ -501,18 +502,37 @@ export async function refreshSharedVehicleStatsForTeam(teamId: string, team: Rec
 		const publicRef = db.doc(`sharedPhotos/${item.id}`);
 		const published = await publicRef.get();
 		if (!published.exists) continue;
+		const publishedData = published.data() ?? {};
 		const vehicle = team ? vehicleOnTeam(team, String(item.get('vehicleId') ?? '')) : null;
 		if (!vehicle) {
-			await publicRef.update({ vehicleStats: FieldValue.delete() });
+			const patch = sharedPhotoSearchPatch({
+				caption: publishedData.caption,
+				displayName: publishedData.displayName,
+				vehicleType: publishedData.vehicleType,
+				vehicleStats: null
+			});
+			await publicRef.update({ vehicleStats: FieldValue.delete(), cans: FieldValue.delete(), keywords: patch.keywords });
 			continue;
 		}
 		const vehicleType = vehicleTypeLabel(vehicle.type);
 		const vehicleStats = sanitizeVehicleStats(vehicleStatsSnapshot(vehicle, rulesVersion));
 		if (!vehicleStats) {
-			await publicRef.update({ vehicleStats: FieldValue.delete() });
+			const patch = sharedPhotoSearchPatch({
+				caption: publishedData.caption,
+				displayName: publishedData.displayName,
+				vehicleType,
+				vehicleStats: null
+			});
+			await publicRef.update({ vehicleStats: FieldValue.delete(), cans: FieldValue.delete(), keywords: patch.keywords });
 			continue;
 		}
-		await publicRef.set({ vehicleType, vehicleStats }, { merge: true });
+		const patch = sharedPhotoSearchPatch({
+			caption: publishedData.caption,
+			displayName: publishedData.displayName,
+			vehicleType,
+			vehicleStats
+		});
+		await publicRef.set({ vehicleType, vehicleStats, keywords: patch.keywords, cans: patch.cans }, { merge: true });
 		await item.ref.set({ vehicleType }, { merge: true });
 	}
 }

@@ -5,7 +5,8 @@ import { PRIVACY_FUNCTIONS_REGION } from '../privacy/accountShared';
 import { storageBucketName } from '../photos/model';
 import { PHOTO_ID_PATTERN } from '../photos/model';
 import { publicCarFromDocument, type PublicCar } from '../photos/carPage';
-import { GALLERY_PAGE_LIMIT, sanitizeVehicleStats, sharedPhotoMediaUrl, type ShareFlags, type VehicleStatsSnapshot } from '../photos/share';
+import { galleryQueryPlan, type GalleryListRequest } from '../photos/galleryQuery';
+import { GALLERY_PAGE_SIZE, sanitizeVehicleStats, sharedPhotoMediaUrl, type ShareFlags, type VehicleStatsSnapshot } from '../photos/share';
 
 export interface SharedVehiclePhoto {
 	photoId: string;
@@ -165,36 +166,44 @@ function galleryPhotoFromDoc(id: string, data: Record<string, unknown>): Gallery
 	};
 }
 
-async function galleryQuery(extraName?: string): Promise<GalleryPhoto[]> {
+export interface GalleryPhotoPage {
+	photos: GalleryPhoto[];
+	cursor: unknown;
+	hasMore: boolean;
+}
+
+/**
+ * One server page of published, visible Gallery photos.
+ * `cursor` is the last Firestore snapshot from the previous page.
+ * An unsafe player name or search word matches nothing and does not query.
+ */
+export async function listGalleryPhotosPage(request: GalleryListRequest, cursor?: unknown): Promise<GalleryPhotoPage> {
+	const plan = galleryQueryPlan(request);
+	if (!plan) return { photos: [], cursor: null, hasMore: false };
 	await appInstance();
 	if (!db) throw new Error('The gallery is not available right now.');
-	const { collection, getDocs, limit, orderBy, query, where } = await import('firebase/firestore');
-	const filters = [
-		where('showInGallery', '==', true),
-		where('hidden', '==', false),
-		where('published', '==', true)
-	];
-	if (extraName) filters.push(where('displayName', '==', extraName));
+	const { collection, getDocs, limit, orderBy, query, startAfter, where } = await import('firebase/firestore');
+	const clauses = plan.map((clause) => {
+		if (clause.kind === 'eq') return where(clause.field, '==', clause.value);
+		if (clause.kind === 'contains') return where(clause.field, 'array-contains', clause.value);
+		return orderBy(clause.field, clause.direction);
+	});
 	const snap = await getDocs(
-		query(collection(db, 'sharedPhotos'), ...filters, orderBy('createdAt', 'desc'), limit(GALLERY_PAGE_LIMIT))
+		query(
+			collection(db, 'sharedPhotos'),
+			...clauses,
+			...(cursor ? [startAfter(cursor)] : []),
+			limit(GALLERY_PAGE_SIZE + 1)
+		)
 	);
+	const page = snap.docs.slice(0, GALLERY_PAGE_SIZE);
 	const photos: GalleryPhoto[] = [];
-	for (const item of snap.docs) {
+	for (const item of page) {
 		const photo = galleryPhotoFromDoc(item.id, item.data() as Record<string, unknown>);
 		if (photo) photos.push(photo);
 	}
-	return photos;
-}
-
-export async function listGalleryPhotos(): Promise<GalleryPhoto[]> {
-	return galleryQuery();
-}
-
-/** Published Gallery photos for one Gaslands display name. An unsafe name matches nothing. */
-export async function listGalleryPhotosByPlayer(name: string): Promise<GalleryPhoto[]> {
-	const displayName = publicDisplayName(name);
-	if (!displayName) return [];
-	return galleryQuery(displayName);
+	const last = page[page.length - 1] ?? null;
+	return { photos, cursor: last, hasMore: snap.docs.length > GALLERY_PAGE_SIZE };
 }
 
 export async function loadModeration(): Promise<{ requireApproval: boolean; photos: ModerationPhoto[] }> {

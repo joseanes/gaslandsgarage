@@ -13,7 +13,9 @@ import {
 	SHARE_LINK_LABEL,
 	SHARE_STATS_LABEL,
 	STATS_SHARE_COPY,
+	galleryKeywords,
 	galleryPublished,
+	gallerySearchToken,
 	nextReportWindow,
 	publicSharedPhoto,
 	sanitizeVehicleStats,
@@ -65,7 +67,11 @@ describe('photo sharing', () => {
 		expect(Object.keys(photo)).not.toContain('ownerUid');
 		expect(Object.keys(photo)).not.toContain('userId');
 		expect(photo.vehicleStats).toBeUndefined();
+		expect(photo.cans).toBeUndefined();
+		expect(photo.keywords).toEqual(['red', 'car', 'track', 'name']);
 		expect(JSON.stringify(photo)).not.toContain('@');
+		expect(galleryKeywords({ caption: 'ada@gmail.com', displayName: 'Casey' })).toEqual(['casey']);
+		expect(gallerySearchToken('rust rocket')).toBe('rocket');
 		const withStats = publicSharedPhoto({
 			photoId: 'photoshare1',
 			displayName: 'Track Name',
@@ -95,6 +101,37 @@ describe('photo sharing', () => {
 			}
 		});
 		expect(withStats.vehicleStats).toBeUndefined();
+		expect(withStats.cans).toBeUndefined();
+		const listed = publicSharedPhoto({
+			photoId: 'photoshare1',
+			displayName: 'Casey',
+			vehicleType: 'Performance Car',
+			teamName: 'Racers',
+			caption: 'Red',
+			createdAt: '2026-10-19T00:00:00.000Z',
+			hidden: false,
+			published: true,
+			showInGallery: true,
+			vehicleStats: {
+				type: 'Performance Car',
+				name: 'Rust Rocket',
+				hull: 8,
+				handling: 3,
+				crew: 1,
+				gear: 5,
+				cans: 12,
+				weapons: ['Machine Gun'],
+				upgrades: [],
+				perks: [],
+				slots: '1/2',
+				weight: 'Light',
+				armour: '',
+				driver: ''
+			}
+		});
+		expect(listed.cans).toBe(12);
+		expect(listed.keywords).toContain('rocket');
+		expect(listed.keywords).toContain('machine');
 		expect(sanitizeVehicleStats({ type: 'Car', hull: 8, handling: 3, crew: 1, gear: 5, cans: 12, weapons: [], upgrades: [], perks: [], slots: '0/2', weight: '', armour: '', driver: '' })?.hull).toBe(8);
 	});
 
@@ -158,7 +195,11 @@ describe('photo sharing', () => {
 		expect(page).toContain('STATS_SHARE_COPY');
 		expect(page).toContain('SHARE_STATS_LABEL');
 		const gallery = readFileSync(resolve(process.cwd(), 'src/routes/gallery/+page.svelte'), 'utf8');
-		expect(gallery).toContain('data-testid="gallery-stats"');
+		const face = readFileSync(resolve(process.cwd(), 'src/lib/components/GalleryCardFace.svelte'), 'utf8');
+		expect(face).toContain('data-testid="gallery-stats"');
+		expect(gallery).toContain('data-testid="gallery-load-more"');
+		expect(gallery).toContain('data-testid="gallery-search"');
+		expect(gallery).toContain('GalleryCardFace');
 		expect(gallery).toContain('data-testid="report-photo"');
 		expect(gallery).toContain('data-testid="photo-usage"');
 		expect(gallery).toContain('data-testid="car-page-link"');
