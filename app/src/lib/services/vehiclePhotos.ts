@@ -20,6 +20,7 @@ export interface VehiclePhoto extends VehiclePhotoRecord {
 	showToBuddies: boolean;
 	showOnShareLink: boolean;
 	showInGallery: boolean;
+	shareVehicleStats: boolean;
 }
 
 function plainError(error: unknown, fallback: string): Error {
@@ -61,6 +62,7 @@ function asPhoto(data: Record<string, unknown>, url: string): VehiclePhoto | nul
 		showToBuddies: data.showToBuddies === true,
 		showOnShareLink: data.showOnShareLink === true,
 		showInGallery: data.showInGallery === true,
+		shareVehicleStats: data.shareVehicleStats === true,
 		url
 	};
 }
@@ -170,7 +172,7 @@ export async function uploadVehiclePhoto(input: {
 	try {
 		await uploadBytes(stored.storageRef, compressed.blob, { contentType: compressed.contentType });
 		const url = await getDownloadURL(stored.storageRef);
-		return { ...reserved, showToBuddies: false, showOnShareLink: false, showInGallery: false, url };
+		return { ...reserved, showToBuddies: false, showOnShareLink: false, showInGallery: false, shareVehicleStats: false, url };
 	} catch (error) {
 		await deleteVehiclePhoto(reserved).catch(() => undefined);
 		throw plainError(error, 'That photo could not be uploaded.');

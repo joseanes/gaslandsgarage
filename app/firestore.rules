@@ -599,7 +599,7 @@ service cloud.firestore {
       let data = request.resource.data;
       return data.keys().hasOnly([
           'photoId', 'userId', 'teamId', 'vehicleId', 'path', 'width', 'height', 'createdAt', 'caption', 'contentType',
-          'showToBuddies', 'showOnShareLink', 'showInGallery'
+          'showToBuddies', 'showOnShareLink', 'showInGallery', 'shareVehicleStats'
         ])
         && data.keys().hasAll([
           'photoId', 'userId', 'teamId', 'vehicleId', 'path', 'width', 'height', 'createdAt', 'caption', 'contentType'
@@ -607,6 +607,7 @@ service cloud.firestore {
         && (!('showToBuddies' in data) || data.showToBuddies is bool)
         && (!('showOnShareLink' in data) || data.showOnShareLink is bool)
         && (!('showInGallery' in data) || data.showInGallery is bool)
+        && (!('shareVehicleStats' in data) || data.shareVehicleStats is bool)
         && data.photoId == photoId
         && data.photoId.matches('^[A-Za-z0-9_-]{8,40}$')
         && data.userId == userId
@@ -652,7 +653,8 @@ service cloud.firestore {
         && request.resource.data.contentType == resource.data.contentType
         && request.resource.data.get('showToBuddies', false) == resource.data.get('showToBuddies', false)
         && request.resource.data.get('showOnShareLink', false) == resource.data.get('showOnShareLink', false)
-        && request.resource.data.get('showInGallery', false) == resource.data.get('showInGallery', false);
+        && request.resource.data.get('showInGallery', false) == resource.data.get('showInGallery', false)
+        && request.resource.data.get('shareVehicleStats', false) == resource.data.get('shareVehicleStats', false);
       allow delete: if signedIn() && !isDisabled() && userId == request.auth.uid;
     }
 

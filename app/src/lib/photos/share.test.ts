@@ -8,9 +8,12 @@ import {
 	SHARE_BUDDIES_LABEL,
 	SHARE_GALLERY_LABEL,
 	SHARE_LINK_LABEL,
+	SHARE_STATS_LABEL,
+	STATS_SHARE_COPY,
 	galleryPublished,
 	nextReportWindow,
 	publicSharedPhoto,
+	sanitizeVehicleStats,
 	shareFlags,
 	sharedPhotoMediaUrl,
 	vehicleTypeLabel
@@ -18,11 +21,17 @@ import {
 
 describe('photo sharing', () => {
 	it('keeps every sharing choice off unless the player turns it on', () => {
-		expect(shareFlags(undefined)).toEqual({ showToBuddies: false, showOnShareLink: false, showInGallery: false });
+		expect(shareFlags(undefined)).toEqual({
+			showToBuddies: false,
+			showOnShareLink: false,
+			showInGallery: false,
+			shareVehicleStats: false
+		});
 		expect(shareFlags({ showInGallery: true })).toEqual({
 			showToBuddies: false,
 			showOnShareLink: false,
-			showInGallery: true
+			showInGallery: true,
+			shareVehicleStats: false
 		});
 		expect(REPORT_HIDE_THRESHOLD).toBe(3);
 	});
@@ -50,11 +59,42 @@ describe('photo sharing', () => {
 		});
 		expect(Object.keys(photo)).not.toContain('ownerUid');
 		expect(Object.keys(photo)).not.toContain('userId');
+		expect(photo.vehicleStats).toBeUndefined();
 		expect(JSON.stringify(photo)).not.toContain('@');
+		const withStats = publicSharedPhoto({
+			photoId: 'photoshare1',
+			displayName: 'Track Name',
+			vehicleType: 'Performance Car',
+			teamName: 'Racers',
+			caption: 'Red',
+			createdAt: '2026-10-19T00:00:00.000Z',
+			hidden: false,
+			published: true,
+			showInGallery: true,
+			vehicleStats: {
+				type: 'Performance Car',
+				name: 'ada@gmail.com',
+				hull: 10,
+				handling: 4,
+				crew: 1,
+				gear: 6,
+				cans: 21,
+				weapons: ['Machine Gun'],
+				upgrades: ['Armour Plating'],
+				perks: [],
+				slots: '2/2',
+				weight: 'Middleweight',
+				armour: '',
+				driver: '',
+				ownerUid: 'ada'
+			}
+		});
+		expect(withStats.vehicleStats).toBeUndefined();
+		expect(sanitizeVehicleStats({ type: 'Car', hull: 8, handling: 3, crew: 1, gear: 5, cans: 12, weapons: [], upgrades: [], perks: [], slots: '0/2', weight: '', armour: '', driver: '' })?.hull).toBe(8);
 	});
 
 	it('publishes gallery photos immediately unless an admin requires approval', () => {
-		const flags = { showToBuddies: false, showOnShareLink: true, showInGallery: true };
+		const flags = { showToBuddies: false, showOnShareLink: true, showInGallery: true, shareVehicleStats: false };
 		expect(galleryPublished(flags, false, { showInGallery: false, published: false })).toBe(true);
 		expect(galleryPublished(flags, true, { showInGallery: false, published: false })).toBe(false);
 		expect(galleryPublished(flags, true, { showInGallery: true, published: true })).toBe(true);
@@ -75,13 +115,22 @@ describe('photo sharing', () => {
 		const menu = readFileSync(resolve(process.cwd(), 'src/routes/+layout.svelte'), 'utf8');
 		expect(SHARE_BUDDIES_LABEL).toBe('Show to my Gaming Buddies');
 		expect(SHARE_LINK_LABEL).toBe('Show on my team share link');
-		expect(SHARE_GALLERY_LABEL).toBe('Show in the public Gallery');
+		expect(SHARE_GALLERY_LABEL).toBe('Show this car in the public Gallery?');
+		expect(SHARE_STATS_LABEL).toBe("Share this car's stats with the photo?");
 		expect(card).toContain('{SHARE_BUDDIES_LABEL}');
 		expect(card).toContain('{SHARE_LINK_LABEL}');
 		expect(card).toContain('{SHARE_GALLERY_LABEL}');
+		expect(card).toContain('{SHARE_STATS_LABEL}');
 		expect(card).toContain('{GALLERY_SHARE_COPY}');
+		expect(card).toContain('{STATS_SHARE_COPY}');
+		expect(card).toContain('data-testid="upload-share-gallery"');
+		expect(card).toContain('data-testid="upload-share-stats"');
 		expect(card).not.toContain('checked="checked"');
 		expect(page).toContain('GALLERY_SHARE_COPY');
+		expect(page).toContain('STATS_SHARE_COPY');
+		expect(page).toContain('SHARE_STATS_LABEL');
+		const gallery = readFileSync(resolve(process.cwd(), 'src/routes/gallery/+page.svelte'), 'utf8');
+		expect(gallery).toContain('data-testid="gallery-stats"');
 		expect(page).toContain('never use them for advertising');
 		expect(page).toContain('Unsubscribe from the link');
 		expect(admin).not.toContain('ownerUid');

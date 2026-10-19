@@ -2,7 +2,15 @@
 	import { onMount } from 'svelte';
 	import { user } from '$lib/firebase';
 	import { PHOTO_PRIVACY_SHORT } from '$lib/photos/model';
-	import { GALLERY_SHARE_COPY, SHARE_BUDDIES_LABEL, SHARE_GALLERY_LABEL, SHARE_LINK_LABEL, type ShareFlags } from '$lib/photos/share';
+	import {
+		GALLERY_SHARE_COPY,
+		SHARE_BUDDIES_LABEL,
+		SHARE_GALLERY_LABEL,
+		SHARE_LINK_LABEL,
+		SHARE_STATS_LABEL,
+		STATS_SHARE_COPY,
+		type ShareFlags
+	} from '$lib/photos/share';
 	import { setPhotoSharing } from '$lib/services/photoShare';
 	import { deleteVehiclePhoto, listMyPhotos, uploadVehiclePhoto, type VehiclePhoto } from '$lib/services/vehiclePhotos';
 
@@ -14,6 +22,8 @@
 
 	let photos: VehiclePhoto[] = [];
 	let caption = '';
+	let uploadGallery = false;
+	let uploadStats = false;
 	let loading = false;
 	let busy = false;
 	let error = '';
@@ -60,8 +70,21 @@
 		status = 'Preparing photo...';
 		try {
 			status = 'Uploading photo...';
-			await uploadVehiclePhoto({ teamId, vehicleId, file, caption });
+			const uploaded = await uploadVehiclePhoto({ teamId, vehicleId, file, caption });
+			const showInGallery = uploadGallery;
+			const shareVehicleStats = uploadStats;
 			caption = '';
+			uploadGallery = false;
+			uploadStats = false;
+			if (showInGallery || shareVehicleStats) {
+				status = 'Saving sharing...';
+				await setPhotoSharing(uploaded.photoId, {
+					showToBuddies: false,
+					showOnShareLink: false,
+					showInGallery,
+					shareVehicleStats
+				});
+			}
 			status = '';
 			await refresh();
 		} catch (caught) {
@@ -96,12 +119,15 @@
 				? photo.showToBuddies
 				: patch.showOnShareLink !== undefined
 					? photo.showOnShareLink
-					: photo.showInGallery;
+					: patch.shareVehicleStats !== undefined
+						? photo.shareVehicleStats
+						: photo.showInGallery;
 		input.checked = current;
 		const next: ShareFlags = {
 			showToBuddies: photo.showToBuddies,
 			showOnShareLink: photo.showOnShareLink,
 			showInGallery: photo.showInGallery,
+			shareVehicleStats: photo.shareVehicleStats,
 			...patch
 		};
 		busy = true;
@@ -209,6 +235,20 @@
 									{SHARE_GALLERY_LABEL}
 								</label>
 								<p class="text-xs leading-snug text-stone-600 dark:text-gray-300" data-testid="gallery-share-copy">{GALLERY_SHARE_COPY}</p>
+								<label class="flex items-start gap-2 text-xs text-stone-700 dark:text-gray-200">
+									<input
+										type="checkbox"
+										class="mt-0.5"
+										data-testid="share-stats"
+										checked={photo.shareVehicleStats}
+										on:change={(event) => {
+											const input = event.currentTarget;
+											if (input instanceof HTMLInputElement) void saveFlags(photo, { shareVehicleStats: input.checked }, input);
+										}}
+									/>
+									{SHARE_STATS_LABEL}
+								</label>
+								<p class="text-xs leading-snug text-stone-600 dark:text-gray-300" data-testid="stats-share-copy">{STATS_SHARE_COPY}</p>
 							</fieldset>
 						{/if}
 					</div>
@@ -231,6 +271,19 @@
 	{:else if !teamId}
 		<p class="mt-3 text-sm text-stone-700 dark:text-gray-200">Save this team before adding photos.</p>
 	{:else if !playMode && photos.length < 3}
+		<fieldset class="mt-3 space-y-1" data-testid="upload-sharing" disabled={busy}>
+			<legend class="text-xs font-medium text-stone-700 dark:text-gray-200">When this photo is added</legend>
+			<label class="flex items-start gap-2 text-xs text-stone-700 dark:text-gray-200">
+				<input type="checkbox" class="mt-0.5" data-testid="upload-share-gallery" bind:checked={uploadGallery} />
+				{SHARE_GALLERY_LABEL}
+			</label>
+			<p class="text-xs leading-snug text-stone-600 dark:text-gray-300">{GALLERY_SHARE_COPY}</p>
+			<label class="flex items-start gap-2 text-xs text-stone-700 dark:text-gray-200">
+				<input type="checkbox" class="mt-0.5" data-testid="upload-share-stats" bind:checked={uploadStats} />
+				{SHARE_STATS_LABEL}
+			</label>
+			<p class="text-xs leading-snug text-stone-600 dark:text-gray-300">{STATS_SHARE_COPY}</p>
+		</fieldset>
 		<div class="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
 			<label class="inline-flex cursor-pointer items-center justify-center rounded-md px-3 py-2 text-sm amber-button {busy ? 'pointer-events-none opacity-60' : ''}">
 				Add a photo

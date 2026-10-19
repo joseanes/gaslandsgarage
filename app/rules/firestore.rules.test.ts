@@ -877,15 +877,18 @@ describe('vehicle photos', () => {
 				...photoDoc(),
 				showToBuddies: false,
 				showOnShareLink: false,
-				showInGallery: true
+				showInGallery: true,
+				shareVehicleStats: true
 			});
 		});
 		const photo = doc(authed('player'), 'users', 'player', 'photos', 'photo1234');
 		await assertSucceeds(updateDoc(photo, { caption: 'Blue car' }));
 		await assertFails(updateDoc(photo, { showInGallery: false }));
 		await assertFails(updateDoc(photo, { showToBuddies: true }));
+		await assertFails(updateDoc(photo, { shareVehicleStats: false }));
 		const saved = await getDoc(photo);
 		expect(saved.data()?.showInGallery).toBe(true);
+		expect(saved.data()?.shareVehicleStats).toBe(true);
 		expect(saved.data()?.caption).toBe('Blue car');
 	});
 });

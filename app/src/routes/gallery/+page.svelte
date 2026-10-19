@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { user } from '$lib/firebase';
+	import type { VehicleStatsSnapshot } from '$lib/photos/share';
 	import { listGalleryPhotos, reportSharedPhoto, type GalleryPhoto } from '$lib/services/photoShare';
 
 	let status: 'loading' | 'ready' | 'error' = 'loading';
@@ -65,6 +66,26 @@
 		}
 	}
 
+	function statRows(stats: VehicleStatsSnapshot): { label: string; value: string }[] {
+		const rows = [
+			{ label: 'Type', value: stats.type },
+			{ label: 'Name', value: stats.name },
+			{ label: 'Hull', value: String(stats.hull) },
+			{ label: 'Handling', value: String(stats.handling) },
+			{ label: 'Crew', value: String(stats.crew) },
+			{ label: 'Gear', value: String(stats.gear) },
+			{ label: 'Cans', value: String(stats.cans) },
+			{ label: 'Weapons', value: stats.weapons.join(', ') || 'None' },
+			{ label: 'Upgrades', value: stats.upgrades.join(', ') || 'None' },
+			{ label: 'Perks', value: stats.perks.join(', ') },
+			{ label: 'Slots', value: stats.slots },
+			{ label: 'Weight', value: stats.weight },
+			{ label: 'Armour', value: stats.armour },
+			{ label: 'Driver', value: stats.driver }
+		];
+		return rows.filter((row) => row.value.length > 0);
+	}
+
 	void load();
 </script>
 
@@ -77,6 +98,7 @@
 	<h1 class="mb-2 text-3xl font-bold">Gallery</h1>
 	<p class="mb-6 max-w-2xl text-stone-600 dark:text-gray-300">
 		Painted cars players chose to share. Each card shows their Gaslands display name, the vehicle type, and the caption.
+		When they also share the car's stats, the card shows that snapshot.
 	</p>
 
 	{#if notice}
@@ -121,6 +143,16 @@
 							{#if photo.caption}
 								<p class="truncate text-xs text-stone-700 dark:text-gray-200">{photo.caption}</p>
 							{/if}
+							{#if photo.vehicleStats}
+								<dl class="mt-1 space-y-0.5 text-xs text-stone-700 dark:text-gray-200" data-testid="gallery-stats">
+									{#each statRows(photo.vehicleStats) as row}
+										<div class="flex gap-1">
+											<dt class="font-medium">{row.label}</dt>
+											<dd class="min-w-0 truncate">{row.value}</dd>
+										</div>
+									{/each}
+								</dl>
+							{/if}
 						</button>
 					</li>
 				{/each}
@@ -137,6 +169,16 @@
 			<p>{open.vehicleType}{#if open.teamName} · {open.teamName}{/if}</p>
 			{#if open.caption}
 				<p class="mt-1">{open.caption}</p>
+			{/if}
+			{#if open.vehicleStats}
+				<dl class="mt-3 grid grid-cols-1 gap-1 text-sm sm:grid-cols-2" data-testid="gallery-stats">
+					{#each statRows(open.vehicleStats) as row}
+						<div>
+							<dt class="text-xs font-medium text-stone-500 dark:text-gray-400">{row.label}</dt>
+							<dd>{row.value}</dd>
+						</div>
+					{/each}
+				</dl>
 			{/if}
 			<div class="mt-4 flex flex-wrap gap-2">
 				<button type="button" class="rounded-md px-3 py-2 text-sm amber-button" data-testid="report-photo" disabled={busy} on:click={() => open && report(open)}>

@@ -1,7 +1,7 @@
 import { getAuth } from 'firebase-admin/auth';
-import { getFirestore, type DocumentReference, type QueryDocumentSnapshot } from 'firebase-admin/firestore';
+import { FieldValue, getFirestore, type DocumentReference, type QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
-import { onDocumentDeleted } from 'firebase-functions/v2/firestore';
+import { onDocumentDeleted, onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { HttpsError, onCall, type CallableRequest } from 'firebase-functions/v2/https';
 import { BUDDY_COLLECTIONS, buddyPairId, chosenBuddyName, uidOk } from '../../app/src/lib/buddies/model.ts';
 import {
@@ -20,10 +20,12 @@ import {
 	nextReportWindow,
 	photoReportId,
 	publicSharedPhoto,
+	sanitizeVehicleStats,
 	shareFlags,
 	sharedPhotoObjectPath,
 	vehicleTypeLabel
 } from '../../app/src/lib/photos/share.ts';
+import { vehicleStatsSnapshot } from '../../app/src/lib/photos/vehicleStats.ts';
 
 const REGION = 'us-central1';
 const CALL = { region: REGION, memory: '256MiB', timeoutSeconds: 60, maxInstances: 10 } as const;
@@ -170,7 +172,13 @@ function vehicleOnTeam(team: Record<string, unknown> | undefined, vehicleId: str
 
 export async function setPhotoSharingForUser(
 	uid: string,
-	input: { photoId: unknown; showToBuddies: unknown; showOnShareLink: unknown; showInGallery: unknown }
+	input: {
+		photoId: unknown;
+		showToBuddies: unknown;
+		showOnShareLink: unknown;
+		showInGallery: unknown;
+		shareVehicleStats?: unknown;
+	}
 ): Promise<{ shared: boolean; published: boolean; hidden: boolean }> {
 	if (!UID_PATTERN.test(uid)) throw new Error('Sign in again before sharing a photo.');
 	if (!PHOTO_ID_PATTERN.test(String(input.photoId ?? ''))) throw new Error('That photo was not found.');
@@ -178,7 +186,8 @@ export async function setPhotoSharingForUser(
 	const flags = shareFlags({
 		showToBuddies: input.showToBuddies === true,
 		showOnShareLink: input.showOnShareLink === true,
-		showInGallery: input.showInGallery === true
+		showInGallery: input.showInGallery === true,
+		shareVehicleStats: input.shareVehicleStats === true
 	});
 	const db = getFirestore();
 	const photoRef = db.doc(`users/${uid}/photos/${photoId}`);
@@ -187,7 +196,15 @@ export async function setPhotoSharingForUser(
 
 	if (!anyShareFlag(flags)) {
 		await removeSharedCopy(photoId, false);
-		await photoRef.set({ showToBuddies: false, showOnShareLink: false, showInGallery: false }, { merge: true });
+		await photoRef.set(
+			{
+				showToBuddies: false,
+				showOnShareLink: false,
+				showInGallery: false,
+				shareVehicleStats: flags.shareVehicleStats
+			},
+			{ merge: true }
+		);
 		return { shared: false, published: false, hidden: false };
 	}
 
@@ -215,6 +232,8 @@ export async function setPhotoSharingForUser(
 	const vehicleType = vehicleTypeLabel(vehicle.type);
 	const teamName = cleanTeamName(team.get('teamName'));
 	const caption = typeof photo.get('caption') === 'string' ? photo.get('caption') : '';
+	const teamData = asRecord(team.get('teamData'));
+	const vehicleStats = flags.shareVehicleStats ? vehicleStatsSnapshot(vehicle, teamData.rulesVersion) : undefined;
 	const publicDoc = publicSharedPhoto({
 		photoId,
 		displayName,
@@ -224,7 +243,8 @@ export async function setPhotoSharingForUser(
 		createdAt,
 		hidden,
 		published,
-		showInGallery: flags.showInGallery
+		showInGallery: flags.showInGallery,
+		vehicleStats
 	});
 	const privateDoc = {
 		ownerUid: uid,
@@ -241,6 +261,7 @@ export async function setPhotoSharingForUser(
 		showToBuddies: flags.showToBuddies,
 		showOnShareLink: flags.showOnShareLink,
 		showInGallery: flags.showInGallery,
+		shareVehicleStats: flags.shareVehicleStats,
 		reportCount: reports.size
 	};
 
@@ -421,7 +442,10 @@ export async function moderateGalleryForAdmin(
 				const owned = db.doc(`users/${ownerUid}/photos/${photoId}`);
 				const photo = await owned.get();
 				if (photo.exists) {
-					await owned.set({ showToBuddies: false, showOnShareLink: false, showInGallery: false }, { merge: true });
+					await owned.set(
+						{ showToBuddies: false, showOnShareLink: false, showInGallery: false, shareVehicleStats: false },
+						{ merge: true }
+					);
 				}
 			}
 		} else {
@@ -449,8 +473,39 @@ async function shareCall(request: CallableRequest): Promise<{ shared: boolean; p
 		photoId: data.photoId,
 		showToBuddies: data.showToBuddies,
 		showOnShareLink: data.showOnShareLink,
-		showInGallery: data.showInGallery
+		showInGallery: data.showInGallery,
+		shareVehicleStats: data.shareVehicleStats
 	});
+}
+
+/**
+ * Rewrites the public stats snapshot after the saved vehicle changes.
+ * Turning stats sharing off removes the field. A missing vehicle does too.
+ */
+export async function refreshSharedVehicleStatsForTeam(teamId: string, team: Record<string, unknown> | undefined): Promise<void> {
+	if (!TEAM_ID_PATTERN.test(teamId)) return;
+	const db = getFirestore();
+	const snap = await db.collection('sharedPhotoPrivate').where('teamId', '==', teamId).get();
+	const rulesVersion = asRecord(team?.teamData).rulesVersion;
+	for (const item of snap.docs) {
+		if (item.get('shareVehicleStats') !== true) continue;
+		const publicRef = db.doc(`sharedPhotos/${item.id}`);
+		const published = await publicRef.get();
+		if (!published.exists) continue;
+		const vehicle = team ? vehicleOnTeam(team, String(item.get('vehicleId') ?? '')) : null;
+		if (!vehicle) {
+			await publicRef.update({ vehicleStats: FieldValue.delete() });
+			continue;
+		}
+		const vehicleType = vehicleTypeLabel(vehicle.type);
+		const vehicleStats = sanitizeVehicleStats(vehicleStatsSnapshot(vehicle, rulesVersion));
+		if (!vehicleStats) {
+			await publicRef.update({ vehicleStats: FieldValue.delete() });
+			continue;
+		}
+		await publicRef.set({ vehicleType, vehicleStats }, { merge: true });
+		await item.ref.set({ vehicleType }, { merge: true });
+	}
 }
 
 export const setPhotoSharing = onCall(CALL, async (request) => {
@@ -487,6 +542,18 @@ export const moderateGallery = onCall(CALL, async (request) => {
 		throw httpsError(error);
 	}
 });
+
+/** A saved-team write refreshes stats already shared with a photo. */
+export const refreshSharedVehicleStats = onDocumentWritten(
+	{ document: 'teams/{teamId}', region: REGION, memory: '256MiB', timeoutSeconds: 60, maxInstances: 10 },
+	async (event) => {
+		const after = event.data?.after;
+		await refreshSharedVehicleStatsForTeam(
+			String(event.params.teamId ?? ''),
+			after?.exists ? (after.data() as Record<string, unknown>) : undefined
+		);
+	}
+);
 
 /** A deleted private photo takes its shared copy with it, including after account deletion. */
 export const removeSharedPhotoOnDelete = onDocumentDeleted(

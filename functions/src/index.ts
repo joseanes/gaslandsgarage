@@ -127,6 +127,7 @@ export { reserveVehiclePhoto } from './vehiclePhotos.ts';
 export {
 	listVisibleTeamPhotos,
 	moderateGallery,
+	refreshSharedVehicleStats,
 	removeSharedPhotoOnDelete,
 	reportPhoto,
 	setPhotoSharing

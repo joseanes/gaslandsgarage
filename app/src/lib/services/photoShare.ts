@@ -2,7 +2,7 @@ import { browser } from '$app/environment';
 import { auth, db, initializeFirebase } from '../firebase';
 import { PRIVACY_FUNCTIONS_REGION } from '../privacy/accountShared';
 import { storageBucketName } from '../photos/model';
-import { GALLERY_PAGE_LIMIT, sharedPhotoMediaUrl, type ShareFlags } from '../photos/share';
+import { GALLERY_PAGE_LIMIT, sanitizeVehicleStats, sharedPhotoMediaUrl, type ShareFlags, type VehicleStatsSnapshot } from '../photos/share';
 
 export interface SharedVehiclePhoto {
 	photoId: string;
@@ -23,6 +23,7 @@ export interface GalleryPhoto {
 	caption: string;
 	createdAt: string;
 	url: string;
+	vehicleStats: VehicleStatsSnapshot | null;
 }
 
 export interface ModerationPhoto {
@@ -92,7 +93,12 @@ export async function setPhotoSharing(photoId: string, flags: ShareFlags): Promi
 }
 
 export async function clearPhotoSharing(photoId: string): Promise<void> {
-	await setPhotoSharing(photoId, { showToBuddies: false, showOnShareLink: false, showInGallery: false });
+	await setPhotoSharing(photoId, {
+		showToBuddies: false,
+		showOnShareLink: false,
+		showInGallery: false,
+		shareVehicleStats: false
+	});
 }
 
 function withUrl(photo: Omit<SharedVehiclePhoto, 'url'>): SharedVehiclePhoto {
@@ -138,7 +144,8 @@ export async function listGalleryPhotos(): Promise<GalleryPhoto[]> {
 			teamName: typeof data.teamName === 'string' ? data.teamName : '',
 			caption: typeof data.caption === 'string' ? data.caption : '',
 			createdAt: typeof data.createdAt === 'string' ? data.createdAt : '',
-			url: sharedPhotoUrl(item.id)
+			url: sharedPhotoUrl(item.id),
+			vehicleStats: sanitizeVehicleStats(data.vehicleStats)
 		});
 	}
 	return photos;

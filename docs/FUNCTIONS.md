@@ -12,10 +12,11 @@ The functions are 2nd gen, Node.js 22, TypeScript, in `functions/`. Node.js 20 i
 | `exportMyData` | Callable, signed-in user | JSON of that account's Firestore data, including a list of painted-car photos. |
 | `deleteMyAccount` | Callable, signed-in user | Deletes that account, including every Storage object under `users/{uid}/`, the photo metadata, and any shared photo copies. Requires a fresh sign-in and the confirmation `DELETE`. |
 | `reserveVehiclePhoto` | Callable, signed-in user | Reserves one painted-car photo for a vehicle on the caller's saved team. Enforces 3 photos per vehicle and 100 per account. The browser uploads the file after this returns. |
-| `setPhotoSharing` | Callable, signed-in user | Turns the three sharing choices on or off for one of the caller's photos. A shared photo is copied to `shared-photos/{photoId}`. The public document has no account id. |
+| `setPhotoSharing` | Callable, signed-in user | Turns sharing on or off for one of the caller's photos, including the Gallery and the vehicle stats snapshot. A shared photo is copied to `shared-photos/{photoId}`. The public document has no account id. Stats are copied from the saved team only when the player asked to share them. |
 | `listVisibleTeamPhotos` | Callable, public | Lists photos a player chose to show on a team share link, or to an accepted buddy. The response has no account id and no download token. |
 | `reportPhoto` | Callable, signed-in user | Records one report per player. Ten reports an hour. Three different reports hide the gallery photo until an administrator reviews it. |
 | `moderateGallery` | Callable, administrator | Lists shared photos, hides or removes one, approves one, or sets the gallery approval kill switch. |
+| `refreshSharedVehicleStats` | `teams/{teamId}` write | Refreshes the public stats snapshot when a saved vehicle changes. Removes that snapshot when the vehicle is gone. |
 | `removeSharedPhotoOnDelete` | `users/{uid}/photos/{photoId}` delete | Removes the shared copy when the private photo document is deleted. |
 | `syncNewsletterToken` | `userSettings/{uid}` write | When `newsletterOptIn` is true, stores one random unsubscribe token. Does not send mail. |
 | `unsubscribeNewsletter` | Public HTTPS `GET` or `POST` | GET shows a confirm page and changes nothing. POST with the token sets `newsletterOptIn` to false. An RFC 8058 one-click POST is accepted on the same URL. No sign-in. |

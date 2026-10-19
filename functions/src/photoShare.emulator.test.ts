@@ -9,6 +9,7 @@ import { deleteUserPhotos, reserveVehiclePhotoForUser } from './vehiclePhotos';
 import {
 	listVisibleTeamPhotosForCaller,
 	moderateGalleryForAdmin,
+	refreshSharedVehicleStatsForTeam,
 	reportPhotoForUser,
 	setPhotoSharingForUser
 } from './photoShare';
@@ -188,5 +189,81 @@ describe('shared photos', () => {
 		expect((await getFirestore().doc(`sharedPhotoPrivate/${reserved.photoId}`).get()).exists).toBe(false);
 		const [files] = await getStorage().bucket(bucketName).getFiles({ prefix: 'shared-photos/' });
 		expect(files).toEqual([]);
+	});
+
+	it('copies vehicle stats onto the gallery card, refreshes them, and removes them when stats sharing is off', async () => {
+		const { reserved } = await savePhoto();
+		await getFirestore().doc('teams/team1234').set({
+			userId: 'ada',
+			teamName: 'Racers',
+			hiddenFromBuddies: false,
+			teamData: {
+				rulesVersion: 2,
+				vehicles: [
+					{
+						id: 'veh123',
+						type: 'performance_car',
+						name: 'Red',
+						weapons: ['mg'],
+						upgrades: ['armour_plating'],
+						perks: []
+					}
+				]
+			}
+		});
+		await setPhotoSharingForUser('ada', {
+			photoId: reserved.photoId,
+			showToBuddies: false,
+			showOnShareLink: false,
+			showInGallery: true,
+			shareVehicleStats: true
+		});
+		const shared = (await getFirestore().doc(`sharedPhotos/${reserved.photoId}`).get()).data();
+		expect(shared?.vehicleStats).toMatchObject({
+			type: 'Performance Car',
+			name: 'Red',
+			hull: 10,
+			cans: 21,
+			weapons: ['Machine Gun'],
+			upgrades: ['Armour Plating']
+		});
+		expect(shared).not.toHaveProperty('ownerUid');
+		expect(JSON.stringify(shared)).not.toContain('Google Name');
+		expect(JSON.stringify(shared)).not.toContain('ada@gmail.com');
+
+		await getFirestore().doc('teams/team1234').set({
+			userId: 'ada',
+			teamName: 'Racers',
+			teamData: {
+				rulesVersion: 2,
+				vehicles: [
+					{
+						id: 'veh123',
+						type: 'performance_car',
+						name: 'Red',
+						weapons: [],
+						upgrades: ['armour_plating'],
+						perks: []
+					}
+				]
+			}
+		});
+		const team = (await getFirestore().doc('teams/team1234').get()).data();
+		await refreshSharedVehicleStatsForTeam('team1234', team);
+		const refreshed = (await getFirestore().doc(`sharedPhotos/${reserved.photoId}`).get()).get('vehicleStats');
+		expect(refreshed.cans).toBe(19);
+		expect(refreshed.weapons).toEqual([]);
+
+		await setPhotoSharingForUser('ada', {
+			photoId: reserved.photoId,
+			showToBuddies: false,
+			showOnShareLink: false,
+			showInGallery: true,
+			shareVehicleStats: false
+		});
+		const quiet = (await getFirestore().doc(`sharedPhotos/${reserved.photoId}`).get()).data();
+		expect(quiet).not.toHaveProperty('vehicleStats');
+		expect(quiet?.showInGallery).toBe(true);
+		expect((await getFirestore().doc(`users/ada/photos/${reserved.photoId}`).get()).get('shareVehicleStats')).toBe(false);
 	});
 });

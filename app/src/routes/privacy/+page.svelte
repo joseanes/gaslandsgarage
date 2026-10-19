@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { PHOTO_PRIVACY_SHORT } from '$lib/photos/model';
-	import { GALLERY_SHARE_COPY } from '$lib/photos/share';
+	import { GALLERY_SHARE_COPY, SHARE_GALLERY_LABEL, SHARE_STATS_LABEL, STATS_SHARE_COPY } from '$lib/photos/share';
 	const linkClass = 'text-amber-600 dark:text-amber-400 hover:underline';
 </script>
 
@@ -89,11 +89,15 @@
 			we store.
 		</p>
 		<p>
-			Sharing is off until you turn it on for that photo. There are three choices. "Show to my Gaming
-			Buddies" lets a buddy who can already see that team see the photo. "Show on my team share link"
-			shows it to anyone who opens that link. "Show in the public Gallery" puts it on the Gallery page.
-			{GALLERY_SHARE_COPY} The Gallery shows the display name you chose in Gaslands Garage, the vehicle
-			type, and the caption. It does not show your Google name, your email, or your account id.
+			Sharing is off until you turn it on for that photo. Adding a photo asks "{SHARE_GALLERY_LABEL}" and
+			"{SHARE_STATS_LABEL}". Both start off, and you can change them later. "Show to my Gaming Buddies"
+			lets a buddy who can already see that team see the photo. "Show on my team share link" shows it to
+			anyone who opens that link. "{SHARE_GALLERY_LABEL}" puts it on the Gallery page, which is under
+			Players and Events. {GALLERY_SHARE_COPY} "{SHARE_STATS_LABEL}" {STATS_SHARE_COPY} The snapshot is
+			copied from the saved team, updated when that vehicle changes, and removed from the Gallery when
+			you turn stats sharing off. The Gallery shows the display name you chose in Gaslands Garage, the
+			vehicle type, the caption, and those stats only when you shared them. It does not show your Google
+			name, your email, or your account id.
 		</p>
 		<p>
 			A shared photo is a separate copy. Unsharing, deleting the photo, deleting the vehicle or the
