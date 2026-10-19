@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { discoverSpaRoutes } from '../lib/spa-routes';
-import { viewerRequestCode } from '../lib/viewer-request';
+import { apexRedirectCode, viewerRequestCode } from '../lib/viewer-request';
 
 const appRoutes = path.join(__dirname, '../../app/src/routes');
 
@@ -44,6 +44,11 @@ describe('SvelteKit route discovery', () => {
 			'/buddies',
 			'/buddies/:p',
 			'/builder',
+			'/car',
+			'/car/:p',
+			'/embed',
+			'/embed/car',
+			'/embed/car/:p',
 			'/gallery',
 			'/players',
 			'/privacy',
@@ -173,6 +178,19 @@ describe('viewer-request function', () => {
 		expect(run(dynamic, '/lang/about').uri).toBe('/index.html');
 		expect(run(dynamic, '/lang/en/about').uri).toBe('/index.html');
 		expect(run(dynamic, '/docs/a/notes.pdf').uri).toBe('/docs/a/notes.pdf');
+	});
+
+	test('car and embed viewer only redirects www and keeps the path', () => {
+		const handler = loadHandler(apexRedirectCode());
+		const passed = run(handler, '/car/photoshare1', { query: { utm_source: { value: 'x' } } });
+		expect(passed.uri).toBe('/car/photoshare1');
+		expect(passed.statusCode).toBeUndefined();
+		const embed = run(handler, '/embed/car/photoshare1');
+		expect(embed.uri).toBe('/embed/car/photoshare1');
+		const www = run(handler, '/car/photoshare1', { host: 'www.gaslandsgarage.com' });
+		expect(www.statusCode).toBe(301);
+		expect(www.headers?.location?.value).toBe('https://gaslandsgarage.com/car/photoshare1');
+		expect(apexRedirectCode()).not.toContain('index.html');
 	});
 
 	test('stays inside the CloudFront function size limit and does not name beta files', () => {

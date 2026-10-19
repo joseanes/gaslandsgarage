@@ -134,6 +134,14 @@ export {
 } from './photoShare.ts';
 
 /**
+ * Public car page and embed HTML. CloudFront sends /car/* and /embed/* here
+ * so link previews get Open Graph tags without running the SPA. Reads
+ * `sharedPhotos` only, and only returns a page while that photo is a
+ * published, visible gallery share.
+ */
+export { renderSharedCar } from './carPage.ts';
+
+/**
  * Gaming buddies. Links are created only here, with the Admin SDK.
  * Clients cannot write `buddies`, requests, blocks, invites, or the directory.
  */

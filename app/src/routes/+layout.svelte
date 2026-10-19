@@ -593,6 +593,11 @@
   }
 </script>
 
+{#if $page.url.pathname.startsWith('/embed/')}
+<div class="min-h-screen bg-stone-100 px-3 py-3 text-stone-800 dark:bg-gray-950 dark:text-gray-100">
+  <slot />
+</div>
+{:else}
 <!-- Main layout with ad space -->
 <div class="app-container min-h-screen flex flex-col">
   <!-- Top Navigation Bar -->
@@ -1623,4 +1628,5 @@
       </div>
     </div>
   </div>
+{/if}
 {/if}
