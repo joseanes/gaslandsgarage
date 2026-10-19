@@ -27,6 +27,8 @@
   import { sendContactMessage } from '$lib/services/messages';
   import { builderPathForTeamAction, rememberTeamMenuAction, type TeamMenuAction } from '$lib/teamMenu';
   import { openLayoutSettings, type SettingsTab } from '$lib/settings/layoutSettingsControl';
+  import { wargamingEventsUrl } from '$lib/players/wargamingEvents';
+  import { SHOW_CHANGE_LOG, SHOW_UPCOMING_FEATURES } from '$lib/features/helpMenu';
   
   // Ad configuration variables
   let showAds = false; // Removed ads for now
@@ -41,6 +43,112 @@
 
   // Menu state
   let showShareMenu = false;
+  // "Share Team" submenu inside the Teams menu. A flyout on wide screens,
+  // an expandable group on narrow ones.
+  let showShareSubmenu = false;
+  let shareSubmenuByHover = false;
+  let shareTeamButton: HTMLButtonElement | undefined;
+  let shareSubmenuEl: HTMLDivElement | undefined;
+  $: if (!showShareMenu) {
+    showShareSubmenu = false;
+    shareSubmenuByHover = false;
+  }
+
+  function shareFlyout(): boolean {
+    return typeof window !== 'undefined' && window.matchMedia('(min-width: 641px)').matches;
+  }
+
+  async function openShareSubmenu(focusFirst = false) {
+    showShareSubmenu = true;
+    await tick();
+    if (shareFlyout()) clampToViewport(shareSubmenuEl ?? null);
+    if (focusFirst) shareSubmenuEl?.querySelector<HTMLElement>('button')?.focus();
+  }
+
+  function closeShareSubmenu(returnFocus = false) {
+    showShareSubmenu = false;
+    shareSubmenuByHover = false;
+    if (returnFocus) shareTeamButton?.focus();
+  }
+
+  function toggleShareSubmenu() {
+    if (showShareSubmenu && !shareSubmenuByHover) closeShareSubmenu();
+    else {
+      shareSubmenuByHover = false;
+      void openShareSubmenu();
+    }
+  }
+
+  function onShareGroupEnter() {
+    if (!shareFlyout() || !window.matchMedia('(hover: hover)').matches || showShareSubmenu) return;
+    shareSubmenuByHover = true;
+    void openShareSubmenu();
+  }
+
+  function onShareGroupLeave() {
+    if (shareSubmenuByHover) closeShareSubmenu();
+  }
+
+  function onShareTriggerKey(event: KeyboardEvent) {
+    if (event.key === 'ArrowRight' || (event.key === 'ArrowDown' && showShareSubmenu)) {
+      event.preventDefault();
+      shareSubmenuByHover = false;
+      void openShareSubmenu(true);
+    } else if (event.key === 'ArrowLeft' || event.key === 'Escape') {
+      if (!showShareSubmenu) return;
+      event.preventDefault();
+      event.stopPropagation();
+      closeShareSubmenu(true);
+    }
+  }
+
+  function onShareSubmenuKey(event: KeyboardEvent) {
+    const items = [...(shareSubmenuEl?.querySelectorAll<HTMLElement>('button') ?? [])];
+    const index = items.indexOf(document.activeElement as HTMLElement);
+    if (event.key === 'Escape' || event.key === 'ArrowLeft') {
+      event.preventDefault();
+      event.stopPropagation();
+      closeShareSubmenu(true);
+    } else if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      items[(index + 1) % items.length]?.focus();
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      items[(index - 1 + items.length) % items.length]?.focus();
+    }
+  }
+
+  function runShareAction(action: () => void) {
+    action();
+    showShareMenu = false;
+  }
+
+  // Wargaming Events link. Uses the player's saved, already coarse map location when there is one.
+  let eventsProfileUid = '';
+  let wgeHref = wargamingEventsUrl(null);
+  $: if (!$user) {
+    eventsProfileUid = '';
+    wgeHref = wargamingEventsUrl(null);
+  }
+
+  async function refreshEventsLink() {
+    const uid = $user?.uid ?? '';
+    if (!uid || uid === eventsProfileUid) return;
+    eventsProfileUid = uid;
+    try {
+      const { loadOwnProfile } = await import('$lib/services/playerProfile');
+      const profile = await loadOwnProfile(uid);
+      if (($user?.uid ?? '') === uid) wgeHref = wargamingEventsUrl(profile);
+    } catch {
+      // Keep the Gaslands-only link.
+    }
+  }
+
+  function togglePlayersMenu() {
+    showPlayersMenu = !showPlayersMenu;
+    if (showPlayersMenu) void refreshEventsLink();
+    void clampHeaderMenus();
+  }
   let showHelpMenu = false;
   let showSettingsMenu = false;
   let showPlayersMenu = false;
@@ -501,7 +609,7 @@
 
             {#if showShareMenu}
           <div
-            class="absolute w-44 bg-black border-2 border-amber-500 shadow-xl rounded-lg overflow-hidden z-30 py-2 share-menu-dropdown"
+            class="absolute w-44 bg-black border-2 border-amber-500 shadow-xl rounded-lg overflow-visible z-30 py-2 share-menu-dropdown"
             style="box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5); background-color: #000000 !important; top: 40px; left: 0;"
             transition:fade={{ duration: 150 }}
           >
@@ -511,19 +619,90 @@
             <button type="button" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600" on:click={() => { printTeam(); showShareMenu = false; }}>
               Print Team
             </button>
-            <button type="button" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600" on:click={() => { copyDraft(); showShareMenu = false; }}>
-              Copy to Clipboard
-            </button>
-            <button type="button" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600" on:click={() => { shareLink(); showShareMenu = false; }}>
-              Share Link
-            </button>
-            <button type="button" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600" on:click={() => { generateQRCode(); showShareMenu = false; }}>
-              Generate QR Code
-            </button>
+            <div class="share-team-group" role="presentation" on:mouseenter={onShareGroupEnter} on:mouseleave={onShareGroupLeave}>
+              <button
+                type="button"
+                class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600 flex items-center justify-between share-team-trigger"
+                aria-haspopup="true"
+                aria-expanded={showShareSubmenu}
+                aria-controls="share-team-submenu"
+                bind:this={shareTeamButton}
+                on:click={toggleShareSubmenu}
+                on:keydown={onShareTriggerKey}
+              >
+                <span>Share Team</span>
+                <svg class="ml-2 w-3 h-3 share-team-caret" class:open={showShareSubmenu} viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                  <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"></path>
+                </svg>
+              </button>
+              {#if showShareSubmenu}
+                <div
+                  id="share-team-submenu"
+                  class="share-team-submenu py-1"
+                  role="group"
+                  aria-label="Share Team"
+                  bind:this={shareSubmenuEl}
+                >
+                  <button type="button" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600" on:click={() => runShareAction(copyDraft)} on:keydown={onShareSubmenuKey}>
+                    Copy to Clipboard
+                  </button>
+                  <button type="button" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600" on:click={() => runShareAction(shareLink)} on:keydown={onShareSubmenuKey}>
+                    Share Link
+                  </button>
+                  <button type="button" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600" on:click={() => runShareAction(generateQRCode)} on:keydown={onShareSubmenuKey}>
+                    Generate QR Code
+                  </button>
+                </div>
+              {/if}
+            </div>
             <button type="button" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600" on:click={() => { importBuild(); showShareMenu = false; }}>
               Import Build
             </button>
           </div>
+            {/if}
+          </div>
+          <div class="relative">
+            <button
+              type="button"
+              class="menu-item flex items-center players-menu-trigger"
+              on:click={togglePlayersMenu}
+              aria-haspopup="true"
+              aria-expanded={showPlayersMenu}
+              style="height: auto !important; min-height: auto !important;"
+            >
+              Players and Events
+              <svg class="ml-1 w-3 h-3" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"></path>
+              </svg>
+            </button>
+
+            {#if showPlayersMenu}
+            <div
+              class="absolute w-44 bg-black border-2 border-amber-500 shadow-xl rounded-lg overflow-hidden z-30 py-2 players-menu-dropdown"
+              style="box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5); background-color: #000000 !important; top: 40px; left: 0;"
+              transition:fade={{ duration: 150 }}
+            >
+              <a href="/players" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600 block" on:click={() => showPlayersMenu = false}>
+                Players Map
+              </a>
+              <a href="/profile" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600 block" on:click={() => showPlayersMenu = false}>
+                My Profile
+              </a>
+              <a href="/buddies" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600 block" on:click={() => showPlayersMenu = false}>
+                Gaming Buddies
+              </a>
+              <a
+                href={wgeHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600 block"
+                data-testid="wargaming-events-link"
+                on:click={() => showPlayersMenu = false}
+              >
+                Wargaming Events<span class="sr-only"> (opens in a new tab)</span>
+                <svg class="inline ml-1 w-3 h-3 align-baseline" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z"></path><path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z"></path></svg>
+              </a>
+            </div>
             {/if}
           </div>
           <div class="relative">
@@ -559,39 +738,6 @@
           <div class="relative">
             <button
               type="button"
-              class="menu-item flex items-center players-menu-trigger"
-              on:click={() => { showPlayersMenu = !showPlayersMenu; void clampHeaderMenus(); }}
-              aria-haspopup="true"
-              aria-expanded={showPlayersMenu}
-              style="height: auto !important; min-height: auto !important;"
-            >
-              Players
-              <svg class="ml-1 w-3 h-3" viewBox="0 0 20 20" fill="currentColor">
-                <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"></path>
-              </svg>
-            </button>
-
-            {#if showPlayersMenu}
-            <div
-              class="absolute w-44 bg-black border-2 border-amber-500 shadow-xl rounded-lg overflow-hidden z-30 py-2 players-menu-dropdown"
-              style="box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5); background-color: #000000 !important; top: 40px; left: 0;"
-              transition:fade={{ duration: 150 }}
-            >
-              <a href="/players" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600 block" on:click={() => showPlayersMenu = false}>
-                Players Map
-              </a>
-              <a href="/profile" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600 block" on:click={() => showPlayersMenu = false}>
-                My Profile
-              </a>
-              <a href="/buddies" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600 block" on:click={() => showPlayersMenu = false}>
-                Gaming Buddies
-              </a>
-            </div>
-            {/if}
-          </div>
-          <div class="relative">
-            <button
-              type="button"
               class="menu-item flex items-center help-menu-trigger"
               on:click={() => { showHelpMenu = !showHelpMenu; void clampHeaderMenus(); }}
               aria-haspopup="true"
@@ -619,12 +765,16 @@
               <a href="/stats" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600 block" on:click={() => showHelpMenu = false}>
                 Usage Stats
               </a>
-              <button type="button" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600" on:click={() => { openChangeLog(); showHelpMenu = false; }}>
-                Change Log
-              </button>
-              <button type="button" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600" on:click={() => { openUpcomingFeatures(); showHelpMenu = false; }}>
-                Upcoming Features
-              </button>
+              {#if SHOW_CHANGE_LOG}
+                <button type="button" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600" on:click={() => { openChangeLog(); showHelpMenu = false; }}>
+                  Change Log
+                </button>
+              {/if}
+              {#if SHOW_UPCOMING_FEATURES}
+                <button type="button" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600" on:click={() => { openUpcomingFeatures(); showHelpMenu = false; }}>
+                  Upcoming Features
+                </button>
+              {/if}
               <button type="button" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600" on:click={() => { openContributors(); showHelpMenu = false; }}>
                 Contributors
               </button>
@@ -1190,6 +1340,45 @@
 :global(.players-menu-dropdown),
 :global(.help-menu-dropdown) {
   z-index: 30;
+}
+
+/* Share Team submenu. Narrow screens: an indented group under its button.
+   Wide screens: a flyout beside the Teams menu, clamped to the viewport. */
+:global(.share-team-group) {
+  position: relative;
+}
+
+:global(.share-team-submenu) {
+  border-left: 2px solid #f59e0b;
+  margin-left: 0.75rem;
+  background-color: #000000;
+}
+
+:global(.share-team-caret) {
+  transition: transform 0.15s;
+}
+
+:global(.share-team-caret.open) {
+  transform: rotate(90deg);
+}
+
+@media (min-width: 641px) {
+  :global(.share-team-submenu) {
+    position: absolute;
+    top: -0.5rem;
+    left: 100%;
+    width: 11rem;
+    /* No gap, so moving the pointer from the button to the flyout keeps it open. */
+    margin-left: 0;
+    border: 2px solid #f59e0b;
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    z-index: 31;
+  }
+
+  :global(.share-team-caret.open) {
+    transform: none;
+  }
 }
 
 /* Removed the menu-container class as we're using the max-w-7xl class directly in the HTML */
