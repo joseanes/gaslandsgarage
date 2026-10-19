@@ -12,7 +12,8 @@ The functions are 2nd gen, Node.js 22, TypeScript, in `functions/`. Node.js 20 i
 | `exportMyData` | Callable, signed-in user | JSON of that account's Firestore data, including a list of painted-car photos. |
 | `deleteMyAccount` | Callable, signed-in user | Deletes that account, including every Storage object under `users/{uid}/`, the photo metadata, and any shared photo copies. Requires a fresh sign-in and the confirmation `DELETE`. |
 | `reserveVehiclePhoto` | Callable, signed-in user | Reserves one library file at `users/{uid}/photos-library/{photoId}.webp` (or `.jpg`). Counts library files toward 100 per account and attachments toward 3 per car. The same bytes attach to the existing photo instead of creating another file. The browser uploads only when this is a new file. |
-| `setPhotoSharing` | Callable, signed-in user | Turns sharing on or off for one of the caller's photos, including the Gallery and the vehicle stats snapshot. A shared photo is copied to `shared-photos/{photoId}`. The public document has no account id. Stats are copied from the car the photo is shared from. One attached car is used automatically. Several attached cars require `shareTeamId` and `shareVehicleId`. |
+| `setPhotoSharing` | Callable, signed-in user | Turns sharing on or off for one of the caller's photos, including the Gallery and the vehicle stats snapshot. A shared photo is copied to `shared-photos/{photoId}`. The public document has no account id. Stats are copied from the car the photo is shared from. One attached car is used automatically. Several attached cars require `shareTeamId` and `shareVehicleId`. A photo with no car can still be shown in the Gallery when `vehicleType` is one of the game's vehicle types. That card has no stats, no cans, and no team. Stats, Gaming Buddies, and the team share link still require a linked car. A caller-supplied type is ignored when a car is linked. The public card copies `paintingUrl` from the private photo. A caller can send `paintingUrl` to replace it. Anything that is not an empty string or an http(s) URL of at most 300 characters is rejected. A blank link is not filled from the profile. |
+| `setPhotoPaintingUrl` | Callable, signed-in user | Saves or clears the painting-guide link on one of the caller's photos. The same value is copied onto `sharedPhotos` when that photo is already public. An empty string clears it. The profile website is not read. |
 | `attachLibraryPhoto` | Callable, signed-in user | Attaches one library photo to a car on the caller's saved team. A car can show 3 photos. |
 | `detachLibraryPhoto` | Callable, signed-in user | Takes one photo off one car. The file stays. If that car was the share source, the shared copy is removed. |
 | `detachVehiclePhotos` | Callable, signed-in user | Takes every library photo off one car. Files stay in My Photos. |
@@ -27,16 +28,17 @@ The functions are 2nd gen, Node.js 22, TypeScript, in `functions/`. Node.js 20 i
 | `moderateGallery` | Callable, administrator | Lists shared photos, hides or removes one, approves one, or sets the gallery approval kill switch. |
 | `refreshSharedVehicleStats` | `teams/{teamId}` write | Refreshes the public stats snapshot when a saved vehicle changes. Removes that snapshot when the vehicle is gone. |
 | `removeSharedPhotoOnDelete` | `users/{uid}/photos/{photoId}` delete | Removes the shared copy when the private photo document is deleted. |
-| `renderSharedCar` | Public HTTPS `GET` or `HEAD` | HTML for a public car page and its embed, including Open Graph and Twitter card tags. Reads `sharedPhotos/{photoId}` only. Returns a "no longer shared" page when the photo is not a published, visible gallery share. |
+| `renderSharedCar` | Public HTTPS `GET` or `HEAD` | HTML for a public car page and its embed, including Open Graph and Twitter card tags. Reads `sharedPhotos/{photoId}` only. Returns a "no longer shared" page when the photo is not a published, visible gallery share. A painting-guide link is shown only when that photo stored an http(s) URL. The link is escaped and uses `rel="nofollow ugc noopener noreferrer"`. |
 | `syncNewsletterToken` | `userSettings/{uid}` write | When `newsletterOptIn` is true, stores one random unsubscribe token. Does not send mail. |
 | `unsubscribeNewsletter` | Public HTTPS `GET` or `POST` | GET shows a confirm page and changes nothing. POST with the token sets `newsletterOptIn` to false. An RFC 8058 one-click POST is accepted on the same URL. No sign-in. |
-| `getBuddyInvite` | Callable, signed-in user | Returns or creates that account's invite code, and whether email invites are on. |
+| `getBuddyInvite` | Callable, signed-in user | Returns or creates that account's invite code, whether email invites are on, and whether Gallery buddy requests are allowed. That last flag defaults to allowed when it has never been saved. |
 | `sendBuddyInvite` | Callable, signed-in user | Sends one transactional buddy invite through Twilio Email. 10 a day per sender. |
 | `acceptBuddyEmailInvite` | Callable, signed-in user | Accepts a signed email-invite token and writes the buddy link. Single use. |
 | `suppressBuddyEmailInvites` | Public HTTPS `GET` or `POST` | GET shows a confirm page and changes nothing. POST stops future buddy-invite mail to that address. No sign-in. |
-| `saveBuddyProfile` | Callable, signed-in user | Stores the display name buddies see, and the opt-in directory card. |
+| `saveBuddyProfile` | Callable, signed-in user | Stores the display name buddies see, the opt-in directory card, and Allow buddy requests from the Gallery. Turning that off writes `allowGalleryBuddies: false` onto that player's existing public gallery cards. Turning it on removes the field. Absence still means allowed. |
 | `searchBuddyPlayers` | Callable, signed-in user | Prefix search of opted-in display names. No email. 30 searches per hour. |
-| `sendBuddyRequest` | Callable, signed-in user | Sends a request by invite code or by a findable player. 10 requests per hour. |
+| `sendBuddyRequest` | Callable, signed-in user | Sends a request by invite code, by a findable player, or by a public gallery photo id. 10 requests per hour. A gallery photo adds a second cap of 20 a day. A declined request cannot be sent again for 30 days, from any of those doors. The gallery path does not take an email address and does not send mail. |
+| `galleryBuddyOffer` | Callable, optional sign-in | Tells the Gallery or car page which buddy button to show for one public photo. The response has no email address. Signed-out viewers get a sign-in prompt, or nothing when Gallery requests are off. |
 | `respondBuddyRequest` | Callable, signed-in user | Accept, decline, or block an incoming request. Accept writes `buddies/{pairId}`. |
 | `cancelBuddyRequest` | Callable, signed-in user | Cancels a request the caller sent. |
 | `removeBuddy` | Callable, signed-in user | Deletes the accepted link. Access ends immediately. |
@@ -45,6 +47,22 @@ The functions are 2nd gen, Node.js 22, TypeScript, in `functions/`. Node.js 20 i
 Region is `us-central1`. `publishUsageStats` uses 256MiB, a 300 second timeout, and one instance. `syncAuthDisabled`, `queueGameContactEmail`, and `syncNewsletterToken` retry on failure. `syncAuthDisabled` and `queueGameContactEmail` use the platform defaults. `syncNewsletterToken` uses the platform memory and timeout. `exportMyData`, `deleteMyAccount`, `reserveVehiclePhoto`, the photo library callables, the photo-sharing callables, and the gaming-buddy callables use 256MiB, a 60 second timeout, and at most 10 instances. `listVisibleTeamPhotos` also sets `invoker: public` so a team share link can list photos without a sign-in. `unsubscribeNewsletter`, `suppressBuddyEmailInvites`, and `renderSharedCar` use 256MiB, a 30 second timeout, at most 10 instances, and `invoker: public`. The first two are email links. `renderSharedCar` is the public car page CloudFront fetches. None keep a warm instance.
 
 `getBuddyInvite`, `sendBuddyInvite`, `acceptBuddyEmailInvite`, `exportMyData`, and `deleteMyAccount` declare the Twilio secrets. The other buddy callables do not. Email sending stays off until both secrets look like real Twilio credentials (an Account SID starting with `AC`, and an auth token). The placeholder value `disabled` keeps the feature off. The buddies page still shows the copyable invite link and says email invites are coming soon.
+
+A Gallery buddy request reuses `buddyRequests`. The browser sends the public photo id. `sendBuddyRequest` reads `sharedPhotoPrivate` with the Admin SDK to find the owner. It does not return an email address or a separate owner field. The existing request id is still `fromUid~toUid`, and the Gallery does not render it. The request can store `source: gallery`, the photo id, the public car name, and an optional note of at most 200 characters. A note that contains `@` is rejected. The same request shows on Gaming Buddies with the line "found you through your painted car" and the public photo as a thumbnail. Accept, decline, and block are the existing actions. Accept still writes `buddies/{pairId}`, so photos already shared with Show to my Gaming Buddies become visible through `listVisibleTeamPhotos`. No second photo list is created.
+
+In-app requests, including gallery ones, do not send email. There is no recipient switch that turns email on for them. `sendBuddyInvite` is unchanged: the sender types an address, the daily cap stays 10, and `suppressBuddyEmailInvites` plus the opt-out list still apply to that mail only. `allowContactFromPlayers` is the game-request setting and is not consulted here.
+
+No Firestore rules change and no new index. Clients still cannot write `buddyRequests`, `buddyInvites`, `buddyRate`, or `sharedPhotos`. The caps and the 30-day decline window are enforced in `sendBuddyRequest`. Deploy the callables before the button can reach a live project:
+
+```bash
+firebase deploy --only functions:sendBuddyRequest,functions:galleryBuddyOffer,functions:saveBuddyProfile,functions:getBuddyInvite,functions:setPhotoSharing --project=gaslandsgarage-74ce6
+```
+
+`setPhotoSharing` is in that list so a player who already turned Gallery requests off does not publish a new card that still offers the button. `renderSharedCar` reads `allowGalleryBuddies` from the public card it already loads. It does not read `sharedPhotoPrivate`. Redeploy it only if the public car HTML should gain or lose the "Add as buddy" link:
+
+```bash
+firebase deploy --only functions:renderSharedCar --project=gaslandsgarage-74ce6
+```
 
 ## Photo library
 
@@ -149,9 +167,30 @@ What the function does:
 - `Cache-Control: no-store`, and the CloudFront behavior uses the managed CachingDisabled policy, so a takedown is visible on the next request.
 - `invoker: public`. CloudFront does not sign the request. The response is the same public card the Gallery already shows.
 
-No Firestore rules change and no new index. A car page is one document read by id. The browser page uses the existing `sharedPhotos` read rule, which already requires a published, visible gallery photo. Storage rules already allow the image only in that same case.
+No Firestore rules change and no new index for a car page. A car page is one document read by id. The browser page uses the existing `sharedPhotos` read rule, which already requires a published, visible gallery photo. Storage rules already allow the image only in that same case.
 
-Deploy the function by hand, from the repository root, before the CloudFront change:
+The Photos page (Gallery under Players and Events, and My Photos in Settings, which opens that page with your photos selected) lists the public Gallery 24 photos at a time. Each page is `showInGallery == true`, `hidden == false`, `published == true`, then any of vehicle type, display name, and one `keywords` `array-contains`, ordered by `createdAt` or `cans`. The cursor is `startAfter` the last snapshot. `keywords` is a list of lowercase words from the caption, car name, vehicle type, weapons, and display name, written when the photo is published or when its caption or shared stats are saved. There is no backfill job. A photo shared before that field existed still appears in the newest and oldest lists. It is missing from search and from a cans sort until the next save. Likes are not stored, so there is no most-liked sort. My photos stays the account library (100 photos) and is not this query.
+
+`firestore.indexes.json` has every composite index those combinations need on collection `sharedPhotos` (32 indexes: the filters above, each with `createdAt` and `cans` ascending and descending). Deploy them before the site that pages the Gallery is published:
+
+```bash
+firebase deploy --only firestore:indexes --project=gaslandsgarage-74ce6
+```
+
+A photo added from the Photos page with no linked car is stored in that player's library and counts toward the same 100-photo limit. Publishing it to the Gallery uses `setPhotoSharing` with a vehicle type from the game list and no stats. Firestore rules are unchanged: clients still cannot write `sharedPhotos`. That gallery-only branch is not live until `setPhotoSharing` is deployed by hand:
+
+```bash
+firebase deploy --only functions:setPhotoSharing --project=gaslandsgarage-74ce6
+```
+
+A painting-guide link is optional on the private profile (`playerProfiles.website`) and on each photo (`paintingUrl`). The profile field is not copied onto a photo unless the player keeps it or presses "Use my profile website". Firestore rules allow the profile field and a client update of `paintingUrl` on `users/{uid}/photos/{photoId}` only when the value is empty or an http(s) URL of at most 300 characters. Clients still cannot write `sharedPhotos`. `setPhotoPaintingUrl` and `setPhotoSharing` apply that same check before the Admin SDK writes the public card. No new index. The link is not on the live car page or embed until `renderSharedCar` is deployed, and a saved link is not copied onto a public card until `setPhotoPaintingUrl` and `setPhotoSharing` are deployed:
+
+```bash
+firebase deploy --only firestore:rules --project=gaslandsgarage-74ce6
+firebase deploy --only functions:setPhotoPaintingUrl,functions:setPhotoSharing,functions:renderSharedCar --project=gaslandsgarage-74ce6
+```
+
+The car page markup and CSS live in `app/src/lib/photos/carPage.ts`. The function imports that module, so a header, hero, stat card, or share-icon change is not live until `renderSharedCar` is deployed by hand. CI does not deploy functions. Hosting stays on AWS. Deploy the function by hand, from the repository root, before the CloudFront change:
 
 ```bash
 firebase deploy --only functions:renderSharedCar --project=gaslandsgarage-74ce6

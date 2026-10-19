@@ -238,6 +238,7 @@ async function saveTeamWithPhoto(page: Page) {
 		mimeType: 'image/png',
 		buffer: TINY_PNG
 	});
+	await photos.getByTestId('confirm-car-upload').click();
 	await expect(photos.getByRole('img', { name: 'Painted car' })).toBeVisible({ timeout: 30_000 });
 	return response;
 }

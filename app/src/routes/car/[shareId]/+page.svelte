@@ -42,7 +42,7 @@
 	<meta name="description" content={car ? `${car.displayName}'s ${car.vehicleType} on Gaslands Garage.` : NOT_SHARED_NOTICE} />
 </svelte:head>
 
-<section class="mx-auto max-w-3xl py-8" data-testid="car-route">
+<section class="mx-auto max-w-4xl px-3 py-6" data-testid="car-route">
 	{#if status === 'loading'}
 		<p>Loading this car…</p>
 	{:else if status === 'error'}

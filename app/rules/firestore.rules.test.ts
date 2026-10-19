@@ -299,6 +299,13 @@ describe('player privacy', () => {
 		await assertFails(
 			setDoc(doc(player, 'playerProfiles', 'player'), playerProfile({ bio: 'mail me player@example.com' }))
 		);
+		await assertSucceeds(
+			setDoc(doc(player, 'playerProfiles', 'player'), playerProfile({ website: 'https://www.youtube.com/@painter' }))
+		);
+		await assertSucceeds(setDoc(doc(player, 'playerProfiles', 'player'), playerProfile({ website: '' })));
+		await assertFails(setDoc(doc(player, 'playerProfiles', 'player'), playerProfile({ website: 'javascript:alert(1)' })));
+		await assertFails(setDoc(doc(player, 'playerProfiles', 'player'), playerProfile({ website: 'https://user:pass@example.com/x' })));
+		await assertFails(setDoc(doc(player, 'playerProfiles', 'player'), playerProfile({ website: `https://example.com/${'a'.repeat(300)}` })));
 		await assertFails(
 			setDoc(
 				doc(player, 'playerProfiles', 'player'),
@@ -727,6 +734,57 @@ describe('gaming buddies', () => {
 		await assertFails(getDoc(doc(guest(), 'teams', 'visible')));
 	});
 
+	it('leaves gallery buddy requests and the rate counter to the server', async () => {
+		await seed(async (database) => {
+			await setDoc(doc(database, 'sharedPhotos', 'photogal1'), {
+				photoId: 'photogal1',
+				displayName: 'Oak',
+				vehicleType: 'Car',
+				teamName: '',
+				caption: 'Rust',
+				createdAt: NOW,
+				hidden: false,
+				published: true,
+				showInGallery: true,
+				keywords: ['rust'],
+				paintingUrl: '',
+				allowGalleryBuddies: false
+			});
+			await setDoc(doc(database, 'buddyRequests', 'buddy~owner'), {
+				fromUid: 'buddy',
+				toUid: 'owner',
+				fromName: 'Bea',
+				toName: 'Oak',
+				status: 'pending',
+				source: 'gallery',
+				photoId: 'photogal1',
+				carName: 'Rust',
+				message: 'Nice paint',
+				createdAt: NOW,
+				updatedAt: NOW
+			});
+		});
+		const buddy = authed('buddy');
+		await assertSucceeds(getDoc(doc(buddy, 'sharedPhotos', 'photogal1')));
+		const request = await getDoc(doc(buddy, 'buddyRequests', 'buddy~owner'));
+		expect(request.data()?.source).toBe('gallery');
+		expect(request.data()?.carName).toBe('Rust');
+		await assertFails(
+			setDoc(doc(buddy, 'buddyRequests', 'buddy~owner'), {
+				fromUid: 'buddy',
+				toUid: 'owner',
+				status: 'pending',
+				source: 'gallery',
+				photoId: 'photogal1',
+				createdAt: NOW,
+				updatedAt: NOW
+			})
+		);
+		await assertFails(updateDoc(doc(buddy, 'sharedPhotos', 'photogal1'), { allowGalleryBuddies: true }));
+		await assertFails(setDoc(doc(buddy, 'buddyRate', 'buddy'), { requestAt: [1], galleryRequestAt: [1] }));
+		await assertFails(setDoc(doc(buddy, 'buddyInvites', 'buddy'), { galleryBuddyRequests: false }));
+	});
+
 	it('denies a pending request', async () => {
 		await seed(async (database) => {
 			await setDoc(doc(database, 'teams', 'visible'), {
@@ -861,6 +919,10 @@ describe('vehicle photos', () => {
 		await assertSucceeds(getDoc(photo));
 		await assertSucceeds(getDocs(collection(player, 'users', 'player', 'photos')));
 		await assertSucceeds(updateDoc(photo, { caption: 'Blue car' }));
+		await assertSucceeds(updateDoc(photo, { paintingUrl: 'https://www.youtube.com/@painter' }));
+		await assertSucceeds(updateDoc(photo, { paintingUrl: '' }));
+		await assertFails(updateDoc(photo, { paintingUrl: 'javascript:alert(1)' }));
+		await assertFails(updateDoc(photo, { paintingUrl: 'https://user:pass@example.com/secret' }));
 		await assertFails(updateDoc(photo, { path: 'users/player/vehicle-photos/team1234/veh123/other.webp' }));
 		await assertFails(updateDoc(photo, { caption: 'x'.repeat(141) }));
 		await assertFails(setDoc(doc(player, 'users', 'player', 'photos', 'photo9999'), photoDoc()));

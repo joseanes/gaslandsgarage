@@ -30,7 +30,7 @@ export function storageBucketForProject(configured = '', projectId = ''): string
 }
 
 export const PHOTO_PRIVACY_SHORT =
-	'Your photos are yours. We store them only to show them to you on Gaslands Garage and in your printouts. We never use them anywhere else. Delete a photo anytime; deleting your account deletes all of your photos.';
+	'Your photos are yours. We never use them anywhere else, and deleting your account deletes all of your photos.';
 
 export const PHOTO_ID_PATTERN = /^[A-Za-z0-9_-]{8,40}$/;
 export const TEAM_ID_PATTERN = /^[A-Za-z0-9_-]{1,40}$/;

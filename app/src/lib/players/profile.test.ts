@@ -108,6 +108,29 @@ describe('planPresence', () => {
 		expect(planned.plan.openToGames).not.toHaveProperty('latE2');
 		expect(planned.plan.openToGames).not.toHaveProperty('locationLabel');
 		expect(planned.plan.openToGames).not.toHaveProperty('email');
+		expect(planned.plan.map?.entry).not.toHaveProperty('website');
+	});
+
+	it('keeps an optional website on the private profile and off the map', () => {
+		const planned = planPresence({
+			uid: 'player',
+			form: { ...emptyForm(), playerName: 'Ada', website: ' https://www.youtube.com/@ada ' },
+			previous: null,
+			coords: { locationLabel: '', latE2: null, lngE2: null },
+			now
+		});
+		expect(planned.ok).toBe(true);
+		if (!planned.ok) return;
+		expect(planned.plan.profile.website).toBe('https://www.youtube.com/@ada');
+		expect(planned.plan.map).toBeNull();
+		const rejected = planPresence({
+			uid: 'player',
+			form: { ...emptyForm(), website: 'ada@example.com' },
+			previous: null,
+			coords: { locationLabel: '', latE2: null, lngE2: null },
+			now
+		});
+		expect(rejected.ok).toBe(false);
 	});
 
 	it('refuses a named pin or contact opt-in without a player name', () => {

@@ -1,10 +1,13 @@
 import { browser } from '$app/environment';
+import { BUDDY_FALLBACK_NAME, publicDisplayName } from '../buddies/model';
 import { auth, db, initializeFirebase } from '../firebase';
 import { PRIVACY_FUNCTIONS_REGION } from '../privacy/accountShared';
 import { storageBucketName } from '../photos/model';
 import { PHOTO_ID_PATTERN } from '../photos/model';
 import { publicCarFromDocument, type PublicCar } from '../photos/carPage';
-import { GALLERY_PAGE_LIMIT, sanitizeVehicleStats, sharedPhotoMediaUrl, type ShareFlags, type VehicleStatsSnapshot } from '../photos/share';
+import { paintingGuideLink } from '../photos/link';
+import { galleryQueryPlan, type GalleryListRequest } from '../photos/galleryQuery';
+import { GALLERY_PAGE_SIZE, sanitizeVehicleStats, sharedPhotoMediaUrl, type ShareFlags, type VehicleStatsSnapshot } from '../photos/share';
 
 export interface SharedVehiclePhoto {
 	photoId: string;
@@ -26,6 +29,7 @@ export interface GalleryPhoto {
 	createdAt: string;
 	url: string;
 	vehicleStats: VehicleStatsSnapshot | null;
+	paintingUrl: string;
 }
 
 export interface ModerationPhoto {
@@ -90,14 +94,19 @@ async function call<T>(name: string, data: unknown, fallback: string): Promise<T
 	}
 }
 
+export async function setPhotoPaintingUrl(photoId: string, paintingUrl: string): Promise<{ paintingUrl: string }> {
+	return call('setPhotoPaintingUrl', { photoId, paintingUrl }, 'That link could not be saved.');
+}
+
 export async function setPhotoSharing(
 	photoId: string,
 	flags: ShareFlags,
-	source?: { teamId: string; vehicleId: string }
-): Promise<void> {
-	await call(
+	source?: { teamId: string; vehicleId: string },
+	vehicleType?: string
+): Promise<{ shared: boolean; published: boolean; hidden: boolean }> {
+	return call(
 		'setPhotoSharing',
-		{ photoId, ...flags, shareTeamId: source?.teamId, shareVehicleId: source?.vehicleId },
+		{ photoId, ...flags, shareTeamId: source?.teamId, shareVehicleId: source?.vehicleId, vehicleType },
 		'That sharing choice could not be saved.'
 	);
 }
@@ -149,37 +158,60 @@ export async function loadPublicCar(shareId: string): Promise<PublicCar | null> 
 	}
 }
 
-export async function listGalleryPhotos(): Promise<GalleryPhoto[]> {
+function galleryPhotoFromDoc(id: string, data: Record<string, unknown>): GalleryPhoto | null {
+	if (data.hidden === true || data.published !== true || data.showInGallery !== true) return null;
+	if ('ownerUid' in data || 'userId' in data || 'email' in data) return null;
+	return {
+		photoId: id,
+		displayName: publicDisplayName(data.displayName) ?? BUDDY_FALLBACK_NAME,
+		vehicleType: typeof data.vehicleType === 'string' ? data.vehicleType : 'Vehicle',
+		teamName: typeof data.teamName === 'string' ? data.teamName : '',
+		caption: typeof data.caption === 'string' ? data.caption : '',
+		createdAt: typeof data.createdAt === 'string' ? data.createdAt : '',
+		url: sharedPhotoUrl(id),
+		vehicleStats: sanitizeVehicleStats(data.vehicleStats),
+		paintingUrl: paintingGuideLink(data.paintingUrl)?.href ?? ''
+	};
+}
+
+export interface GalleryPhotoPage {
+	photos: GalleryPhoto[];
+	cursor: unknown;
+	hasMore: boolean;
+}
+
+/**
+ * One server page of published, visible Gallery photos.
+ * `cursor` is the last Firestore snapshot from the previous page.
+ * An unsafe player name or search word matches nothing and does not query.
+ */
+export async function listGalleryPhotosPage(request: GalleryListRequest, cursor?: unknown): Promise<GalleryPhotoPage> {
+	const plan = galleryQueryPlan(request);
+	if (!plan) return { photos: [], cursor: null, hasMore: false };
 	await appInstance();
 	if (!db) throw new Error('The gallery is not available right now.');
-	const { collection, getDocs, limit, orderBy, query, where } = await import('firebase/firestore');
+	const { collection, getDocs, limit, orderBy, query, startAfter, where } = await import('firebase/firestore');
+	const clauses = plan.map((clause) => {
+		if (clause.kind === 'eq') return where(clause.field, '==', clause.value);
+		if (clause.kind === 'contains') return where(clause.field, 'array-contains', clause.value);
+		return orderBy(clause.field, clause.direction);
+	});
 	const snap = await getDocs(
 		query(
 			collection(db, 'sharedPhotos'),
-			where('showInGallery', '==', true),
-			where('hidden', '==', false),
-			where('published', '==', true),
-			orderBy('createdAt', 'desc'),
-			limit(GALLERY_PAGE_LIMIT)
+			...clauses,
+			...(cursor ? [startAfter(cursor)] : []),
+			limit(GALLERY_PAGE_SIZE + 1)
 		)
 	);
+	const page = snap.docs.slice(0, GALLERY_PAGE_SIZE);
 	const photos: GalleryPhoto[] = [];
-	for (const item of snap.docs) {
-		const data = item.data();
-		if (data.hidden === true || data.published !== true || data.showInGallery !== true) continue;
-		if ('ownerUid' in data || 'userId' in data || 'email' in data) continue;
-		photos.push({
-			photoId: item.id,
-			displayName: typeof data.displayName === 'string' ? data.displayName : '',
-			vehicleType: typeof data.vehicleType === 'string' ? data.vehicleType : 'Vehicle',
-			teamName: typeof data.teamName === 'string' ? data.teamName : '',
-			caption: typeof data.caption === 'string' ? data.caption : '',
-			createdAt: typeof data.createdAt === 'string' ? data.createdAt : '',
-			url: sharedPhotoUrl(item.id),
-			vehicleStats: sanitizeVehicleStats(data.vehicleStats)
-		});
+	for (const item of page) {
+		const photo = galleryPhotoFromDoc(item.id, item.data() as Record<string, unknown>);
+		if (photo) photos.push(photo);
 	}
-	return photos;
+	const last = page[page.length - 1] ?? null;
+	return { photos, cursor: last, hasMore: snap.docs.length > GALLERY_PAGE_SIZE };
 }
 
 export async function loadModeration(): Promise<{ requireApproval: boolean; photos: ModerationPhoto[] }> {

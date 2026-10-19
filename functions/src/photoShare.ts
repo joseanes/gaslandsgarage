@@ -8,6 +8,7 @@ import {
 	PHOTO_ID_PATTERN,
 	TEAM_ID_PATTERN,
 	UID_PATTERN,
+	VEHICLE_ID_PATTERN,
 	isPhotoContentType,
 	storageBucketForProject,
 	type PhotoContentType
@@ -22,10 +23,13 @@ import {
 	photoReportId,
 	publicSharedPhoto,
 	sanitizeVehicleStats,
+	sharedPhotoSearchPatch,
 	shareFlags,
 	sharedPhotoObjectPath,
 	vehicleTypeLabel
 } from '../../app/src/lib/photos/share.ts';
+import { galleryVehicleTypes } from '../../app/src/lib/photos/galleryQuery.ts';
+import { normalizePaintingUrl } from '../../app/src/lib/photos/link.ts';
 import { vehicleStatsSnapshot } from '../../app/src/lib/photos/vehicleStats.ts';
 
 const REGION = 'us-central1';
@@ -184,6 +188,8 @@ export async function setPhotoSharingForUser(
 		shareVehicleStats?: unknown;
 		shareTeamId?: unknown;
 		shareVehicleId?: unknown;
+		vehicleType?: unknown;
+		paintingUrl?: unknown;
 	}
 ): Promise<{ shared: boolean; published: boolean; hidden: boolean }> {
 	if (!UID_PATTERN.test(uid)) throw new Error('Sign in again before sharing a photo.');
@@ -214,18 +220,40 @@ export async function setPhotoSharingForUser(
 		return { shared: false, published: false, hidden: false };
 	}
 
-	const source = shareSource(attachmentsFromData(photo.data()), input.shareTeamId, input.shareVehicleId);
-	const teamId = source.teamId;
-	const vehicleId = source.vehicleId;
-	if (!TEAM_ID_PATTERN.test(teamId)) throw new Error('Save this team before sharing a photo.');
-	const team = await db.doc(`teams/${teamId}`).get();
-	if (!team.exists || team.get('userId') !== uid) throw new Error('Save this team before sharing a photo.');
-	const vehicle = vehicleOnTeam(team.data(), vehicleId);
-	if (!vehicle) throw new Error('That vehicle is not on this team.');
 	const contentType = photo.get('contentType');
 	if (!isPhotoContentType(contentType)) throw new Error('That photo could not be shared.');
 	const createdAt = String(photo.get('createdAt') ?? '');
 	if (!createdAt || createdAt.length > 40) throw new Error('That photo could not be shared.');
+
+	const attachments = attachmentsFromData(photo.data());
+	const askedTeam = String(input.shareTeamId ?? '');
+	const askedVehicle = String(input.shareVehicleId ?? '');
+	const askedForCar = TEAM_ID_PATTERN.test(askedTeam) && VEHICLE_ID_PATTERN.test(askedVehicle);
+	const unlinked = attachments.length === 0 && !askedForCar;
+	let teamId = '';
+	let vehicleId = '';
+	let vehicleType = '';
+	let teamName = '';
+	let vehicleStats: ReturnType<typeof vehicleStatsSnapshot> | undefined;
+	if (unlinked) {
+		if (flags.showToBuddies || flags.showOnShareLink || flags.shareVehicleStats) {
+			throw new Error('Link this photo to one of your cars before sharing its stats or team.');
+		}
+		vehicleType = listedGalleryType(input.vehicleType);
+	} else {
+		const source = shareSource(attachments, input.shareTeamId, input.shareVehicleId);
+		teamId = source.teamId;
+		vehicleId = source.vehicleId;
+		if (!TEAM_ID_PATTERN.test(teamId)) throw new Error('Save this team before sharing a photo.');
+		const team = await db.doc(`teams/${teamId}`).get();
+		if (!team.exists || team.get('userId') !== uid) throw new Error('Save this team before sharing a photo.');
+		const vehicle = vehicleOnTeam(team.data(), vehicleId);
+		if (!vehicle) throw new Error('That vehicle is not on this team.');
+		vehicleType = vehicleTypeLabel(vehicle.type);
+		teamName = cleanTeamName(team.get('teamName'));
+		const teamData = asRecord(team.get('teamData'));
+		vehicleStats = flags.shareVehicleStats ? vehicleStatsSnapshot(vehicle, teamData.rulesVersion) : undefined;
+	}
 
 	const privateRef = db.doc(`sharedPhotoPrivate/${photoId}`);
 	const existing = await privateRef.get();
@@ -236,11 +264,8 @@ export async function setPhotoSharingForUser(
 		published: existing.get('published') === true
 	});
 	const displayName = await displayNameFor(uid);
-	const vehicleType = vehicleTypeLabel(vehicle.type);
-	const teamName = cleanTeamName(team.get('teamName'));
 	const caption = typeof photo.get('caption') === 'string' ? photo.get('caption') : '';
-	const teamData = asRecord(team.get('teamData'));
-	const vehicleStats = flags.shareVehicleStats ? vehicleStatsSnapshot(vehicle, teamData.rulesVersion) : undefined;
+	const paintingUrl = paintingUrlForShare(photo.get('paintingUrl'), input.paintingUrl);
 	const publicDoc = publicSharedPhoto({
 		photoId,
 		displayName,
@@ -251,7 +276,8 @@ export async function setPhotoSharingForUser(
 		hidden,
 		published,
 		showInGallery: flags.showInGallery,
-		vehicleStats
+		vehicleStats,
+		paintingUrl
 	});
 	const privateDoc = {
 		ownerUid: uid,
@@ -269,16 +295,66 @@ export async function setPhotoSharingForUser(
 		showOnShareLink: flags.showOnShareLink,
 		showInGallery: flags.showInGallery,
 		shareVehicleStats: flags.shareVehicleStats,
+		paintingUrl,
 		reportCount: reports.size
 	};
 
 	await copySharedObject(String(photo.get('path')), photoId, contentType);
+	const photoPatch: Record<string, unknown> = { ...flags, paintingUrl };
+	if (!unlinked) {
+		photoPatch.shareTeamId = teamId;
+		photoPatch.shareVehicleId = vehicleId;
+		photoPatch.teamId = teamId;
+		photoPatch.vehicleId = vehicleId;
+	}
+	const invite = await db.doc(`${BUDDY_COLLECTIONS.invites}/${uid}`).get();
+	const card =
+		invite.get('galleryBuddyRequests') === false ? { ...publicDoc, allowGalleryBuddies: false } : publicDoc;
 	const batch = db.batch();
-	batch.set(db.doc(`sharedPhotos/${photoId}`), publicDoc);
+	batch.set(db.doc(`sharedPhotos/${photoId}`), card);
 	batch.set(privateRef, privateDoc);
-	batch.set(photoRef, { ...flags, shareTeamId: teamId, shareVehicleId: vehicleId, teamId, vehicleId }, { merge: true });
+	batch.set(photoRef, photoPatch, { merge: true });
 	await batch.commit();
 	return { shared: true, published, hidden };
+}
+
+/** A caller-supplied link replaces the stored one. A missing value keeps what the photo already has. */
+function paintingUrlForShare(stored: unknown, override: unknown): string {
+	if (override !== undefined) return normalizePaintingUrl(override);
+	try {
+		return normalizePaintingUrl(stored);
+	} catch {
+		return '';
+	}
+}
+
+export async function setPhotoPaintingUrlForUser(uid: string, photoIdInput: unknown, rawUrl: unknown): Promise<{ paintingUrl: string }> {
+	if (!UID_PATTERN.test(uid)) throw new Error('Sign in again before saving a link.');
+	if (!PHOTO_ID_PATTERN.test(String(photoIdInput ?? ''))) throw new Error('That photo was not found.');
+	const paintingUrl = normalizePaintingUrl(rawUrl);
+	const photoId = String(photoIdInput);
+	const db = getFirestore();
+	const photoRef = db.doc(`users/${uid}/photos/${photoId}`);
+	const photo = await photoRef.get();
+	if (!photo.exists || photo.get('userId') !== uid) throw new Error('That photo was not found.');
+	const batch = db.batch();
+	batch.set(photoRef, { paintingUrl }, { merge: true });
+	const publicRef = db.doc(`sharedPhotos/${photoId}`);
+	const published = await publicRef.get();
+	if (published.exists) batch.set(publicRef, { paintingUrl }, { merge: true });
+	const privateRef = db.doc(`sharedPhotoPrivate/${photoId}`);
+	const priv = await privateRef.get();
+	if (priv.exists) batch.set(privateRef, { paintingUrl }, { merge: true });
+	await batch.commit();
+	return { paintingUrl };
+}
+
+/** A gallery upload with no car may name a game vehicle type. Anything else is rejected. */
+function listedGalleryType(value: unknown): string {
+	if (typeof value !== 'string') throw new Error('Choose a vehicle type.');
+	const label = value.replace(/[\u0000-\u001f]/g, '').trim().replace(/\s+/g, ' ');
+	if (!galleryVehicleTypes().includes(label)) throw new Error('Choose a vehicle type.');
+	return label;
 }
 
 function visibleCard(item: QueryDocumentSnapshot): VisibleTeamPhoto | null {
@@ -483,7 +559,9 @@ async function shareCall(request: CallableRequest): Promise<{ shared: boolean; p
 		showInGallery: data.showInGallery,
 		shareVehicleStats: data.shareVehicleStats,
 		shareTeamId: data.shareTeamId,
-		shareVehicleId: data.shareVehicleId
+		shareVehicleId: data.shareVehicleId,
+		vehicleType: data.vehicleType,
+		paintingUrl: 'paintingUrl' in data ? data.paintingUrl : undefined
 	});
 }
 
@@ -501,18 +579,37 @@ export async function refreshSharedVehicleStatsForTeam(teamId: string, team: Rec
 		const publicRef = db.doc(`sharedPhotos/${item.id}`);
 		const published = await publicRef.get();
 		if (!published.exists) continue;
+		const publishedData = published.data() ?? {};
 		const vehicle = team ? vehicleOnTeam(team, String(item.get('vehicleId') ?? '')) : null;
 		if (!vehicle) {
-			await publicRef.update({ vehicleStats: FieldValue.delete() });
+			const patch = sharedPhotoSearchPatch({
+				caption: publishedData.caption,
+				displayName: publishedData.displayName,
+				vehicleType: publishedData.vehicleType,
+				vehicleStats: null
+			});
+			await publicRef.update({ vehicleStats: FieldValue.delete(), cans: FieldValue.delete(), keywords: patch.keywords });
 			continue;
 		}
 		const vehicleType = vehicleTypeLabel(vehicle.type);
 		const vehicleStats = sanitizeVehicleStats(vehicleStatsSnapshot(vehicle, rulesVersion));
 		if (!vehicleStats) {
-			await publicRef.update({ vehicleStats: FieldValue.delete() });
+			const patch = sharedPhotoSearchPatch({
+				caption: publishedData.caption,
+				displayName: publishedData.displayName,
+				vehicleType,
+				vehicleStats: null
+			});
+			await publicRef.update({ vehicleStats: FieldValue.delete(), cans: FieldValue.delete(), keywords: patch.keywords });
 			continue;
 		}
-		await publicRef.set({ vehicleType, vehicleStats }, { merge: true });
+		const patch = sharedPhotoSearchPatch({
+			caption: publishedData.caption,
+			displayName: publishedData.displayName,
+			vehicleType,
+			vehicleStats
+		});
+		await publicRef.set({ vehicleType, vehicleStats, keywords: patch.keywords, cans: patch.cans }, { merge: true });
 		await item.ref.set({ vehicleType }, { merge: true });
 	}
 }
@@ -520,6 +617,16 @@ export async function refreshSharedVehicleStatsForTeam(teamId: string, team: Rec
 export const setPhotoSharing = onCall(CALL, async (request) => {
 	try {
 		return await shareCall(request);
+	} catch (error) {
+		throw httpsError(error);
+	}
+});
+
+export const setPhotoPaintingUrl = onCall(CALL, async (request) => {
+	try {
+		const uid = await assertActive(request.auth?.uid);
+		const data = asRecord(request.data);
+		return await setPhotoPaintingUrlForUser(uid, data.photoId, data.paintingUrl);
 	} catch (error) {
 		throw httpsError(error);
 	}

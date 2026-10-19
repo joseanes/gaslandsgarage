@@ -1,7 +1,9 @@
 import { auth, db, initializeFirebase } from '$lib/firebase';
 import { browser } from '$app/environment';
 import { PRIVACY_FUNCTIONS_REGION } from '$lib/privacy/accountShared';
-import { BUDDY_COLLECTIONS, buddyCopyTeamName, buddyPairId, publicDisplayName } from '$lib/buddies/model';
+import { galleryBuddyContext } from '$lib/buddies/gallery';
+import { BUDDY_COLLECTIONS, buddyCopyTeamName, buddyPairId, buddyRequestMessage, publicCarLabel, publicDisplayName } from '$lib/buddies/model';
+import { PHOTO_ID_PATTERN } from '$lib/photos/model';
 import { getUserTeams } from '$lib/services/team';
 
 export { buddyCopyTeamName, publicDisplayName };
@@ -20,6 +22,11 @@ export type BuddyRequest = {
 	toName: string;
 	status: string;
 	createdAt: string;
+	source: string;
+	photoId: string;
+	carName: string;
+	message: string;
+	context: string;
 };
 
 export type BuddyBlock = {
@@ -40,6 +47,12 @@ export type BuddyProfile = {
 	displayName: string;
 	discoverable: boolean;
 	emailInvites: boolean;
+	galleryBuddyRequests: boolean;
+};
+
+export type GalleryBuddyOffer = {
+	offer: 'hidden' | 'sign-in' | 'add' | 'sent' | 'buddies' | 'accept' | 'declined';
+	requestId: string;
 };
 
 export type SearchResult = {
@@ -80,13 +93,39 @@ async function callBuddy<T>(name: string, data?: object): Promise<T> {
 
 export async function loadBuddyProfile(): Promise<BuddyProfile> {
 	const profile = await callBuddy<BuddyProfile>('getBuddyInvite');
-	return { ...profile, emailInvites: profile.emailInvites === true };
+	return {
+		...profile,
+		emailInvites: profile.emailInvites === true,
+		galleryBuddyRequests: profile.galleryBuddyRequests !== false
+	};
 }
 
-export async function saveBuddyProfile(input: { displayName: string; discoverable: boolean }): Promise<BuddyProfile> {
-	const saved = await callBuddy<{ displayName: string; discoverable: boolean }>('saveBuddyProfile', input);
+export async function saveBuddyProfile(input: {
+	displayName: string;
+	discoverable: boolean;
+	galleryBuddyRequests?: boolean;
+}): Promise<BuddyProfile> {
+	const saved = await callBuddy<{ displayName: string; discoverable: boolean; galleryBuddyRequests?: boolean }>(
+		'saveBuddyProfile',
+		input
+	);
 	const current = await loadBuddyProfile();
-	return { ...current, displayName: saved.displayName, discoverable: saved.discoverable };
+	return {
+		...current,
+		displayName: saved.displayName,
+		discoverable: saved.discoverable,
+		galleryBuddyRequests: saved.galleryBuddyRequests !== false
+	};
+}
+
+export async function galleryBuddyOffer(photoId: string): Promise<GalleryBuddyOffer> {
+	const result = await callBuddy<{ offer?: string; requestId?: string }>('galleryBuddyOffer', { photoId });
+	const offer = result.offer;
+	const known = offer === 'sign-in' || offer === 'add' || offer === 'sent' || offer === 'buddies' || offer === 'accept' || offer === 'declined';
+	return {
+		offer: known ? offer : 'hidden',
+		requestId: typeof result.requestId === 'string' ? result.requestId : ''
+	};
 }
 
 export async function searchBuddyPlayers(query: string): Promise<SearchResult[]> {
@@ -98,7 +137,12 @@ export async function searchBuddyPlayers(query: string): Promise<SearchResult[]>
 	}));
 }
 
-export async function sendBuddyRequest(input: { code?: string; targetUid?: string }): Promise<void> {
+export async function sendBuddyRequest(input: {
+	code?: string;
+	targetUid?: string;
+	photoId?: string;
+	message?: string;
+}): Promise<void> {
 	await callBuddy('sendBuddyRequest', input);
 }
 
@@ -170,15 +214,26 @@ export async function loadBuddyRequests(): Promise<{ incoming: BuddyRequest[]; o
 		getDocs(query(collection(database, BUDDY_COLLECTIONS.requests), where('toUid', '==', uid))),
 		getDocs(query(collection(database, BUDDY_COLLECTIONS.requests), where('fromUid', '==', uid)))
 	]);
-	const mapRequest = (id: string, data: Record<string, unknown>): BuddyRequest => ({
-		id,
-		fromUid: String(data.fromUid ?? ''),
-		toUid: String(data.toUid ?? ''),
-		fromName: publicDisplayName(data.fromName) ?? 'Player',
-		toName: publicDisplayName(data.toName) ?? 'Player',
-		status: String(data.status ?? ''),
-		createdAt: String(data.createdAt ?? '')
-	});
+	const mapRequest = (id: string, data: Record<string, unknown>): BuddyRequest => {
+		const source = data.source === 'gallery' ? 'gallery' : '';
+		const photoId = typeof data.photoId === 'string' && PHOTO_ID_PATTERN.test(data.photoId) ? data.photoId : '';
+		const carName = source === 'gallery' ? publicCarLabel({ caption: data.carName }) : '';
+		const message = buddyRequestMessage(data.message) ?? '';
+		return {
+			id,
+			fromUid: String(data.fromUid ?? ''),
+			toUid: String(data.toUid ?? ''),
+			fromName: publicDisplayName(data.fromName) ?? 'Player',
+			toName: publicDisplayName(data.toName) ?? 'Player',
+			status: String(data.status ?? ''),
+			createdAt: String(data.createdAt ?? ''),
+			source,
+			photoId,
+			carName,
+			message,
+			context: source === 'gallery' ? galleryBuddyContext(carName) : ''
+		};
+	};
 	const incoming = incomingSnap.docs
 		.map((item) => mapRequest(item.id, item.data()))
 		.filter((item) => item.status === 'pending');

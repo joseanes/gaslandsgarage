@@ -796,7 +796,7 @@
               <button type="button" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600" on:click={() => { openPrintSettings(); showSettingsMenu = false; }}>
                 Print Settings
               </button>
-              <a href="/photos" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600 block" data-testid="my-photos-link" on:click={() => showSettingsMenu = false}>
+              <a href="/gallery?view=mine" class="menu-item w-full text-left px-4 py-2 text-white hover:bg-amber-600 block" data-testid="my-photos-link" on:click={() => showSettingsMenu = false}>
                 My Photos
               </a>
             </div>

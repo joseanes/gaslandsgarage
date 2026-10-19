@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { PHOTO_PRIVACY_SHORT } from '$lib/photos/model';
-	import { GALLERY_SHARE_COPY, SHARE_GALLERY_LABEL, SHARE_STATS_LABEL, STATS_SHARE_COPY } from '$lib/photos/share';
+	import { GALLERY_SHARE_COPY, SHARE_BUDDIES_LABEL, SHARE_GALLERY_LABEL, SHARE_LINK_LABEL, SHARE_STATS_LABEL, STATS_SHARE_COPY } from '$lib/photos/share';
 	const linkClass = 'text-amber-600 dark:text-amber-400 hover:underline';
 </script>
 
@@ -78,23 +78,27 @@
 			that link only when you turn on "Show on my team share link" for that photo.
 		</p>
 
-		<h2 class="text-xl font-bold mt-8 mb-3">Photos of your cars</h2>
+		<h2 id="photos" class="text-xl font-bold mt-8 mb-3">Photos of your cars</h2>
 		<p>{PHOTO_PRIVACY_SHORT}</p>
 		<p>We never use them for advertising, and we never use them to train models.</p>
 		<p>
-			A photo is optional. It belongs to your account. My Photos, under Settings, lists every photo
-			you have added. You can attach one photo to cars on teams you saved. The file is stored in
+			A photo is optional. It belongs to your account. My Photos, under Settings, opens the Gallery
+			with your photos selected and lists every photo you have added. You can attach one photo to cars
+			on teams you saved. The file is stored in
 			Firebase Storage, in this site's project, under your user id. A small note (the time, the size,
 			and a caption if you add one) is stored in the database, also under your user id. The picture is
 			resized in your browser before it is uploaded, which removes camera location data from the file
 			we store.
 		</p>
 		<p>
-			Sharing is off until you turn it on for that photo. Adding a photo asks "{SHARE_GALLERY_LABEL}" and
-			"{SHARE_STATS_LABEL}". Both start off, and you can change them later. "Show to my Gaming Buddies"
+			Sharing is off until you turn it on for that photo. Adding a photo asks the same four choices:
+			"{SHARE_BUDDIES_LABEL}", "{SHARE_LINK_LABEL}", "{SHARE_GALLERY_LABEL}", and "{SHARE_STATS_LABEL}".
+			All four start off, and you can change them later. "Show to my Gaming Buddies"
 			lets a buddy who can already see that team see the photo. "Show on my team share link" shows it to
 			anyone who opens that link. "{SHARE_GALLERY_LABEL}" puts it on the Gallery page, which is under
-			Players and Events. {GALLERY_SHARE_COPY} "{SHARE_STATS_LABEL}" {STATS_SHARE_COPY} The snapshot is
+			Players and Events. Other players who open the Gallery only see photos published there that are
+			not hidden. A private photo is visible only to the player who added it. {GALLERY_SHARE_COPY}
+			"{SHARE_STATS_LABEL}" {STATS_SHARE_COPY} The snapshot is
 			copied from the saved team, updated when that vehicle changes, and removed from the Gallery when
 			you turn stats sharing off. The Gallery shows the display name you chose in Gaslands Garage, the
 			vehicle type, the caption, and those stats only when you shared them. It does not show your Google
@@ -136,14 +140,18 @@
 		<h2 class="text-xl font-bold mt-8 mb-3">Location, Nominatim, and the approximate point</h2>
 		<p>
 			A player profile is optional. The private profile can store a player name, a short bio, a place
-			label, where you like to play, whether you appear on the map, whether that pin is anonymous,
-			whether you are open to a game, an approximate coordinate, and a random pin id. The pin id is not
+			label, where you like to play, an optional website (a YouTube channel or a blog, for example),
+			whether you appear on the map, whether that pin is anonymous,
+			whether you are open to a game, an approximate coordinate, and a random pin id. The website is
+			not shown on the map. The pin id is not
 			your account id. The profile does not store an email address.
 		</p>
 		<p>
 			The place you enter has to be a city and region, or a 5-digit US ZIP. Street addresses and ZIP+4
 			codes are rejected. Text that contains an @ sign is rejected, so an email address cannot be saved
-			in the name, bio, place, or play-spot fields.
+			in the name, bio, place, or play-spot fields. A website has to be a full http or https link. It
+			may contain an @ sign, which is how a YouTube channel address is written. A photo can store its
+			own link. If that link is blank, the photo has no link.
 		</p>
 		<p>
 			A city or region is geocoded once, when you save a new place, by OpenStreetMap Nominatim

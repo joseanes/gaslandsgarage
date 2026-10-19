@@ -38,6 +38,26 @@ export function photoSaveReason(input: {
 	return null;
 }
 
+/**
+ * The same save decision for a car picked from a saved-team list.
+ * An id that is not on that list is treated as unsaved, even when the list is empty.
+ */
+export function reasonVehicleNotOnSavedTeam(input: {
+	savedTeamId: string | null | undefined;
+	vehicleId: string;
+	savedVehicleIds: readonly string[];
+}): PhotoSaveReason | null {
+	const known = input.savedVehicleIds.includes(input.vehicleId)
+		? input.savedVehicleIds
+		: [...input.savedVehicleIds, '__not-on-saved-team__'];
+	return photoSaveReason({
+		savedTeamId: input.savedTeamId,
+		vehicleId: input.vehicleId,
+		dirty: false,
+		savedVehicleIds: known
+	});
+}
+
 export function vehicleIdentityList(raw: unknown): VehicleIdentity[] {
 	if (!Array.isArray(raw)) return [];
 	const vehicles: VehicleIdentity[] = [];

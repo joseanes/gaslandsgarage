@@ -1,11 +1,16 @@
 /** Photo sharing choices. Shared by the browser and the Cloud Functions. */
 
+import { normalizePaintingUrl } from './link';
 import { PHOTO_ID_PATTERN, UID_PATTERN, cleanCaption } from './model';
 
 export const SHARE_BUDDIES_LABEL = 'Show to my Gaming Buddies';
 export const SHARE_LINK_LABEL = 'Show on my team share link';
 export const SHARE_GALLERY_LABEL = 'Show this car in the public Gallery?';
 export const SHARE_STATS_LABEL = "Share this car's stats with the photo?";
+export const SHARE_EVERYWHERE_LABEL = 'Share everywhere';
+export const CUSTOMIZE_SHARING_LABEL = 'Customize sharing';
+export const SHARE_CHOICES_COPY =
+	"Off until you turn it on. The Gallery is public and can include this car's stats. Unshare anytime.";
 export const GALLERY_SHARE_COPY =
 	'Anyone can see photos you share to the Gallery. You can unshare anytime. Deleting your account removes them.';
 export const STATS_SHARE_COPY =
@@ -15,13 +20,36 @@ export const STATS_SHARE_COPY =
 export const REPORT_HIDE_THRESHOLD = 3;
 export const REPORTS_PER_HOUR = 10;
 export const REPORT_WINDOW_MS = 60 * 60 * 1000;
-export const GALLERY_PAGE_LIMIT = 60;
+/** Public Gallery page size. The next page uses a cursor, not a bigger limit. */
+export const GALLERY_PAGE_SIZE = 24;
+const KEYWORD_LIMIT = 24;
+const KEYWORD_STOP = new Set(['an', 'and', 'for', 'in', 'my', 'of', 'on', 'or', 'the', 'to', 'with']);
 
 export interface ShareFlags {
 	showToBuddies: boolean;
 	showOnShareLink: boolean;
 	showInGallery: boolean;
 	shareVehicleStats: boolean;
+}
+
+export type ShareChoiceState = 'off' | 'on' | 'mixed';
+
+export const SHARE_FLAG_KEYS = ['showToBuddies', 'showOnShareLink', 'showInGallery', 'shareVehicleStats'] as const;
+export type ShareFlagKey = (typeof SHARE_FLAG_KEYS)[number];
+
+export function shareChoiceState(flags: ShareFlags, keys: readonly ShareFlagKey[] = SHARE_FLAG_KEYS): ShareChoiceState {
+	const active = keys.length > 0 ? keys : SHARE_FLAG_KEYS;
+	const on = active.filter((key) => flags[key]).length;
+	if (on === 0) return 'off';
+	if (on === active.length) return 'on';
+	return 'mixed';
+}
+
+/** Flags outside `keys` stay off. A gallery-only upload uses that so stats cannot turn on without a car. */
+export function shareEverywhere(on: boolean, keys: readonly ShareFlagKey[] = SHARE_FLAG_KEYS): ShareFlags {
+	const next = {} as ShareFlags;
+	for (const key of SHARE_FLAG_KEYS) next[key] = keys.includes(key) ? on : false;
+	return next;
 }
 
 /** Build snapshot stored on the public gallery card. No account id, email, or Google name. */
@@ -52,6 +80,11 @@ export interface PublicSharedPhoto {
 	hidden: boolean;
 	published: boolean;
 	showInGallery: boolean;
+	keywords: string[];
+	/** Empty when this photo has no painting-guide link. Never filled from a profile. */
+	paintingUrl: string;
+	/** Present when this car shares its stats, so cans can be ordered without reading the snapshot. */
+	cans?: number;
 	vehicleStats?: VehicleStatsSnapshot;
 }
 
@@ -209,6 +242,65 @@ function assertNoIdentity(value: unknown): void {
 	}
 }
 
+function searchableText(value: unknown): string {
+	if (typeof value !== 'string') return '';
+	return value
+		.replace(/[^\s@]+@[^\s@]+/g, ' ')
+		.replace(/[\u0000-\u001f]/g, ' ')
+		.trim();
+}
+
+/** Lowercased words for one `array-contains` search. Addresses are removed before splitting. */
+export function galleryKeywords(input: {
+	caption?: unknown;
+	carName?: unknown;
+	vehicleType?: unknown;
+	weapons?: unknown;
+	displayName?: unknown;
+}): string[] {
+	const weapons = Array.isArray(input.weapons) ? input.weapons.map((item) => searchableText(item)).join(' ') : '';
+	const sources = [input.carName, input.caption, input.vehicleType, weapons, input.displayName];
+	const keywords: string[] = [];
+	const seen = new Set<string>();
+	for (const source of sources) {
+		const text = searchableText(source).toLowerCase();
+		for (const token of text.split(/[^\p{L}\p{N}]+/u)) {
+			if (token.length < 2 || token.length > 24 || KEYWORD_STOP.has(token) || seen.has(token)) continue;
+			seen.add(token);
+			keywords.push(token);
+			if (keywords.length >= KEYWORD_LIMIT) return keywords;
+		}
+	}
+	return keywords;
+}
+
+/** One search word. Several words use the longest, because a query can contain only one array. */
+export function gallerySearchToken(raw: unknown): string {
+	const keywords = galleryKeywords({ caption: raw });
+	return keywords.slice().sort((a, b) => b.length - a.length || a.localeCompare(b))[0] ?? '';
+}
+
+/**
+ * Fields written with the public card. `cans` is omitted when stats are not
+ * shared, so a cans sort does not treat a photo-only card as costing zero.
+ */
+export function sharedPhotoSearchPatch(input: {
+	caption?: unknown;
+	displayName?: unknown;
+	vehicleType?: unknown;
+	vehicleStats?: VehicleStatsSnapshot | null;
+}): { keywords: string[]; cans?: number } {
+	const stats = input.vehicleStats ?? null;
+	const keywords = galleryKeywords({
+		caption: input.caption,
+		carName: stats?.name ?? '',
+		vehicleType: input.vehicleType,
+		weapons: stats?.weapons ?? [],
+		displayName: input.displayName
+	});
+	return stats ? { keywords, cans: stats.cans } : { keywords };
+}
+
 /** Public gallery document. The account id is not a field. Stats are omitted unless sharing them is on. */
 export function publicSharedPhoto(input: {
 	photoId: string;
@@ -221,21 +313,35 @@ export function publicSharedPhoto(input: {
 	published: boolean;
 	showInGallery: boolean;
 	vehicleStats?: unknown;
+	paintingUrl?: unknown;
 }): PublicSharedPhoto {
 	if (!PHOTO_ID_PATTERN.test(input.photoId)) throw new Error('That photo could not be shared.');
+	const caption = cleanCaption(input.caption);
+	const paintingUrl = input.paintingUrl == null || input.paintingUrl === '' ? '' : normalizePaintingUrl(input.paintingUrl);
+	const stats = sanitizeVehicleStats(input.vehicleStats);
+	const search = sharedPhotoSearchPatch({
+		caption,
+		displayName: input.displayName,
+		vehicleType: input.vehicleType,
+		vehicleStats: stats
+	});
 	const photo: PublicSharedPhoto = {
 		photoId: input.photoId,
 		displayName: input.displayName,
 		vehicleType: input.vehicleType,
 		teamName: cleanTeamName(input.teamName),
-		caption: cleanCaption(input.caption),
+		caption,
 		createdAt: input.createdAt,
 		hidden: input.hidden === true,
 		published: input.published === true,
-		showInGallery: input.showInGallery === true
+		showInGallery: input.showInGallery === true,
+		keywords: search.keywords,
+		paintingUrl
 	};
-	const stats = sanitizeVehicleStats(input.vehicleStats);
-	if (stats) photo.vehicleStats = stats;
+	if (stats && search.cans !== undefined) {
+		photo.vehicleStats = stats;
+		photo.cans = search.cans;
+	}
 	assertNoIdentity(photo);
 	return photo;
 }

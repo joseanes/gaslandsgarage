@@ -51,6 +51,9 @@ describe('vehicle photo limits', () => {
 		expect(page).toContain('never use them for advertising');
 		expect(page).toContain('train models');
 		expect(card).toContain('PHOTO_PRIVACY_SHORT');
+		expect(card).toContain('Learn more');
+		expect(card).toContain('href="/privacy#photos"');
+		expect(page).toContain('id="photos"');
 		expect(card).toContain('accept="image/*"');
 		expect(card).toContain('capture="environment"');
 	});

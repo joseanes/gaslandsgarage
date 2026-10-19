@@ -27,6 +27,7 @@ import {
 	withAttachment,
 	withoutAttachment
 } from '../../app/src/lib/photos/library.ts';
+import { sanitizeVehicleStats, sharedPhotoSearchPatch } from '../../app/src/lib/photos/share.ts';
 import { removeSharedCopy, setPhotoSharingForUser } from './photoShare.ts';
 
 const PHOTOS = 'photos';
@@ -301,7 +302,16 @@ export async function renameLibraryPhotoForUser(uid: string, photoId: string, ca
 	await ref.set({ caption }, { merge: true });
 	const db = getFirestore();
 	const [pub, priv] = await Promise.all([db.doc(`sharedPhotos/${photoId}`).get(), db.doc(`sharedPhotoPrivate/${photoId}`).get()]);
-	if (pub.exists) await pub.ref.set({ caption }, { merge: true });
+	if (pub.exists) {
+		const data = pub.data() ?? {};
+		const patch = sharedPhotoSearchPatch({
+			caption,
+			displayName: data.displayName,
+			vehicleType: data.vehicleType,
+			vehicleStats: sanitizeVehicleStats(data.vehicleStats)
+		});
+		await pub.ref.set({ caption, ...patch }, { merge: true });
+	}
 	if (priv.exists) await priv.ref.set({ caption }, { merge: true });
 }
 

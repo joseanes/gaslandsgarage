@@ -7,13 +7,23 @@
  * dropped before HTML or JSON leaves this module.
  */
 
-import { BUDDY_FALLBACK_NAME, publicDisplayName } from '../buddies/model';
+import { BUDDY_FALLBACK_NAME, galleryBuddyRequestsAllowed, publicDisplayName } from '../buddies/model';
+import { paintingGuideHtml, paintingGuideLink } from './link';
 import { PHOTO_ID_PATTERN } from './model';
 import {
 	sanitizeVehicleStats,
 	sharedPhotoMediaUrl,
 	type VehicleStatsSnapshot
 } from './share';
+import {
+	SHARE_BRANDS,
+	SHARE_BRAND_COLOR,
+	SHARE_BRAND_LABEL,
+	copyMark,
+	nativeShareMark,
+	shareMark,
+	shareMarkIsDisc
+} from './shareMarks';
 
 export const SITE_ORIGIN = 'https://gaslandsgarage.com';
 export const BUILD_CTA = 'Build your own team on Gaslands Garage';
@@ -21,8 +31,9 @@ export const VIA_GASLANDS = 'via Gaslands Garage';
 export const NOT_SHARED_NOTICE = 'This car is no longer shared.';
 export const CAR_PAGE_FUNCTION = 'renderSharedCar';
 
-export const SHARE_CHANNELS = ['copy', 'x', 'facebook', 'reddit', 'native'] as const;
+export const SHARE_CHANNELS = ['copy', 'x', 'facebook', 'reddit', 'pinterest', 'whatsapp', 'bluesky', 'native'] as const;
 export type ShareChannel = (typeof SHARE_CHANNELS)[number];
+export type ShareIntentChannel = 'x' | 'facebook' | 'reddit' | 'pinterest' | 'whatsapp' | 'bluesky';
 
 /** Fields a car page or embed is allowed to show. Nothing else is copied. */
 export interface PublicCar {
@@ -33,6 +44,8 @@ export interface PublicCar {
 	caption: string;
 	imageUrl: string;
 	vehicleStats: VehicleStatsSnapshot | null;
+	/** Empty when this photo has no link. A profile website is not used here. */
+	paintingUrl: string;
 }
 
 const PUBLIC_CAR_KEYS = [
@@ -42,7 +55,8 @@ const PUBLIC_CAR_KEYS = [
 	'teamName',
 	'caption',
 	'imageUrl',
-	'vehicleStats'
+	'vehicleStats',
+	'paintingUrl'
 ] as const;
 
 export function carPagePath(shareId: string): string {
@@ -109,18 +123,28 @@ export function publicCarFromDocument(shareId: string, raw: unknown, imageUrl: s
 		teamName: publicText(data.teamName, 80),
 		caption: publicText(data.caption, 140),
 		imageUrl,
-		vehicleStats: stats
+		vehicleStats: stats,
+		paintingUrl: paintingGuideLink(data.paintingUrl)?.href ?? ''
 	};
 	if (Object.keys(car).some((key) => !PUBLIC_CAR_KEYS.includes(key as (typeof PUBLIC_CAR_KEYS)[number]))) return null;
 	return car;
 }
 
 export function isPublicImageUrl(url: string): boolean {
-	if (!url.startsWith('https://firebasestorage.googleapis.com/')) return false;
 	if (url.includes('token=') || url.includes('@')) return false;
 	try {
 		const parsed = new URL(url);
-		return parsed.protocol === 'https:' && parsed.hostname === 'firebasestorage.googleapis.com';
+		if (parsed.username || parsed.password) return false;
+		if (parsed.protocol === 'https:' && parsed.hostname === 'firebasestorage.googleapis.com') return true;
+		// The local Storage emulator. Production pages never use this host.
+		const local = parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost';
+		return (
+			parsed.protocol === 'http:' &&
+			local &&
+			/^\d+$/.test(parsed.port) &&
+			parsed.pathname.startsWith('/v0/b/') &&
+			parsed.searchParams.get('alt') === 'media'
+		);
 	} catch {
 		return false;
 	}
@@ -136,7 +160,7 @@ export function carShareUrl(shareId: string, channel?: ShareChannel, origin = SI
 	return url.toString();
 }
 
-export function shareIntent(channel: 'x' | 'facebook' | 'reddit', pageUrl: string, title: string): string {
+export function shareIntent(channel: ShareIntentChannel, pageUrl: string, title: string, imageUrl = ''): string {
 	if (channel === 'x') {
 		const intent = new URL('https://x.com/intent/post');
 		intent.searchParams.set('text', title);
@@ -148,9 +172,26 @@ export function shareIntent(channel: 'x' | 'facebook' | 'reddit', pageUrl: strin
 		intent.searchParams.set('u', pageUrl);
 		return intent.toString();
 	}
-	const intent = new URL('https://www.reddit.com/submit');
-	intent.searchParams.set('url', pageUrl);
-	intent.searchParams.set('title', title);
+	if (channel === 'reddit') {
+		const intent = new URL('https://www.reddit.com/submit');
+		intent.searchParams.set('url', pageUrl);
+		intent.searchParams.set('title', title);
+		return intent.toString();
+	}
+	if (channel === 'pinterest') {
+		const intent = new URL('https://pinterest.com/pin/create/button/');
+		intent.searchParams.set('url', pageUrl);
+		intent.searchParams.set('description', title);
+		if (imageUrl.startsWith('https://')) intent.searchParams.set('media', imageUrl);
+		return intent.toString();
+	}
+	if (channel === 'whatsapp') {
+		const intent = new URL('https://api.whatsapp.com/send');
+		intent.searchParams.set('text', `${title} ${pageUrl}`.trim());
+		return intent.toString();
+	}
+	const intent = new URL('https://bsky.app/intent/compose');
+	intent.searchParams.set('text', `${title} ${pageUrl}`.trim());
 	return intent.toString();
 }
 
@@ -255,7 +296,11 @@ export async function renderCarHttp(input: {
 	}
 	const car = publicCarFromDocument(route.shareId, raw, imageUrl);
 	if (!car) return htmlResult(410, route.kind, null, false, head);
-	return htmlResult(200, route.kind, car, false, head);
+	const allowGalleryBuddies =
+		!raw || typeof raw !== 'object' || Array.isArray(raw)
+			? true
+			: galleryBuddyRequestsAllowed((raw as Record<string, unknown>).allowGalleryBuddies);
+	return htmlResult(200, route.kind, car, false, head, allowGalleryBuddies);
 }
 
 function plain(statusCode: number, body: string): CarHttpResult {
@@ -276,7 +321,8 @@ function htmlResult(
 	kind: 'page' | 'embed',
 	car: PublicCar | null,
 	unavailable = false,
-	head = false
+	head = false,
+	allowGalleryBuddies = true
 ): CarHttpResult {
 	const embed = kind === 'embed';
 	const headers: Record<string, string> = {
@@ -293,7 +339,7 @@ function htmlResult(
 	return {
 		statusCode,
 		headers,
-		body: head ? '' : carDocument(kind, car, unavailable)
+		body: head ? '' : carDocument(kind, car, unavailable, allowGalleryBuddies)
 	};
 }
 
@@ -309,7 +355,7 @@ function contentSecurityPolicy(embed: boolean): string {
 	].join('; ');
 }
 
-function carDocument(kind: 'page' | 'embed', car: PublicCar | null, unavailable: boolean): string {
+function carDocument(kind: 'page' | 'embed', car: PublicCar | null, unavailable: boolean, allowGalleryBuddies = true): string {
 	if (!car) {
 		const message = unavailable ? 'This car could not be loaded.' : NOT_SHARED_NOTICE;
 		return `<!DOCTYPE html>
@@ -323,10 +369,10 @@ function carDocument(kind: 'page' | 'embed', car: PublicCar | null, unavailable:
 <style>${PAGE_CSS}</style>
 </head>
 <body>
-<main class="wrap">
+${siteHeader()}
+<main class="sheet narrow">
 <h1>${escapeHtml(message)}</h1>
-<p><a href="${escapeHtml(SITE_ORIGIN)}/gallery">Back to the Gallery</a></p>
-<p><a href="${escapeHtml(`${SITE_ORIGIN}/builder`)}">${escapeHtml(BUILD_CTA)}</a></p>
+<p><a class="textlink" href="${escapeHtml(SITE_ORIGIN)}/gallery">Back to the Gallery</a></p>
 </main>
 </body>
 </html>`;
@@ -342,12 +388,7 @@ function carDocument(kind: 'page' | 'embed', car: PublicCar | null, unavailable:
 <meta property="og:image:alt" content="${escapeHtml(label)}">
 <meta name="twitter:image" content="${escapeHtml(car.imageUrl)}">
 <meta name="twitter:card" content="summary_large_image">`;
-	const stats = car.vehicleStats
-		? `<dl>${statRows(car.vehicleStats)
-				.map((row) => `<div><dt>${escapeHtml(row.label)}</dt><dd>${escapeHtml(row.value)}</dd></div>`)
-				.join('')}</dl>`
-		: '<p class="quiet">This player shared the photo without the car\'s build.</p>';
-	const body = embed ? embedBody(car, pageUrl, label, stats) : pageBody(car, label, stats);
+	const body = embed ? embedBody(car, pageUrl, label) : pageBody(car, label, allowGalleryBuddies);
 	return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -374,32 +415,95 @@ ${embed ? '' : SHARE_SCRIPT}
 </html>`;
 }
 
-function pageBody(car: PublicCar, label: string, stats: string): string {
-	const copyUrl = carShareUrl(car.shareId, 'copy');
-	const xUrl = shareIntent('x', carShareUrl(car.shareId, 'x'), label);
-	const facebookUrl = shareIntent('facebook', carShareUrl(car.shareId, 'facebook'), label);
-	const redditUrl = shareIntent('reddit', carShareUrl(car.shareId, 'reddit'), label);
-	const nativeUrl = carShareUrl(car.shareId, 'native');
-	const caption = car.caption ? `<p>${escapeHtml(car.caption)}</p>` : '';
-	const team = car.teamName ? `<p>${escapeHtml(car.vehicleType)} · ${escapeHtml(car.teamName)}</p>` : `<p>${escapeHtml(car.vehicleType)}</p>`;
-	return `<main class="wrap">
-<article>
+function siteHeader(): string {
+	const home = escapeHtml(SITE_ORIGIN);
+	const builder = escapeHtml(`${SITE_ORIGIN}/builder`);
+	return `<header class="site">
+<a class="brand" href="${home}" aria-label="Gaslands Garage home">
+<svg class="crest" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="14" fill="#9a3412"/><circle cx="16" cy="16" r="7" fill="none" stroke="#fdba74" stroke-width="2"/><path fill="#fff7ed" d="M7 17h18l-3.2 6H10.2z"/></svg>
+<span class="word"><span class="gas">Gaslands</span> Garage</span>
+</a>
+<a class="cta" href="${builder}">${escapeHtml(BUILD_CTA)}</a>
+</header>`;
+}
+
+function shareBar(car: PublicCar, label: string): string {
+	const buttons = SHARE_BRANDS.map((brand) => {
+		const href = escapeHtml(shareIntent(brand, carShareUrl(car.shareId, brand), label, car.imageUrl));
+		const name = escapeHtml(`Share on ${SHARE_BRAND_LABEL[brand]}`);
+		const disc = shareMarkIsDisc(brand);
+		const klass = disc ? 'mark disc' : `mark glyph ${brand}`;
+		const color = disc ? ` style="color:${SHARE_BRAND_COLOR[brand]}"` : '';
+		return `<a class="${klass}"${color} href="${href}" target="_blank" rel="noopener noreferrer" aria-label="${name}" title="${name}">${shareMark(brand)}</a>`;
+	}).join('');
+	const copyUrl = escapeHtml(carShareUrl(car.shareId, 'copy'));
+	const nativeUrl = escapeHtml(carShareUrl(car.shareId, 'native'));
+	const safeLabel = escapeHtml(label);
+	return `<nav class="share" aria-label="Share this car">${buttons}<button type="button" class="mark glyph copy" data-copy="${copyUrl}" aria-label="Copy link" title="Copy link">${copyMark()}</button><button type="button" class="mark glyph native" hidden data-native-share data-url="${nativeUrl}" data-title="${safeLabel}" aria-label="Share" title="Share">${nativeShareMark()}</button></nav>`;
+}
+
+function gameCard(stats: VehicleStatsSnapshot): string {
+	const chips = [
+		['Hull', String(stats.hull)],
+		['Handling', String(stats.handling)],
+		['Crew', String(stats.crew)],
+		['Gear', String(stats.gear)]
+	];
+	const chipHtml = chips.map(([label, value]) => `<div><dt>${label}</dt><dd>${escapeHtml(value)}</dd></div>`).join('');
+	const pills = [...stats.weapons, ...stats.upgrades, ...stats.perks].filter((item) => item.trim().length > 0);
+	const pillHtml = pills.length ? `<ul class="pills">${pills.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>` : '';
+	const extras = [
+		['Weight', stats.weight],
+		['Slots', stats.slots],
+		['Armour', stats.armour],
+		['Driver', stats.driver]
+	].filter((row) => row[1].trim().length > 0);
+	const extraHtml = extras.length
+		? `<dl class="extra">${extras.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join('')}</dl>`
+		: '';
+	return `<section class="game" aria-label="Vehicle card">
+<div class="gamehead">
+<div><p class="kicker">${escapeHtml(stats.type || 'Vehicle')}</p><p class="game-name">${escapeHtml(stats.name)}</p></div>
+<span class="cans"><span>Cans</span><b>${escapeHtml(String(stats.cans))}</b></span>
+</div>
+<dl class="stats">${chipHtml}</dl>
+${pillHtml}
+${extraHtml}
+</section>`;
+}
+
+function pageBody(car: PublicCar, label: string, allowGalleryBuddies = true): string {
+	const caption = car.caption ? `<p class="caption">${escapeHtml(car.caption)}</p>` : '';
+	const buddy = allowGalleryBuddies
+		? `<p class="buddy"><a href="/gallery?photo=${escapeHtml(car.shareId)}" data-testid="add-buddy">Add as buddy</a></p>`
+		: '';
+	const guide = paintingGuideHtml(car.paintingUrl);
+	const team = car.teamName
+		? `<p class="team">${escapeHtml(car.vehicleType)} · ${escapeHtml(car.teamName)}</p>`
+		: `<p class="team">${escapeHtml(car.vehicleType)}</p>`;
+	const card = car.vehicleStats ? gameCard(car.vehicleStats) : '<p class="quiet">This player shared the photo without the car\'s build.</p>';
+	return `${siteHeader()}
+<main class="sheet">
+<article class="poster">
+<figure class="hero">
 <img src="${escapeHtml(car.imageUrl)}" alt="${escapeHtml(car.caption || label)}">
+<figcaption>
+<p class="kicker">${escapeHtml(car.vehicleType)}</p>
 <h1>${escapeHtml(label)}</h1>
 <p class="by">Painted by ${escapeHtml(car.displayName)}</p>
+${buddy}
+</figcaption>
+</figure>
+<div class="body">
 ${team}
 ${caption}
-${stats}
-<p class="share">
-<button type="button" data-copy="${escapeHtml(copyUrl)}">Copy link</button>
-<a href="${escapeHtml(xUrl)}" rel="noopener noreferrer">X</a>
-<a href="${escapeHtml(facebookUrl)}" rel="noopener noreferrer">Facebook</a>
-<a href="${escapeHtml(redditUrl)}" rel="noopener noreferrer">Reddit</a>
-<button type="button" hidden data-native-share data-url="${escapeHtml(nativeUrl)}" data-title="${escapeHtml(label)}">Share</button>
-</p>
-<p data-share-note></p>
-<p><a class="cta" href="${escapeHtml(`${SITE_ORIGIN}/builder`)}">${escapeHtml(BUILD_CTA)}</a></p>
-<section>
+${guide}
+${card}
+${shareBar(car, label)}
+<p class="note" data-share-note></p>
+</div>
+</article>
+<section class="embed-box">
 <h2>Embed this car</h2>
 <label>iframe
 <textarea readonly rows="4">${escapeHtml(iframeSnippet(car.shareId, label))}</textarea>
@@ -408,20 +512,25 @@ ${stats}
 <textarea readonly rows="4">${escapeHtml(htmlCardSnippet(car))}</textarea>
 </label>
 </section>
-</article>
 </main>`;
 }
 
-function embedBody(car: PublicCar, pageUrl: string, label: string, stats: string): string {
+function embedBody(car: PublicCar, pageUrl: string, label: string): string {
 	const href = escapeHtml(pageUrl);
 	const text = escapeHtml(label);
-	return `<main class="wrap embed">
-<article>
-<a href="${href}" target="_top"><img src="${escapeHtml(car.imageUrl)}" alt="${escapeHtml(car.caption || label)}"></a>
+	const card = car.vehicleStats ? gameCard(car.vehicleStats) : '';
+	const guide = paintingGuideHtml(car.paintingUrl);
+	return `<main class="sheet embed">
+<article class="poster">
+<a class="hero-link" href="${href}" target="_top"><img src="${escapeHtml(car.imageUrl)}" alt="${escapeHtml(car.caption || label)}"></a>
+<div class="body">
+<p class="kicker">${escapeHtml(car.vehicleType)}</p>
 <h1><a href="${href}" target="_top">${text}</a></h1>
 <p class="by">Painted by ${escapeHtml(car.displayName)}</p>
-${stats}
+${guide}
+${card}
 <p class="via"><a href="${href}" target="_top">${VIA_GASLANDS}</a></p>
+</div>
 </article>
 </main>`;
 }
@@ -455,7 +564,7 @@ const SHARE_SCRIPT = `<script>
       navigator.share({ title: native.getAttribute('data-title') || '', url: native.getAttribute('data-url') || '' }).catch(function () {});
     }
   });
-  if (navigator.share && window.matchMedia('(max-width: 640px)').matches) {
+  if (navigator.share && window.matchMedia('(max-width: 640px), (hover: none) and (pointer: coarse)').matches) {
     var buttons = document.querySelectorAll('[data-native-share]');
     for (var i = 0; i < buttons.length; i++) buttons[i].hidden = false;
   }
@@ -463,22 +572,63 @@ const SHARE_SCRIPT = `<script>
 </script>`;
 
 const PAGE_CSS = `
-body{margin:0;background:#f5f5f4;color:#1c1917;font:16px/1.45 ui-sans-serif,system-ui,sans-serif}
-.wrap{max-width:42rem;margin:0 auto;padding:1.25rem}
-.embed{max-width:22rem}
-img{width:100%;height:auto;border-radius:12px;background:#e7e5e4;object-fit:cover}
-h1{font-size:1.6rem;line-height:1.2;margin:0.8rem 0 0.3rem}
-h1 a,a{color:#92400e}
-.by,.quiet{color:#44403c}
-dl{display:grid;grid-template-columns:1fr 1fr;gap:0.4rem 1rem;margin:1rem 0}
-dt{font-size:0.75rem;font-weight:600;color:#57534e}
-dd{margin:0}
-.share{display:flex;flex-wrap:wrap;gap:0.4rem}
-.share a,.share button,.cta{display:inline-flex;align-items:center;border-radius:8px;padding:0.35rem 0.7rem;text-decoration:none}
-.share a,.share button{border:1px solid #d6d3d1;background:#fff;color:#1c1917;font:inherit;cursor:pointer}
-.cta{background:#b45309;color:#fff;font-weight:700}
-textarea{width:100%;box-sizing:border-box;font:0.8rem ui-monospace,monospace}
-.via{font-size:0.9rem}
+body{margin:0;color:#fafaf9;color-scheme:dark;font:16px/1.45 ui-sans-serif,system-ui,sans-serif;background:radial-gradient(1100px 420px at 8% -10%,rgba(194,65,12,.38),transparent 55%),radial-gradient(800px 360px at 100% 0,rgba(120,53,15,.5),transparent 50%),repeating-linear-gradient(135deg,rgba(255,255,255,.025) 0 1px,transparent 1px 8px),#1c1917}
+.site{display:flex;align-items:center;justify-content:space-between;gap:.75rem;padding:.6rem 1rem;background:#0c0a09;border-bottom:1px solid #44403c;position:sticky;top:0}
+.brand{display:flex;align-items:center;gap:.55rem;color:#fafaf9;text-decoration:none;font-weight:800;letter-spacing:.02em}
+.crest{width:32px;height:32px;flex:0 0 auto}
+.gas{color:#f59e0b}
+.cta{display:inline-flex;align-items:center;justify-content:center;border-radius:999px;padding:.45rem .8rem;background:linear-gradient(180deg,#fbbf24,#c2410c);color:#1c1917;font-weight:800;font-size:.78rem;text-decoration:none;text-align:center}
+.sheet{max-width:52rem;margin:0 auto;padding:1.25rem 1rem 2rem}
+.sheet.narrow{max-width:40rem}
+.embed{max-width:22rem;padding:.5rem}
+.poster{overflow:hidden;border:1px solid #9a3412;border-radius:18px;background:radial-gradient(700px 220px at 0 0,rgba(234,88,12,.28),transparent 55%),#1c1917;box-shadow:0 24px 50px rgba(0,0,0,.35)}
+.hero{position:relative;margin:0}
+.hero img,.hero-link img{display:block;width:100%;max-height:70vh;aspect-ratio:16/10;object-fit:cover;background:#292524}
+.hero figcaption{position:absolute;left:0;right:0;bottom:0;padding:2.4rem 1.2rem 1rem;background:linear-gradient(transparent,rgba(12,10,9,.94) 62%)}
+.kicker{margin:0;font-size:.72rem;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:#fdba74}
+h1{margin:.15rem 0 0;font-size:clamp(1.8rem,4vw,3rem);line-height:1.02;letter-spacing:-.03em}
+h1 a,.textlink,.via a{color:#fdba74}
+.body{padding:1rem 1.2rem 1.3rem}
+.team{margin:0;color:#fdba74;font-weight:700}
+.caption{margin:.35rem 0 0;font-size:1.05rem}
+.guide{display:inline-flex;align-items:center;gap:.4rem;margin:.7rem 0 0;border-radius:999px;border:1px solid #c2410c;background:#0c0a09;color:#ffedd5;padding:.35rem .75rem;font-size:.85rem;font-weight:700;text-decoration:none}
+.guide svg{display:block;flex:0 0 auto}
+.by,.quiet,.note{color:#d6d3d1}
+.buddy{margin:.4rem 0 0}
+.buddy a{color:#fdba74;font-weight:700}
+.game{margin-top:1rem;border-radius:16px;border:1px solid #c2410c;background:linear-gradient(180deg,rgba(254,215,170,.08),transparent 28%),radial-gradient(circle at top,#44403c,#1c1917 62%);padding:.9rem;box-shadow:inset 0 0 0 1px rgba(254,215,170,.12)}
+.gamehead{display:flex;justify-content:space-between;align-items:center;gap:.75rem}
+.game-name{margin:.1rem 0 0;font-size:1.25rem;font-weight:800}
+.cans{width:68px;height:68px;border-radius:999px;border:2px solid #fdba74;background:#0c0a09;display:flex;flex-direction:column;align-items:center;justify-content:center;flex:0 0 auto}
+.cans span{font-size:.62rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#fdba74}
+.cans b{font-size:1.35rem;line-height:1}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:.4rem;margin:.8rem 0 0}
+.stats div,.extra div{text-align:center;background:#0c0a09;border:1px solid #9a3412;border-radius:10px;padding:.35rem .2rem}
+.stats dt,.extra dt{font-size:.65rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#fdba74}
+.stats dd,.extra dd{margin:0;font-size:1.2rem;font-weight:800}
+.extra{display:grid;grid-template-columns:repeat(2,1fr);gap:.4rem;margin:.75rem 0 0}
+.extra dd{font-size:.95rem}
+.pills{display:flex;flex-wrap:wrap;gap:.35rem;margin:.75rem 0 0;padding:0;list-style:none}
+.pills li{border:1px solid #c2410c;background:#431407;color:#ffedd5;border-radius:999px;padding:.15rem .55rem;font-size:.72rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase}
+.share{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:1rem}
+.mark{width:36px;height:36px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;padding:0;border:0;cursor:pointer;text-decoration:none;overflow:hidden;flex:0 0 36px;color:#fff;background:transparent}
+.mark[hidden]{display:none}
+.mark svg{display:block}
+.mark.disc{background:#fff}
+.mark.disc svg{width:36px;height:36px}
+.mark.glyph svg{width:18px;height:18px}
+.mark.x{background:#0F1419;box-shadow:inset 0 0 0 1px #e7e5e4}
+.mark.bluesky{background:#1185FE}
+.mark.copy{background:#292524;box-shadow:inset 0 0 0 1px #a8a29e}
+.mark.native{background:#c2410c}
+.mark:focus-visible{outline:2px solid #f59e0b;outline-offset:2px}
+.embed-box{margin-top:1.25rem}
+.embed-box h2{font-size:1.15rem;margin:0 0 .4rem}
+textarea,label{display:block}
+textarea{width:100%;box-sizing:border-box;margin:.25rem 0 .8rem;border-radius:8px;border:1px solid #44403c;background:#0c0a09;color:#fafaf9;font:.75rem ui-monospace,monospace;padding:.45rem}
+.via{margin:.9rem 0 0;font-weight:700}
+.hero-link{display:block}
+@media (max-width:640px){.site{flex-wrap:wrap}.cta{font-size:.72rem}.stats{grid-template-columns:repeat(2,1fr)}}
 `;
 
 export function escapeHtml(value: string): string {

@@ -37,7 +37,7 @@ test('a library photo survives deleting one car and is removed when the photo is
 	const first = page.locator('.vehicle-card').nth(0);
 	await first.getByRole('button', { name: 'Expand vehicle' }).click();
 	await first.getByLabel('Vehicle Name').fill('First Car');
-	await first.getByTestId('vehicle-photos').locator('summary').click();
+	await first.getByTestId('vehicle-photos').locator('summary').first().click();
 	await page.getByRole('button', { name: 'Teams', exact: true }).click();
 	await page.getByRole('button', { name: 'Save/Load Team', exact: true }).click();
 	const saving = page.getByRole('dialog', { name: 'My Teams' });
@@ -50,6 +50,7 @@ test('a library photo survives deleting one car and is removed when the photo is
 		mimeType: 'image/png',
 		buffer: TINY_PNG
 	});
+	await first.getByTestId('confirm-car-upload').click();
 	await expect(first.getByRole('img', { name: 'Painted car' })).toBeVisible({ timeout: 30_000 });
 
 	await page.getByRole('button', { name: '+ Add Vehicle' }).click();
@@ -67,7 +68,7 @@ test('a library photo survives deleting one car and is removed when the photo is
 	if (await expandSecond.count()) await expandSecond.click();
 	const secondPhotos = second.getByTestId('vehicle-photos');
 	if ((await secondPhotos.locator('summary').count()) && !(await second.getByTestId('choose-library-photo').isVisible())) {
-		await secondPhotos.locator('summary').click();
+		await secondPhotos.locator('summary').first().click();
 	}
 
 	await second.getByTestId('choose-library-photo').click();
@@ -76,7 +77,7 @@ test('a library photo survives deleting one car and is removed when the photo is
 
 	await first.getByRole('button', { name: 'Remove vehicle' }).click();
 	await expect(page.locator('.vehicle-card')).toHaveCount(1);
-	await page.getByTestId('vehicle-photos').locator('summary').click();
+	await page.getByTestId('vehicle-photos').locator('summary').first().click();
 	await expect(page.getByRole('img', { name: 'Painted car' })).toBeVisible();
 
 	await page.getByRole('button', { name: 'Settings', exact: true }).click();
@@ -84,6 +85,21 @@ test('a library photo survives deleting one car and is removed when the photo is
 	await expect(page.getByTestId('photo-usage')).toHaveText('1 of 100 used', { timeout: 30_000 });
 	const libraryPhoto = page.getByTestId('library-photo');
 	await expect(libraryPhoto.getByTestId('photo-used-by')).toHaveText('On: Photo Library: Second Car');
+	const everywhere = libraryPhoto.getByTestId('share-everywhere');
+	await expect(everywhere).not.toBeChecked();
+	await expect(everywhere).toHaveJSProperty('indeterminate', false);
+	await expect(libraryPhoto.getByTestId('share-buddies')).toBeHidden();
+	await expect(libraryPhoto.getByTestId('share-choices-copy')).toBeVisible();
+	await libraryPhoto.getByTestId('customize-sharing').click();
+	await everywhere.click();
+	await expect(libraryPhoto.getByTestId('share-gallery')).toBeChecked({ timeout: 20_000 });
+	await expect(libraryPhoto.getByTestId('library-share-link')).toBeChecked();
+	await libraryPhoto.getByTestId('share-stats').click();
+	await expect(everywhere).toHaveJSProperty('indeterminate', true, { timeout: 20_000 });
+	await everywhere.click();
+	await expect(libraryPhoto.getByTestId('share-stats')).toBeChecked({ timeout: 20_000 });
+	await everywhere.click();
+	await expect(libraryPhoto.getByTestId('share-stats')).not.toBeChecked({ timeout: 20_000 });
 
 	await libraryPhoto.getByTestId('delete-library-photo').click();
 	await expect.poll(() => messages.some((message) => message.includes('Second Car') && message.includes('Delete this photo?')), { timeout: 20_000 }).toBeTruthy();

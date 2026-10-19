@@ -6,6 +6,7 @@ import { deleteMyAccount, exportMyData } from './accountPrivacy.ts';
 import { acceptBuddyEmailInvite, sendBuddyInvite, suppressBuddyEmailInvites } from './buddyEmailInvite.ts';
 import {
 	cancelBuddyRequest,
+	galleryBuddyOffer,
 	getBuddyInvite,
 	removeBuddy,
 	respondBuddyRequest,
@@ -141,6 +142,7 @@ export {
 	refreshSharedVehicleStats,
 	removeSharedPhotoOnDelete,
 	reportPhoto,
+	setPhotoPaintingUrl,
 	setPhotoSharing
 } from './photoShare.ts';
 
@@ -158,6 +160,7 @@ export { renderSharedCar } from './carPage.ts';
  */
 export {
 	cancelBuddyRequest,
+	galleryBuddyOffer,
 	getBuddyInvite,
 	removeBuddy,
 	respondBuddyRequest,

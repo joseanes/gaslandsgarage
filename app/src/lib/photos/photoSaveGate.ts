@@ -1,3 +1,4 @@
+import type { ShareFlags } from './share';
 import type { PhotoSaveReason } from './saveBeforePhoto';
 
 export const PHOTO_SAVE_GATE = Symbol('gaslands-photo-save-gate');
@@ -11,6 +12,9 @@ export type PhotoAttachRequest = {
 	caption?: string;
 	uploadGallery?: boolean;
 	uploadStats?: boolean;
+	/** Full sharing choice from the Add-photo dialog, kept across the save. */
+	uploadFlags?: ShareFlags;
+	paintingUrl?: string;
 	photoId?: string;
 };
 

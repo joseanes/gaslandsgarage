@@ -11,6 +11,7 @@ import {
 	moderateGalleryForAdmin,
 	refreshSharedVehicleStatsForTeam,
 	reportPhotoForUser,
+	setPhotoPaintingUrlForUser,
 	setPhotoSharingForUser
 } from './photoShare';
 
@@ -305,5 +306,111 @@ describe('shared photos', () => {
 		expect(shared?.vehicleType).toBe('Buggy');
 		expect(shared?.vehicleStats).toMatchObject({ name: 'Bug', type: 'Buggy' });
 		expect((await getFirestore().doc(`sharedPhotoPrivate/${reserved.photoId}`).get()).get('vehicleId')).toBe('veh456');
+	});
+
+	it('publishes a gallery photo with no car, and refuses stats until one is linked', async () => {
+		await getFirestore().doc('users/ada').set({ displayName: 'Google Name', email: 'ada@gmail.com' });
+		await getFirestore().doc('playerProfiles/ada').set({ playerName: 'Track Name' });
+		const reserved = await reserveVehiclePhotoForUser('ada', {
+			width: 800,
+			height: 600,
+			contentType: 'image/webp',
+			caption: 'Loose car'
+		});
+		expect(reserved.attachments).toEqual([]);
+		const bytes = Buffer.from('RIFF....WEBP');
+		await getStorage().bucket(bucketName).file(reserved.path).save(bytes, { contentType: 'image/webp' });
+
+		await expect(
+			setPhotoSharingForUser('ada', {
+				photoId: reserved.photoId,
+				showToBuddies: false,
+				showOnShareLink: false,
+				showInGallery: true,
+				shareVehicleStats: true,
+				vehicleType: 'Performance Car'
+			})
+		).rejects.toThrow(/Link this photo/);
+		await expect(
+			setPhotoSharingForUser('ada', {
+				photoId: reserved.photoId,
+				showToBuddies: true,
+				showOnShareLink: false,
+				showInGallery: true,
+				vehicleType: 'Performance Car'
+			})
+		).rejects.toThrow(/Link this photo/);
+		await expect(
+			setPhotoSharingForUser('ada', {
+				photoId: reserved.photoId,
+				showToBuddies: false,
+				showOnShareLink: false,
+				showInGallery: true,
+				vehicleType: 'Not A Real Car'
+			})
+		).rejects.toThrow(/vehicle type/);
+
+		const shared = await setPhotoSharingForUser('ada', {
+			photoId: reserved.photoId,
+			showToBuddies: false,
+			showOnShareLink: false,
+			showInGallery: true,
+			shareVehicleStats: false,
+			vehicleType: 'Performance Car'
+		});
+		expect(shared).toEqual({ shared: true, published: true, hidden: false });
+		const publicDoc = (await getFirestore().doc(`sharedPhotos/${reserved.photoId}`).get()).data();
+		expect(publicDoc).toMatchObject({
+			displayName: 'Track Name',
+			vehicleType: 'Performance Car',
+			teamName: '',
+			caption: 'Loose car',
+			showInGallery: true,
+			published: true
+		});
+		expect(publicDoc).not.toHaveProperty('vehicleStats');
+		expect(publicDoc).not.toHaveProperty('cans');
+		expect(publicDoc).not.toHaveProperty('ownerUid');
+		expect(JSON.stringify(publicDoc)).not.toContain('ada@gmail.com');
+		const privateDoc = (await getFirestore().doc(`sharedPhotoPrivate/${reserved.photoId}`).get()).data();
+		expect(privateDoc?.teamId).toBe('');
+		expect(privateDoc?.vehicleId).toBe('');
+		expect(privateDoc?.shareVehicleStats).toBe(false);
+		const [stored] = await getStorage().bucket(bucketName).file(sharedPhotoObjectPath(reserved.photoId)).download();
+		expect(stored.equals(bytes)).toBe(true);
+
+		const { reserved: linked } = await savePhoto();
+		await setPhotoSharingForUser('ada', {
+			photoId: linked.photoId,
+			showToBuddies: false,
+			showOnShareLink: false,
+			showInGallery: true,
+			vehicleType: 'War Rig'
+		});
+		expect((await getFirestore().doc(`sharedPhotos/${linked.photoId}`).get()).get('vehicleType')).toBe('Performance Car');
+	});
+
+	it('stores a painting-guide link on the photo and does not copy the profile website', async () => {
+		const { reserved } = await savePhoto();
+		await getFirestore().doc('playerProfiles/ada').set({ playerName: 'Track Name', website: 'https://blog.example/profile' }, { merge: true });
+		await setPhotoSharingForUser('ada', {
+			photoId: reserved.photoId,
+			showToBuddies: false,
+			showOnShareLink: false,
+			showInGallery: true
+		});
+		expect((await getFirestore().doc(`sharedPhotos/${reserved.photoId}`).get()).get('paintingUrl')).toBe('');
+		expect((await getFirestore().doc(`users/ada/photos/${reserved.photoId}`).get()).get('paintingUrl')).toBe('');
+
+		const guide = 'https://www.youtube.com/@rustpainter';
+		await expect(setPhotoPaintingUrlForUser('ada', reserved.photoId, 'javascript:alert(1)')).rejects.toThrow(/http/);
+		const saved = await setPhotoPaintingUrlForUser('ada', reserved.photoId, guide);
+		expect(saved.paintingUrl).toBe(guide);
+		expect((await getFirestore().doc(`sharedPhotos/${reserved.photoId}`).get()).get('paintingUrl')).toBe(guide);
+		expect((await getFirestore().doc(`users/ada/photos/${reserved.photoId}`).get()).get('paintingUrl')).toBe(guide);
+
+		await setPhotoPaintingUrlForUser('ada', reserved.photoId, '  ');
+		expect((await getFirestore().doc(`sharedPhotos/${reserved.photoId}`).get()).get('paintingUrl')).toBe('');
+		expect((await getFirestore().doc(`sharedPhotos/${reserved.photoId}`).get()).get('paintingUrl')).not.toBe('https://blog.example/profile');
 	});
 });

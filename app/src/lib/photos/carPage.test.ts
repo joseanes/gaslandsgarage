@@ -72,11 +72,13 @@ describe('public car privacy gate', () => {
 			'caption',
 			'displayName',
 			'imageUrl',
+			'paintingUrl',
 			'shareId',
 			'teamName',
 			'vehicleStats',
 			'vehicleType'
 		]);
+		expect(car?.paintingUrl).toBe('');
 		expect(car?.vehicleStats?.name).toBe('Rust Rocket');
 		expect(car?.vehicleStats?.cans).toBe(45);
 		expect(JSON.stringify(car)).not.toContain('createdAt');
@@ -138,12 +140,60 @@ describe('public car privacy gate', () => {
 		expect(json).not.toContain('evil.example');
 		expect(json).not.toContain('ownerUid');
 		expect(json).not.toContain('googleName');
+		expect(car?.paintingUrl).toBe('');
+	});
+
+	it('shows a painting-guide link only when that photo stored one', async () => {
+		const youtube = 'https://www.youtube.com/@rustpainter';
+		const page = await renderCarHttp({
+			method: 'GET',
+			path: `/car/${SHARE_ID}`,
+			bucket: BUCKET,
+			load: load(sharedDoc({ paintingUrl: youtube }))
+		});
+		expect(page.body).toContain('Painting guide on youtube.com');
+		expect(page.body).toContain(`href="${youtube}"`);
+		expect(page.body).toContain('rel="nofollow ugc noopener noreferrer"');
+		expect(page.body).toContain('target="_blank"');
+		expect(page.body).toContain('fill="#FF0033"');
+		const nasty = 'https://example.com/?q=1&amp;x=2';
+		const escaped = await renderCarHttp({
+			method: 'GET',
+			path: `/car/${SHARE_ID}`,
+			bucket: BUCKET,
+			load: load(sharedDoc({ paintingUrl: 'https://example.com/?q=1&x=2' }))
+		});
+		expect(escaped.body).toContain(`href="${nasty}"`);
+		expect(escaped.body).toContain('Painting guide on example.com');
+		expect(escaped.body).not.toContain('fill="#FF0033"');
+		const blank = await renderCarHttp({
+			method: 'GET',
+			path: `/embed/car/${SHARE_ID}`,
+			bucket: BUCKET,
+			load: load(sharedDoc({ paintingUrl: 'javascript:alert(1)', email: EMAIL }))
+		});
+		expect(blank.body).not.toContain('painting-guide');
+		expect(blank.body).not.toContain('javascript:');
+		expect(blank.body).not.toContain(EMAIL);
+		const embed = await renderCarHttp({
+			method: 'GET',
+			path: `/embed/car/${SHARE_ID}`,
+			bucket: BUCKET,
+			load: load(sharedDoc({ paintingUrl: youtube }))
+		});
+		expect(embed.body).toContain('Painting guide on youtube.com');
+		expect(embed.body).not.toContain('data-testid="add-buddy"');
+		expect(embed.body).toContain('rel="nofollow ugc noopener noreferrer"');
+		expect(embed.body).not.toContain('class="site"');
 	});
 
 	it('rejects a short id, a tokenised image, and a non-storage image', () => {
 		expect(publicCarFromDocument('short', sharedDoc(), IMAGE)).toBeNull();
 		expect(publicCarFromDocument(SHARE_ID, sharedDoc(), `${IMAGE}&token=secret`)).toBeNull();
 		expect(publicCarFromDocument(SHARE_ID, sharedDoc(), 'https://evil.example/car.png')).toBeNull();
+		expect(publicCarFromDocument(SHARE_ID, sharedDoc(), 'http://evil.example/v0/b/bucket/o/x?alt=media')).toBeNull();
+		const emulatorImage = 'http://127.0.0.1:9199/v0/b/demo.appspot.com/o/shared-photos%2Fphoto.webp?alt=media';
+		expect(publicCarFromDocument(SHARE_ID, sharedDoc(), emulatorImage)?.imageUrl).toBe(emulatorImage);
 	});
 });
 
@@ -166,6 +216,8 @@ describe('car page HTTP', () => {
 		expect(result.body).toContain('name="twitter:image"');
 		expect(result.body).toContain(IMAGE);
 		expect(result.body).toContain('Casey');
+		expect(result.body).toContain(`href="/gallery?photo=${SHARE_ID}"`);
+		expect(result.body).toContain('data-testid="add-buddy"');
 		expect(result.body).toContain('Heavy Machine Gun');
 		expect(result.body).toContain('Ram');
 		expect(result.body).toContain('>45<');
@@ -173,8 +225,27 @@ describe('car page HTTP', () => {
 		expect(result.body).toContain('https://x.com/intent/post');
 		expect(result.body).toContain('facebook.com/sharer');
 		expect(result.body).toContain('reddit.com/submit');
+		expect(result.body).toContain('pinterest.com/pin/create/button/');
+		expect(result.body).toContain('api.whatsapp.com/send');
+		expect(result.body).toContain('bsky.app/intent/compose');
+		expect(result.body).toContain('aria-label="Share on Facebook"');
+		expect(result.body).toContain('aria-label="Copy link"');
+		expect(result.body).toContain('class="site"');
 		expect(result.body).toContain('utm_source=copy');
 		expect(result.body).not.toContain('<script>alert');
+	});
+
+	it('omits the gallery buddy link when that player turned requests off', async () => {
+		const closed = await renderCarHttp({
+			method: 'GET',
+			path: `/car/${SHARE_ID}`,
+			bucket: BUCKET,
+			load: load(sharedDoc({ allowGalleryBuddies: false }))
+		});
+		expect(closed.statusCode).toBe(200);
+		expect(closed.body).toContain('Painted by');
+		expect(closed.body).not.toContain('data-testid="add-buddy"');
+		expect(closed.body).not.toContain('ownerUid');
 	});
 
 	it('escapes markup in public text', async () => {
@@ -261,6 +332,8 @@ describe('car page HTTP', () => {
 		expect(result.body).toContain(VIA_GASLANDS);
 		expect(result.body).toContain('target="_top"');
 		expect(result.body).not.toContain('Copy link');
+		expect(result.body).not.toContain('class="site"');
+		expect(result.body).not.toContain('data-copy');
 	});
 
 	it('rejects bad paths and methods without reflecting them', async () => {
@@ -291,6 +364,13 @@ describe('share links and embed snippets', () => {
 		expect(new URL(carShareUrl(SHARE_ID, 'facebook')).searchParams.get('utm_medium')).toBe('social');
 		expect(shareIntent('x', carShareUrl(SHARE_ID, 'x'), 'Rust Rocket')).toContain('utm_source%3Dx');
 		expect(shareIntent('reddit', carShareUrl(SHARE_ID, 'reddit'), 'Rust Rocket')).toContain('reddit.com/submit');
+		const pin = shareIntent('pinterest', carShareUrl(SHARE_ID, 'pinterest'), 'Rust Rocket', IMAGE);
+		expect(pin).toContain('pinterest.com/pin/create/button/');
+		expect(pin).toContain('media=');
+		expect(shareIntent('pinterest', carShareUrl(SHARE_ID, 'pinterest'), 'Rust Rocket', 'data:image/svg')).not.toContain('media=');
+		expect(shareIntent('whatsapp', carShareUrl(SHARE_ID, 'whatsapp'), 'Rust Rocket')).toContain('api.whatsapp.com/send');
+		expect(shareIntent('bluesky', carShareUrl(SHARE_ID, 'bluesky'), 'Rust Rocket')).toContain('bsky.app/intent/compose');
+		expect(new URL(carShareUrl(SHARE_ID, 'bluesky')).searchParams.get('utm_medium')).toBe('social');
 	});
 
 	it('builds an iframe and an HTML card that both point at the car page', () => {

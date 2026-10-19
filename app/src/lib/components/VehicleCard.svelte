@@ -1427,6 +1427,7 @@
         {/if}
 
         <svelte:boundary>
+            <!-- The builder photo-save gate owns unsaved cars. This panel does not pass a second saver. -->
             <VehiclePhotos {teamId} vehicleId={vehicle.id} {playMode} viewOnly={photoViewOnly} viewPhotos={sharedPhotos} />
             {#snippet failed()}
                 <p class="mt-4 text-sm text-stone-600 dark:text-gray-300" data-testid="vehicle-photos-error">Photos could not be shown on this vehicle.</p>

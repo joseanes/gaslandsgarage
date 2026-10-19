@@ -6,6 +6,7 @@ import {
 	displacedVehicles,
 	photoSaveReason,
 	readQuickSaveOptions,
+	reasonVehicleNotOnSavedTeam,
 	vehicleIdentityList
 } from './saveBeforePhoto';
 
@@ -35,6 +36,17 @@ describe('photo save reason', () => {
 				savedVehicleIds: ['car-1']
 			})
 		).toBe('unsaved-changes');
+	});
+
+	it('blocks a car that is missing from a saved-team list, including an empty list', () => {
+		expect(reasonVehicleNotOnSavedTeam({ savedTeamId: 'team-1', vehicleId: 'bug-1', savedVehicleIds: ['car-1'] })).toBe(
+			'vehicle-not-saved'
+		);
+		expect(reasonVehicleNotOnSavedTeam({ savedTeamId: 'team-1', vehicleId: 'bug-1', savedVehicleIds: [] })).toBe(
+			'vehicle-not-saved'
+		);
+		expect(reasonVehicleNotOnSavedTeam({ savedTeamId: '', vehicleId: 'bug-1', savedVehicleIds: ['bug-1'] })).toBe('new-team');
+		expect(reasonVehicleNotOnSavedTeam({ savedTeamId: 'team-1', vehicleId: 'car-1', savedVehicleIds: ['car-1'] })).toBeNull();
 	});
 
 	it('lets a photo through once the saved team already has this car', () => {
@@ -117,6 +129,18 @@ describe('save-before-photo wiring', () => {
 		expect(onFile).toContain('deferPhoto');
 		expect(onFile.indexOf('deferPhoto')).toBeLessThan(onFile.indexOf('uploadChosen'));
 		expect(photos).toContain("deferPhoto('library'");
+		expect(photos).toContain('confirmUpload');
+		const upload = readFileSync(resolve(process.cwd(), 'src/lib/components/GalleryUploadDialog.svelte'), 'utf8');
+		const submit = upload.slice(upload.indexOf('async function submit'), upload.indexOf('</script>'));
+		expect(submit.indexOf('reasonVehicleNotOnSavedTeam')).toBeGreaterThan(-1);
+		expect(submit.indexOf('reasonVehicleNotOnSavedTeam')).toBeLessThan(submit.indexOf('uploadVehiclePhoto'));
+		expect(upload).toContain('PHOTO_SAVE_GATE');
+		expect(submit.indexOf('photoSaveGate')).toBeGreaterThan(-1);
+		expect(submit.indexOf('photoSaveGate')).toBeLessThan(submit.indexOf('uploadVehiclePhoto'));
+		const library = readFileSync(resolve(process.cwd(), 'src/lib/components/LibraryPhotoEditor.svelte'), 'utf8');
+		const attach = library.slice(library.indexOf('async function attach'), library.indexOf('async function detach'));
+		expect(attach.indexOf('reasonVehicleNotOnSavedTeam')).toBeGreaterThan(-1);
+		expect(attach.indexOf('reasonVehicleNotOnSavedTeam')).toBeLessThan(attach.indexOf('attachLibraryPhoto'));
 		expect(page).toContain('SaveForPhotosModal');
 		expect(page).toContain('displacedVehicles');
 		expect(modal).toContain('Save your team to add photos');

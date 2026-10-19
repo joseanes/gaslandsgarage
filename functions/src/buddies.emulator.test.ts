@@ -5,6 +5,7 @@ import { getFirestore } from 'firebase-admin/firestore';
 import { eraseAccount, exportAccount } from './accountPrivacy';
 import {
 	handleCancelBuddyRequest,
+	handleGalleryBuddyOffer,
 	handleGetBuddyInvite,
 	handleRemoveBuddy,
 	handleRespondBuddyRequest,
@@ -13,7 +14,13 @@ import {
 	handleSendBuddyRequest,
 	handleUnblockBuddy
 } from './buddies';
-import { BUDDY_FALLBACK_NAME, BUDDY_REQUESTS_PER_HOUR } from '../../app/src/lib/buddies/model';
+import { listVisibleTeamPhotosForCaller } from './photoShare';
+import {
+	BUDDY_DECLINE_COOLDOWN_MS,
+	BUDDY_FALLBACK_NAME,
+	BUDDY_GALLERY_REQUESTS_PER_DAY,
+	BUDDY_REQUESTS_PER_HOUR
+} from '../../app/src/lib/buddies/model';
 import { handleSendBuddyInvite } from './buddyEmailInvite';
 import { emailAddressHash } from '../../app/src/lib/buddies/emailInvite';
 
@@ -252,5 +259,131 @@ describe('gaming buddies', () => {
 		expect((await db.doc('buddyDirectory/ada').get()).exists).toBe(false);
 		expect((await db.doc('teams/grace-team').get()).get('teamName')).toBe('Keepers');
 		expect((await getAuth().getUser('grace')).email).toBe('grace@example.com');
+	});
+
+	it('sends a gallery request without an address, then lets the new buddy see buddy photos', async () => {
+		await player('ada', 'Ada');
+		await player('grace', 'Grace');
+		await handleSaveBuddyProfile('ada', { displayName: 'Ada', discoverable: false }, now);
+		await getFirestore().doc('sharedPhotos/photogal1').set({
+			photoId: 'photogal1',
+			displayName: 'Ada',
+			vehicleType: 'Performance Car',
+			caption: 'Red racer',
+			vehicleStats: { name: 'Rust Rocket', cans: 15, weapons: [] },
+			hidden: false,
+			published: true,
+			showInGallery: true,
+			createdAt: '2026-10-18T12:00:00.000Z'
+		});
+		await getFirestore().doc('sharedPhotoPrivate/photogal1').set({
+			ownerUid: 'ada',
+			teamId: 'team1234',
+			vehicleId: 'veh123',
+			vehicleType: 'Performance Car',
+			contentType: 'image/webp',
+			showToBuddies: true,
+			hidden: false,
+			caption: 'Red racer',
+			createdAt: '2026-10-18T12:00:00.000Z'
+		});
+		await getFirestore().doc('teams/team1234').set({ userId: 'ada', teamName: 'Racers', hiddenFromBuddies: false });
+		await getFirestore().doc('sharedPhotos/photogal2').set({
+			photoId: 'photogal2',
+			displayName: 'Grace',
+			vehicleType: 'Car',
+			caption: '',
+			hidden: false,
+			published: true,
+			showInGallery: true,
+			createdAt: '2026-10-18T12:00:00.000Z'
+		});
+		await getFirestore().doc('sharedPhotoPrivate/photogal2').set({ ownerUid: 'grace' });
+
+		expect(await handleGalleryBuddyOffer(undefined, { photoId: 'photogal1' }, now)).toEqual({ offer: 'sign-in' });
+		expect(await handleGalleryBuddyOffer('ada', { photoId: 'photogal1' }, now)).toEqual({ offer: 'hidden' });
+		expect(await handleGalleryBuddyOffer('grace', { photoId: 'photogal1' }, now)).toEqual({ offer: 'add' });
+		await expect(handleSendBuddyRequest('ada', { photoId: 'photogal1' }, now)).rejects.toMatchObject({
+			code: 'failed-precondition'
+		});
+		await expect(
+			handleSendBuddyRequest('grace', { photoId: 'photogal1', message: 'ada@example.com' }, now)
+		).rejects.toMatchObject({ code: 'invalid-argument' });
+
+		const sent = await handleSendBuddyRequest('grace', { photoId: 'photogal1', message: 'Nice paint' }, now);
+		expect(sent.status).toBe('sent');
+		const request = (await getFirestore().doc(`buddyRequests/${sent.requestId}`).get()).data();
+		expect(request).toMatchObject({
+			fromUid: 'grace',
+			toUid: 'ada',
+			source: 'gallery',
+			photoId: 'photogal1',
+			carName: 'Rust Rocket',
+			message: 'Nice paint',
+			status: 'pending'
+		});
+		expect(request).not.toHaveProperty('email');
+		expect(JSON.stringify(request)).not.toContain('grace@example.com');
+		const duplicate = await handleSendBuddyRequest('grace', { photoId: 'photogal1', message: 'Again' }, now + 1);
+		expect(duplicate.status).toBe('pending');
+		expect((await getFirestore().doc(`buddyRequests/${sent.requestId}`).get()).get('message')).toBe('Nice paint');
+		expect(await handleGalleryBuddyOffer('grace', { photoId: 'photogal1' }, now)).toEqual({
+			offer: 'sent',
+			requestId: sent.requestId
+		});
+		expect((await handleGalleryBuddyOffer('ada', { photoId: 'photogal2' }, now)).offer).toBe('accept');
+		await expect(listVisibleTeamPhotosForCaller('grace', { teamId: 'team1234', audience: 'buddies' })).rejects.toThrow(/not available/);
+
+		await handleRespondBuddyRequest('ada', { requestId: sent.requestId, action: 'accept' }, now);
+		expect(await handleGalleryBuddyOffer('grace', { photoId: 'photogal1' }, now)).toEqual({ offer: 'buddies' });
+		const visible = await listVisibleTeamPhotosForCaller('grace', { teamId: 'team1234', audience: 'buddies' });
+		expect(visible.photos.map((photo) => photo.photoId)).toEqual(['photogal1']);
+		expect(JSON.stringify(visible)).not.toContain('ownerUid');
+	});
+
+	it('hides gallery requests when the player opts out, and holds a decline for 30 days', async () => {
+		await player('ada', 'Ada');
+		await player('grace', 'Grace');
+		await getFirestore().doc('sharedPhotos/photogal1').set({
+			photoId: 'photogal1',
+			displayName: 'Ada',
+			vehicleType: 'Car',
+			caption: 'Red',
+			hidden: false,
+			published: true,
+			showInGallery: true,
+			createdAt: '2026-10-18T12:00:00.000Z'
+		});
+		await getFirestore().doc('sharedPhotoPrivate/photogal1').set({ ownerUid: 'ada' });
+		await handleSaveBuddyProfile('ada', { displayName: 'Ada', discoverable: false, galleryBuddyRequests: false }, now);
+		expect((await getFirestore().doc('buddyInvites/ada').get()).get('galleryBuddyRequests')).toBe(false);
+		expect((await getFirestore().doc('sharedPhotos/photogal1').get()).get('allowGalleryBuddies')).toBe(false);
+		expect(await handleGalleryBuddyOffer('grace', { photoId: 'photogal1' }, now)).toEqual({ offer: 'hidden' });
+		expect(await handleGalleryBuddyOffer(undefined, { photoId: 'photogal1' }, now)).toEqual({ offer: 'hidden' });
+		await expect(handleSendBuddyRequest('grace', { photoId: 'photogal1' }, now)).rejects.toMatchObject({
+			code: 'failed-precondition'
+		});
+
+		await handleSaveBuddyProfile('ada', { displayName: 'Ada', discoverable: false, galleryBuddyRequests: true }, now);
+		expect((await getFirestore().doc('sharedPhotos/photogal1').get()).get('allowGalleryBuddies')).toBeUndefined();
+		const sent = await handleSendBuddyRequest('grace', { photoId: 'photogal1' }, now + 1);
+		await handleRespondBuddyRequest('ada', { requestId: sent.requestId, action: 'decline' }, now);
+		await expect(handleSendBuddyRequest('grace', { photoId: 'photogal1' }, now + 2)).rejects.toMatchObject({
+			code: 'failed-precondition'
+		});
+		expect(await handleGalleryBuddyOffer('grace', { photoId: 'photogal1' }, now + 2)).toEqual({ offer: 'declined' });
+		const later = await handleSendBuddyRequest('grace', { photoId: 'photogal1' }, now + BUDDY_DECLINE_COOLDOWN_MS + 1);
+		expect(later.status).toBe('sent');
+
+		const stamps = Array.from({ length: BUDDY_GALLERY_REQUESTS_PER_DAY }, (_, index) => now + index);
+		await getFirestore().doc('buddyRate/grace').set({ galleryRequestAt: stamps, requestAt: [] });
+		await expect(handleSendBuddyRequest('grace', { photoId: 'photogal1' }, now + 10)).rejects.toMatchObject({
+			code: 'resource-exhausted'
+		});
+		const hourly = Array.from({ length: BUDDY_REQUESTS_PER_HOUR }, (_, index) => now + BUDDY_DECLINE_COOLDOWN_MS + index);
+		await getFirestore().doc('buddyRate/grace').set({ requestAt: hourly, galleryRequestAt: [] });
+		await expect(
+			handleSendBuddyRequest('grace', { photoId: 'photogal1' }, now + BUDDY_DECLINE_COOLDOWN_MS + 5)
+		).rejects.toMatchObject({ code: 'resource-exhausted' });
 	});
 });
