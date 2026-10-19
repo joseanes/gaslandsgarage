@@ -140,14 +140,18 @@
 		<h2 class="text-xl font-bold mt-8 mb-3">Location, Nominatim, and the approximate point</h2>
 		<p>
 			A player profile is optional. The private profile can store a player name, a short bio, a place
-			label, where you like to play, whether you appear on the map, whether that pin is anonymous,
-			whether you are open to a game, an approximate coordinate, and a random pin id. The pin id is not
+			label, where you like to play, an optional website (a YouTube channel or a blog, for example),
+			whether you appear on the map, whether that pin is anonymous,
+			whether you are open to a game, an approximate coordinate, and a random pin id. The website is
+			not shown on the map. The pin id is not
 			your account id. The profile does not store an email address.
 		</p>
 		<p>
 			The place you enter has to be a city and region, or a 5-digit US ZIP. Street addresses and ZIP+4
 			codes are rejected. Text that contains an @ sign is rejected, so an email address cannot be saved
-			in the name, bio, place, or play-spot fields.
+			in the name, bio, place, or play-spot fields. A website has to be a full http or https link. It
+			may contain an @ sign, which is how a YouTube channel address is written. A photo can store its
+			own link. If that link is blank, the photo has no link.
 		</p>
 		<p>
 			A city or region is geocoded once, when you save a new place, by OpenStreetMap Nominatim

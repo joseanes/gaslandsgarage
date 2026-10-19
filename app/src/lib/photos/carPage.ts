@@ -8,6 +8,7 @@
  */
 
 import { BUDDY_FALLBACK_NAME, publicDisplayName } from '../buddies/model';
+import { paintingGuideHtml, paintingGuideLink } from './link';
 import { PHOTO_ID_PATTERN } from './model';
 import {
 	sanitizeVehicleStats,
@@ -43,6 +44,8 @@ export interface PublicCar {
 	caption: string;
 	imageUrl: string;
 	vehicleStats: VehicleStatsSnapshot | null;
+	/** Empty when this photo has no link. A profile website is not used here. */
+	paintingUrl: string;
 }
 
 const PUBLIC_CAR_KEYS = [
@@ -52,7 +55,8 @@ const PUBLIC_CAR_KEYS = [
 	'teamName',
 	'caption',
 	'imageUrl',
-	'vehicleStats'
+	'vehicleStats',
+	'paintingUrl'
 ] as const;
 
 export function carPagePath(shareId: string): string {
@@ -119,18 +123,28 @@ export function publicCarFromDocument(shareId: string, raw: unknown, imageUrl: s
 		teamName: publicText(data.teamName, 80),
 		caption: publicText(data.caption, 140),
 		imageUrl,
-		vehicleStats: stats
+		vehicleStats: stats,
+		paintingUrl: paintingGuideLink(data.paintingUrl)?.href ?? ''
 	};
 	if (Object.keys(car).some((key) => !PUBLIC_CAR_KEYS.includes(key as (typeof PUBLIC_CAR_KEYS)[number]))) return null;
 	return car;
 }
 
 export function isPublicImageUrl(url: string): boolean {
-	if (!url.startsWith('https://firebasestorage.googleapis.com/')) return false;
 	if (url.includes('token=') || url.includes('@')) return false;
 	try {
 		const parsed = new URL(url);
-		return parsed.protocol === 'https:' && parsed.hostname === 'firebasestorage.googleapis.com';
+		if (parsed.username || parsed.password) return false;
+		if (parsed.protocol === 'https:' && parsed.hostname === 'firebasestorage.googleapis.com') return true;
+		// The local Storage emulator. Production pages never use this host.
+		const local = parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost';
+		return (
+			parsed.protocol === 'http:' &&
+			local &&
+			/^\d+$/.test(parsed.port) &&
+			parsed.pathname.startsWith('/v0/b/') &&
+			parsed.searchParams.get('alt') === 'media'
+		);
 	} catch {
 		return false;
 	}
@@ -455,6 +469,7 @@ ${extraHtml}
 
 function pageBody(car: PublicCar, label: string): string {
 	const caption = car.caption ? `<p class="caption">${escapeHtml(car.caption)}</p>` : '';
+	const guide = paintingGuideHtml(car.paintingUrl);
 	const team = car.teamName
 		? `<p class="team">${escapeHtml(car.vehicleType)} · ${escapeHtml(car.teamName)}</p>`
 		: `<p class="team">${escapeHtml(car.vehicleType)}</p>`;
@@ -473,6 +488,7 @@ function pageBody(car: PublicCar, label: string): string {
 <div class="body">
 ${team}
 ${caption}
+${guide}
 ${card}
 ${shareBar(car, label)}
 <p class="note" data-share-note></p>
@@ -494,6 +510,7 @@ function embedBody(car: PublicCar, pageUrl: string, label: string): string {
 	const href = escapeHtml(pageUrl);
 	const text = escapeHtml(label);
 	const card = car.vehicleStats ? gameCard(car.vehicleStats) : '';
+	const guide = paintingGuideHtml(car.paintingUrl);
 	return `<main class="sheet embed">
 <article class="poster">
 <a class="hero-link" href="${href}" target="_top"><img src="${escapeHtml(car.imageUrl)}" alt="${escapeHtml(car.caption || label)}"></a>
@@ -501,6 +518,7 @@ function embedBody(car: PublicCar, pageUrl: string, label: string): string {
 <p class="kicker">${escapeHtml(car.vehicleType)}</p>
 <h1><a href="${href}" target="_top">${text}</a></h1>
 <p class="by">Painted by ${escapeHtml(car.displayName)}</p>
+${guide}
 ${card}
 <p class="via"><a href="${href}" target="_top">${VIA_GASLANDS}</a></p>
 </div>
@@ -564,6 +582,8 @@ h1 a,.textlink,.via a{color:#fdba74}
 .body{padding:1rem 1.2rem 1.3rem}
 .team{margin:0;color:#fdba74;font-weight:700}
 .caption{margin:.35rem 0 0;font-size:1.05rem}
+.guide{display:inline-flex;align-items:center;gap:.4rem;margin:.7rem 0 0;border-radius:999px;border:1px solid #c2410c;background:#0c0a09;color:#ffedd5;padding:.35rem .75rem;font-size:.85rem;font-weight:700;text-decoration:none}
+.guide svg{display:block;flex:0 0 auto}
 .by,.quiet,.note{color:#d6d3d1}
 .game{margin-top:1rem;border-radius:16px;border:1px solid #c2410c;background:linear-gradient(180deg,rgba(254,215,170,.08),transparent 28%),radial-gradient(circle at top,#44403c,#1c1917 62%);padding:.9rem;box-shadow:inset 0 0 0 1px rgba(254,215,170,.12)}
 .gamehead{display:flex;justify-content:space-between;align-items:center;gap:.75rem}

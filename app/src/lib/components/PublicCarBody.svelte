@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PaintingGuideLink from '$lib/components/PaintingGuideLink.svelte';
 	import ShareCar from '$lib/components/ShareCar.svelte';
 	import {
 		BUILD_CTA,
@@ -70,6 +71,11 @@
 			<p data-testid="car-owner">Painted by {car.displayName}</p>
 		</figcaption>
 	</figure>
+	{#if car.paintingUrl}
+		<div class="guide-row">
+			<PaintingGuideLink url={car.paintingUrl} />
+		</div>
+	{/if}
 
 	<div class="sheet">
 		{#if mode === 'page'}
@@ -175,6 +181,9 @@
 		aspect-ratio: 16 / 10;
 		object-fit: cover;
 		background: #292524;
+	}
+	.guide-row {
+		padding: 0.85rem 1.25rem 0;
 	}
 	.hero figcaption {
 		position: absolute;

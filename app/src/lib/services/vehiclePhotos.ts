@@ -22,6 +22,7 @@ export interface VehiclePhoto extends VehiclePhotoRecord {
 	showOnShareLink: boolean;
 	showInGallery: boolean;
 	shareVehicleStats: boolean;
+	paintingUrl: string;
 }
 
 function plainError(error: unknown, fallback: string): Error {
@@ -68,6 +69,7 @@ function asPhoto(data: Record<string, unknown>, url: string): VehiclePhoto | nul
 		showOnShareLink: data.showOnShareLink === true,
 		showInGallery: data.showInGallery === true,
 		shareVehicleStats: data.shareVehicleStats === true,
+		paintingUrl: typeof data.paintingUrl === 'string' ? data.paintingUrl : '',
 		url
 	};
 }
@@ -202,7 +204,7 @@ export async function uploadVehiclePhoto(input: {
 		} catch {
 			url = '';
 		}
-		return { ...reserved, attachments: reserved.attachments ?? [], contentHash, shareTeamId: reserved.shareTeamId ?? '', shareVehicleId: reserved.shareVehicleId ?? '', showToBuddies: false, showOnShareLink: false, showInGallery: false, shareVehicleStats: false, url };
+		return { ...reserved, attachments: reserved.attachments ?? [], contentHash, shareTeamId: reserved.shareTeamId ?? '', shareVehicleId: reserved.shareVehicleId ?? '', showToBuddies: false, showOnShareLink: false, showInGallery: false, shareVehicleStats: false, paintingUrl: '', url };
 	}
 
 	const stored = await storageRef(reserved.path);
@@ -220,6 +222,7 @@ export async function uploadVehiclePhoto(input: {
 			showOnShareLink: false,
 			showInGallery: false,
 			shareVehicleStats: false,
+			paintingUrl: '',
 			url
 		};
 	} catch (error) {

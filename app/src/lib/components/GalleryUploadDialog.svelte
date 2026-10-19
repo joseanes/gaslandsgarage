@@ -4,7 +4,9 @@
 	import { galleryVehicleTypes } from '$lib/photos/galleryQuery';
 	import { MAX_CAPTION_LENGTH, MAX_PHOTOS_PER_ACCOUNT, quotaMessage } from '$lib/photos/model';
 	import { SHARE_FLAG_KEYS, anyShareFlag, vehicleTypeLabel, type ShareFlagKey, type ShareFlags } from '$lib/photos/share';
-	import { setPhotoSharing } from '$lib/services/photoShare';
+	import { paintingGuideLink } from '$lib/photos/link';
+	import { setPhotoPaintingUrl, setPhotoSharing } from '$lib/services/photoShare';
+	import { myProfileWebsite } from '$lib/services/playerProfile';
 	import { getUserTeams } from '$lib/services/team';
 	import { listMyPhotos, uploadVehiclePhoto } from '$lib/services/vehiclePhotos';
 
@@ -32,6 +34,8 @@
 	let file: File | null = null;
 	let preview = '';
 	let caption = '';
+	let paintingUrl = '';
+	let profileWebsite = '';
 	let vehicleType = '';
 	let teamId = '';
 	let vehicleId = '';
@@ -117,6 +121,8 @@
 		try {
 			const [photos, teamsResult] = await Promise.all([listMyPhotos(), getUserTeams()]);
 			used = photos.length;
+			profileWebsite = await myProfileWebsite();
+			if (!paintingUrl) paintingUrl = profileWebsite;
 			const found: UploadCar[] = [];
 			if (teamsResult.success && teamsResult.teams) {
 				for (const team of teamsResult.teams) {
@@ -163,6 +169,11 @@
 			error = full;
 			return;
 		}
+		const chosenLink = paintingUrl.trim();
+		if (chosenLink && !paintingGuideLink(chosenLink)) {
+			error = 'Use a full http or https link, up to 300 characters.';
+			return;
+		}
 		const linked = Boolean(linkedCar);
 		const nextFlags: ShareFlags = linked
 			? flags
@@ -176,6 +187,7 @@
 				teamId: linked ? teamId : undefined,
 				vehicleId: linked ? vehicleId : undefined
 			});
+			if (chosenLink) await setPhotoPaintingUrl(uploaded.photoId, chosenLink);
 			let message = 'Saved to your photos.';
 			if (anyShareFlag(nextFlags)) {
 				const result = await setPhotoSharing(
@@ -323,7 +335,13 @@
 				linkTestId="add-share-link"
 				galleryTestId="add-share-gallery"
 				statsTestId="add-share-stats"
+				{paintingUrl}
+				{profileWebsite}
+				paintingTestId="add-painting-link"
+				useWebsiteTestId="add-use-profile-website"
 				onChange={(next) => (flags = next)}
+				onPaintingUrl={(next) => (paintingUrl = next)}
+				onPaintingCommit={(next) => (paintingUrl = next)}
 			/>
 			<div class="flex flex-wrap justify-end gap-2">
 				<button type="button" class="rounded-md border border-orange-800 px-3 py-2 text-sm" data-testid="add-photo-cancel" on:click={onClose}>Cancel</button>

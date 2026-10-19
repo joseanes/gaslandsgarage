@@ -1,4 +1,5 @@
 import { customAlphabet } from 'nanoid';
+import { normalizePaintingUrl } from '$lib/photos/link';
 import { assessLocation } from './location';
 
 const ENTRY_ALPHABET = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -10,6 +11,7 @@ export const LIMITS = {
 	bio: 280,
 	locationLabel: 80,
 	playSpots: 280,
+	website: 300,
 	message: 500
 } as const;
 
@@ -18,6 +20,7 @@ export type PlayerForm = {
 	bio: string;
 	locationLabel: string;
 	playSpots: string;
+	website: string;
 	showOnMap: boolean;
 	anonymousOnMap: boolean;
 	openToGames: boolean;
@@ -82,6 +85,7 @@ export function emptyForm(): PlayerForm {
 		bio: '',
 		locationLabel: '',
 		playSpots: '',
+		website: '',
 		showOnMap: false,
 		anonymousOnMap: false,
 		openToGames: false
@@ -95,6 +99,7 @@ export function normalizeForm(form: PlayerForm): PlayerForm {
 		bio: form.bio.trim(),
 		locationLabel: location.ok ? location.label : form.locationLabel.trim(),
 		playSpots: form.playSpots.trim(),
+		website: websiteValue(form.website),
 		showOnMap: form.showOnMap,
 		anonymousOnMap: form.showOnMap ? form.anonymousOnMap : false,
 		openToGames: form.openToGames
@@ -106,6 +111,14 @@ function tooLong(value: string, max: number, label: string): string | null {
 	return null;
 }
 
+function websiteValue(value: string): string {
+	try {
+		return normalizePaintingUrl(value);
+	} catch {
+		return value.trim();
+	}
+}
+
 function containsEmail(value: string): boolean {
 	return value.includes('@');
 }
@@ -115,8 +128,16 @@ export function validateForm(form: PlayerForm): string | null {
 		tooLong(form.playerName, LIMITS.playerName, 'Player name') ||
 		tooLong(form.bio, LIMITS.bio, 'Bio') ||
 		tooLong(form.locationLabel, LIMITS.locationLabel, 'Location') ||
-		tooLong(form.playSpots, LIMITS.playSpots, 'Where you play');
+		tooLong(form.playSpots, LIMITS.playSpots, 'Where you play') ||
+		tooLong(form.website.trim(), LIMITS.website, 'Website');
 	if (lengthError) return lengthError;
+	if (form.website.trim()) {
+		try {
+			normalizePaintingUrl(form.website);
+		} catch (error) {
+			return error instanceof Error ? error.message : 'Use a full http or https link.';
+		}
+	}
 	if ([form.playerName, form.bio, form.locationLabel, form.playSpots].some(containsEmail)) {
 		return 'Leave email addresses off your profile. Game requests stay inside the app.';
 	}
@@ -213,6 +234,7 @@ export function readStoredProfile(data: Record<string, unknown> | undefined): St
 		bio: text('bio'),
 		locationLabel: text('locationLabel'),
 		playSpots: text('playSpots'),
+		website: text('website'),
 		showOnMap: data.showOnMap === true,
 		anonymousOnMap: data.anonymousOnMap === true,
 		openToGames: data.openToGames === true,

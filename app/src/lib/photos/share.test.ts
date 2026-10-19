@@ -194,6 +194,9 @@ describe('photo sharing', () => {
 		expect(choices).not.toContain('{GALLERY_SHARE_COPY}');
 		expect(choices).not.toContain('{STATS_SHARE_COPY}');
 		expect(card).toContain('SharingControl');
+		expect(card).toContain('setPhotoPaintingUrl');
+		expect(choices).toContain('{PAINTING_LINK_LABEL}');
+		expect(choices).toContain('{USE_PROFILE_WEBSITE_LABEL}');
 		expect(card).not.toContain('ShareChoices');
 		expect(card).not.toContain('When this photo is added');
 		expect(card).toContain('Photos on this car');

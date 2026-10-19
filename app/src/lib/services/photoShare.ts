@@ -5,6 +5,7 @@ import { PRIVACY_FUNCTIONS_REGION } from '../privacy/accountShared';
 import { storageBucketName } from '../photos/model';
 import { PHOTO_ID_PATTERN } from '../photos/model';
 import { publicCarFromDocument, type PublicCar } from '../photos/carPage';
+import { paintingGuideLink } from '../photos/link';
 import { galleryQueryPlan, type GalleryListRequest } from '../photos/galleryQuery';
 import { GALLERY_PAGE_SIZE, sanitizeVehicleStats, sharedPhotoMediaUrl, type ShareFlags, type VehicleStatsSnapshot } from '../photos/share';
 
@@ -28,6 +29,7 @@ export interface GalleryPhoto {
 	createdAt: string;
 	url: string;
 	vehicleStats: VehicleStatsSnapshot | null;
+	paintingUrl: string;
 }
 
 export interface ModerationPhoto {
@@ -90,6 +92,10 @@ async function call<T>(name: string, data: unknown, fallback: string): Promise<T
 	} catch (error) {
 		throw plainError(error, fallback);
 	}
+}
+
+export async function setPhotoPaintingUrl(photoId: string, paintingUrl: string): Promise<{ paintingUrl: string }> {
+	return call('setPhotoPaintingUrl', { photoId, paintingUrl }, 'That link could not be saved.');
 }
 
 export async function setPhotoSharing(
@@ -163,7 +169,8 @@ function galleryPhotoFromDoc(id: string, data: Record<string, unknown>): Gallery
 		caption: typeof data.caption === 'string' ? data.caption : '',
 		createdAt: typeof data.createdAt === 'string' ? data.createdAt : '',
 		url: sharedPhotoUrl(id),
-		vehicleStats: sanitizeVehicleStats(data.vehicleStats)
+		vehicleStats: sanitizeVehicleStats(data.vehicleStats),
+		paintingUrl: paintingGuideLink(data.paintingUrl)?.href ?? ''
 	};
 }
 

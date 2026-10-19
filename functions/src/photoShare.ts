@@ -29,6 +29,7 @@ import {
 	vehicleTypeLabel
 } from '../../app/src/lib/photos/share.ts';
 import { galleryVehicleTypes } from '../../app/src/lib/photos/galleryQuery.ts';
+import { normalizePaintingUrl } from '../../app/src/lib/photos/link.ts';
 import { vehicleStatsSnapshot } from '../../app/src/lib/photos/vehicleStats.ts';
 
 const REGION = 'us-central1';
@@ -188,6 +189,7 @@ export async function setPhotoSharingForUser(
 		shareTeamId?: unknown;
 		shareVehicleId?: unknown;
 		vehicleType?: unknown;
+		paintingUrl?: unknown;
 	}
 ): Promise<{ shared: boolean; published: boolean; hidden: boolean }> {
 	if (!UID_PATTERN.test(uid)) throw new Error('Sign in again before sharing a photo.');
@@ -263,6 +265,7 @@ export async function setPhotoSharingForUser(
 	});
 	const displayName = await displayNameFor(uid);
 	const caption = typeof photo.get('caption') === 'string' ? photo.get('caption') : '';
+	const paintingUrl = paintingUrlForShare(photo.get('paintingUrl'), input.paintingUrl);
 	const publicDoc = publicSharedPhoto({
 		photoId,
 		displayName,
@@ -273,7 +276,8 @@ export async function setPhotoSharingForUser(
 		hidden,
 		published,
 		showInGallery: flags.showInGallery,
-		vehicleStats
+		vehicleStats,
+		paintingUrl
 	});
 	const privateDoc = {
 		ownerUid: uid,
@@ -291,11 +295,12 @@ export async function setPhotoSharingForUser(
 		showOnShareLink: flags.showOnShareLink,
 		showInGallery: flags.showInGallery,
 		shareVehicleStats: flags.shareVehicleStats,
+		paintingUrl,
 		reportCount: reports.size
 	};
 
 	await copySharedObject(String(photo.get('path')), photoId, contentType);
-	const photoPatch: Record<string, unknown> = { ...flags };
+	const photoPatch: Record<string, unknown> = { ...flags, paintingUrl };
 	if (!unlinked) {
 		photoPatch.shareTeamId = teamId;
 		photoPatch.shareVehicleId = vehicleId;
@@ -308,6 +313,37 @@ export async function setPhotoSharingForUser(
 	batch.set(photoRef, photoPatch, { merge: true });
 	await batch.commit();
 	return { shared: true, published, hidden };
+}
+
+/** A caller-supplied link replaces the stored one. A missing value keeps what the photo already has. */
+function paintingUrlForShare(stored: unknown, override: unknown): string {
+	if (override !== undefined) return normalizePaintingUrl(override);
+	try {
+		return normalizePaintingUrl(stored);
+	} catch {
+		return '';
+	}
+}
+
+export async function setPhotoPaintingUrlForUser(uid: string, photoIdInput: unknown, rawUrl: unknown): Promise<{ paintingUrl: string }> {
+	if (!UID_PATTERN.test(uid)) throw new Error('Sign in again before saving a link.');
+	if (!PHOTO_ID_PATTERN.test(String(photoIdInput ?? ''))) throw new Error('That photo was not found.');
+	const paintingUrl = normalizePaintingUrl(rawUrl);
+	const photoId = String(photoIdInput);
+	const db = getFirestore();
+	const photoRef = db.doc(`users/${uid}/photos/${photoId}`);
+	const photo = await photoRef.get();
+	if (!photo.exists || photo.get('userId') !== uid) throw new Error('That photo was not found.');
+	const batch = db.batch();
+	batch.set(photoRef, { paintingUrl }, { merge: true });
+	const publicRef = db.doc(`sharedPhotos/${photoId}`);
+	const published = await publicRef.get();
+	if (published.exists) batch.set(publicRef, { paintingUrl }, { merge: true });
+	const privateRef = db.doc(`sharedPhotoPrivate/${photoId}`);
+	const priv = await privateRef.get();
+	if (priv.exists) batch.set(privateRef, { paintingUrl }, { merge: true });
+	await batch.commit();
+	return { paintingUrl };
 }
 
 /** A gallery upload with no car may name a game vehicle type. Anything else is rejected. */
@@ -521,7 +557,8 @@ async function shareCall(request: CallableRequest): Promise<{ shared: boolean; p
 		shareVehicleStats: data.shareVehicleStats,
 		shareTeamId: data.shareTeamId,
 		shareVehicleId: data.shareVehicleId,
-		vehicleType: data.vehicleType
+		vehicleType: data.vehicleType,
+		paintingUrl: 'paintingUrl' in data ? data.paintingUrl : undefined
 	});
 }
 
@@ -577,6 +614,16 @@ export async function refreshSharedVehicleStatsForTeam(teamId: string, team: Rec
 export const setPhotoSharing = onCall(CALL, async (request) => {
 	try {
 		return await shareCall(request);
+	} catch (error) {
+		throw httpsError(error);
+	}
+});
+
+export const setPhotoPaintingUrl = onCall(CALL, async (request) => {
+	try {
+		const uid = await assertActive(request.auth?.uid);
+		const data = asRecord(request.data);
+		return await setPhotoPaintingUrlForUser(uid, data.photoId, data.paintingUrl);
 	} catch (error) {
 		throw httpsError(error);
 	}

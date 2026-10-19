@@ -5,6 +5,7 @@
 	import MonthlyEmailChoice from '$lib/components/MonthlyEmailChoice.svelte';
 	import { hundredthsToDegrees } from '$lib/players/location';
 	import { ANONYMOUS_ON_MAP_LABEL, LOCATION_HELP, SHOW_ON_MAP_LABEL } from '$lib/players/mapCopy';
+	import { PROFILE_WEBSITE_LABEL } from '$lib/photos/link';
 	import { emptyForm, type PlayerForm, type StoredProfile } from '$lib/players/profile';
 	import {
 		loadContacts,
@@ -35,6 +36,7 @@
 			bio: profile.bio,
 			locationLabel: profile.locationLabel,
 			playSpots: profile.playSpots,
+			website: profile.website,
 			showOnMap: profile.showOnMap,
 			anonymousOnMap: profile.anonymousOnMap,
 			openToGames: profile.openToGames
@@ -172,6 +174,21 @@
 			<div>
 				<label for="player-bio" class="mb-1 block text-sm font-medium">Bio</label>
 				<textarea id="player-bio" class="{fieldClass} min-h-24" maxlength="280" bind:value={form.bio} data-testid="profile-bio"></textarea>
+			</div>
+
+			<div>
+				<label for="player-website" class="mb-1 block text-sm font-medium">{PROFILE_WEBSITE_LABEL}</label>
+				<input
+					id="player-website"
+					class={fieldClass}
+					type="url"
+					maxlength="300"
+					placeholder="https://www.youtube.com/@yourchannel"
+					bind:value={form.website}
+					data-testid="profile-website"
+					autocomplete="url"
+				/>
+				<p class="mt-1 text-sm text-stone-600 dark:text-gray-300">Optional. A new photo can start with this link. It is not shown on the map.</p>
 			</div>
 
 			<div>

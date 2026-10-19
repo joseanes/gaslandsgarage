@@ -4,7 +4,9 @@
 	import { user } from '$lib/firebase';
 	import { PHOTO_PRIVACY_SHORT, TEAM_ID_PATTERN, VEHICLE_ID_PATTERN } from '$lib/photos/model';
 	import { shareEverywhere, type ShareFlags } from '$lib/photos/share';
-	import { setPhotoSharing } from '$lib/services/photoShare';
+	import { paintingGuideLink } from '$lib/photos/link';
+	import { setPhotoPaintingUrl, setPhotoSharing } from '$lib/services/photoShare';
+	import { myProfileWebsite } from '$lib/services/playerProfile';
 	import {
 		attachLibraryPhoto,
 		detachLibraryPhoto,
@@ -31,6 +33,9 @@
 
 	let photos: VehiclePhoto[] = [];
 	let caption = '';
+	let paintingUrl = '';
+	let profileWebsite = '';
+	let paintingDraft = '';
 	let uploadFlags: ShareFlags = shareEverywhere(false);
 	let showLibrary = false;
 	let library: VehiclePhoto[] = [];
@@ -113,7 +118,7 @@
 		fileInput?.click();
 	}
 
-	function onFile(event: Event) {
+	async function onFile(event: Event) {
 		const input = event.currentTarget;
 		if (!(input instanceof HTMLInputElement)) return;
 		const file = input.files?.[0];
@@ -124,6 +129,8 @@
 		pendingPreview = URL.createObjectURL(file);
 		caption = '';
 		uploadFlags = shareEverywhere(false);
+		profileWebsite = await myProfileWebsite();
+		paintingUrl = profileWebsite;
 		showUpload = true;
 		error = '';
 		status = '';
@@ -134,6 +141,7 @@
 		pendingPreview = '';
 		pendingFile = null;
 		caption = '';
+		paintingUrl = '';
 		uploadFlags = shareEverywhere(false);
 		showUpload = false;
 	}
@@ -142,11 +150,17 @@
 		const id = storedTeamId();
 		const file = pendingFile;
 		if (!file || !id || busy) return;
+		const chosenLink = paintingUrl.trim();
+		if (chosenLink && !paintingGuideLink(chosenLink)) {
+			error = 'Use a full http or https link, up to 300 characters.';
+			return;
+		}
 		busy = true;
 		error = '';
 		status = 'Uploading photo...';
 		try {
 			const uploaded = await uploadVehiclePhoto({ teamId: id, vehicleId, file, caption });
+			if (chosenLink) await setPhotoPaintingUrl(uploaded.photoId, chosenLink);
 			const chosen = uploadFlags;
 			if (chosen.showToBuddies || chosen.showOnShareLink || chosen.showInGallery || chosen.shareVehicleStats) {
 				status = 'Saving sharing...';
@@ -175,8 +189,12 @@
 		if (playMode) return;
 		editingId = photo.photoId;
 		captionDraft = photo.caption;
+		paintingDraft = photo.paintingUrl;
 		error = '';
 		status = '';
+		void myProfileWebsite().then((site) => {
+			profileWebsite = site;
+		});
 	}
 
 	function closeEditor() {
@@ -266,6 +284,25 @@
 		} catch (caught) {
 			status = '';
 			error = caught instanceof Error ? caught.message : 'That sharing choice could not be saved.';
+		} finally {
+			busy = false;
+		}
+	}
+
+	async function savePainting(photo: VehiclePhoto, next: string) {
+		paintingDraft = next;
+		if (busy || next.trim() === photo.paintingUrl) return;
+		if (next.trim() && !paintingGuideLink(next)) return;
+		busy = true;
+		error = '';
+		status = 'Saving link...';
+		try {
+			await setPhotoPaintingUrl(photo.photoId, next.trim());
+			status = '';
+			await refresh();
+		} catch (caught) {
+			status = '';
+			error = caught instanceof Error ? caught.message : 'That link could not be saved.';
 		} finally {
 			busy = false;
 		}
@@ -511,7 +548,14 @@
 					linkTestId="upload-share-link"
 					galleryTestId="upload-share-gallery"
 					statsTestId="upload-share-stats"
+					paintingUrl={paintingUrl}
+					{profileWebsite}
+					paintingDisabled={busy}
+					paintingTestId="upload-painting-link"
+					useWebsiteTestId="upload-use-profile-website"
 					onChange={(next) => (uploadFlags = next)}
+					onPaintingUrl={(next) => (paintingUrl = next)}
+					onPaintingCommit={(next) => (paintingUrl = next)}
 				/>
 			</div>
 			{#if status}
@@ -588,7 +632,16 @@
 				</label>
 			{/if}
 			<div class="mt-3">
-				<SharingControl flags={photoFlags(editing)} disabled={busy} onChange={(next) => editing && saveFlags(editing, next)} />
+				<SharingControl
+					flags={photoFlags(editing)}
+					disabled={busy}
+					paintingUrl={paintingDraft}
+					{profileWebsite}
+					paintingDisabled={busy}
+					onChange={(next) => editing && saveFlags(editing, next)}
+					onPaintingUrl={(next) => (paintingDraft = next)}
+					onPaintingCommit={(next) => editing && savePainting(editing, next)}
+				/>
 			</div>
 			{#if status}
 				<p class="mt-2 text-xs text-stone-700 dark:text-gray-200" role="status">{status}</p>

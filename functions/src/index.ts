@@ -141,6 +141,7 @@ export {
 	refreshSharedVehicleStats,
 	removeSharedPhotoOnDelete,
 	reportPhoto,
+	setPhotoPaintingUrl,
 	setPhotoSharing
 } from './photoShare.ts';
 

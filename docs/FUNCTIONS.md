@@ -12,7 +12,8 @@ The functions are 2nd gen, Node.js 22, TypeScript, in `functions/`. Node.js 20 i
 | `exportMyData` | Callable, signed-in user | JSON of that account's Firestore data, including a list of painted-car photos. |
 | `deleteMyAccount` | Callable, signed-in user | Deletes that account, including every Storage object under `users/{uid}/`, the photo metadata, and any shared photo copies. Requires a fresh sign-in and the confirmation `DELETE`. |
 | `reserveVehiclePhoto` | Callable, signed-in user | Reserves one library file at `users/{uid}/photos-library/{photoId}.webp` (or `.jpg`). Counts library files toward 100 per account and attachments toward 3 per car. The same bytes attach to the existing photo instead of creating another file. The browser uploads only when this is a new file. |
-| `setPhotoSharing` | Callable, signed-in user | Turns sharing on or off for one of the caller's photos, including the Gallery and the vehicle stats snapshot. A shared photo is copied to `shared-photos/{photoId}`. The public document has no account id. Stats are copied from the car the photo is shared from. One attached car is used automatically. Several attached cars require `shareTeamId` and `shareVehicleId`. A photo with no car can still be shown in the Gallery when `vehicleType` is one of the game's vehicle types. That card has no stats, no cans, and no team. Stats, Gaming Buddies, and the team share link still require a linked car. A caller-supplied type is ignored when a car is linked. |
+| `setPhotoSharing` | Callable, signed-in user | Turns sharing on or off for one of the caller's photos, including the Gallery and the vehicle stats snapshot. A shared photo is copied to `shared-photos/{photoId}`. The public document has no account id. Stats are copied from the car the photo is shared from. One attached car is used automatically. Several attached cars require `shareTeamId` and `shareVehicleId`. A photo with no car can still be shown in the Gallery when `vehicleType` is one of the game's vehicle types. That card has no stats, no cans, and no team. Stats, Gaming Buddies, and the team share link still require a linked car. A caller-supplied type is ignored when a car is linked. The public card copies `paintingUrl` from the private photo. A caller can send `paintingUrl` to replace it. Anything that is not an empty string or an http(s) URL of at most 300 characters is rejected. A blank link is not filled from the profile. |
+| `setPhotoPaintingUrl` | Callable, signed-in user | Saves or clears the painting-guide link on one of the caller's photos. The same value is copied onto `sharedPhotos` when that photo is already public. An empty string clears it. The profile website is not read. |
 | `attachLibraryPhoto` | Callable, signed-in user | Attaches one library photo to a car on the caller's saved team. A car can show 3 photos. |
 | `detachLibraryPhoto` | Callable, signed-in user | Takes one photo off one car. The file stays. If that car was the share source, the shared copy is removed. |
 | `detachVehiclePhotos` | Callable, signed-in user | Takes every library photo off one car. Files stay in My Photos. |
@@ -27,7 +28,7 @@ The functions are 2nd gen, Node.js 22, TypeScript, in `functions/`. Node.js 20 i
 | `moderateGallery` | Callable, administrator | Lists shared photos, hides or removes one, approves one, or sets the gallery approval kill switch. |
 | `refreshSharedVehicleStats` | `teams/{teamId}` write | Refreshes the public stats snapshot when a saved vehicle changes. Removes that snapshot when the vehicle is gone. |
 | `removeSharedPhotoOnDelete` | `users/{uid}/photos/{photoId}` delete | Removes the shared copy when the private photo document is deleted. |
-| `renderSharedCar` | Public HTTPS `GET` or `HEAD` | HTML for a public car page and its embed, including Open Graph and Twitter card tags. Reads `sharedPhotos/{photoId}` only. Returns a "no longer shared" page when the photo is not a published, visible gallery share. |
+| `renderSharedCar` | Public HTTPS `GET` or `HEAD` | HTML for a public car page and its embed, including Open Graph and Twitter card tags. Reads `sharedPhotos/{photoId}` only. Returns a "no longer shared" page when the photo is not a published, visible gallery share. A painting-guide link is shown only when that photo stored an http(s) URL. The link is escaped and uses `rel="nofollow ugc noopener noreferrer"`. |
 | `syncNewsletterToken` | `userSettings/{uid}` write | When `newsletterOptIn` is true, stores one random unsubscribe token. Does not send mail. |
 | `unsubscribeNewsletter` | Public HTTPS `GET` or `POST` | GET shows a confirm page and changes nothing. POST with the token sets `newsletterOptIn` to false. An RFC 8058 one-click POST is accepted on the same URL. No sign-in. |
 | `getBuddyInvite` | Callable, signed-in user | Returns or creates that account's invite code, and whether email invites are on. |
@@ -163,6 +164,13 @@ A photo added from the Photos page with no linked car is stored in that player's
 
 ```bash
 firebase deploy --only functions:setPhotoSharing --project=gaslandsgarage-74ce6
+```
+
+A painting-guide link is optional on the private profile (`playerProfiles.website`) and on each photo (`paintingUrl`). The profile field is not copied onto a photo unless the player keeps it or presses "Use my profile website". Firestore rules allow the profile field and a client update of `paintingUrl` on `users/{uid}/photos/{photoId}` only when the value is empty or an http(s) URL of at most 300 characters. Clients still cannot write `sharedPhotos`. `setPhotoPaintingUrl` and `setPhotoSharing` apply that same check before the Admin SDK writes the public card. No new index. The link is not on the live car page or embed until `renderSharedCar` is deployed, and a saved link is not copied onto a public card until `setPhotoPaintingUrl` and `setPhotoSharing` are deployed:
+
+```bash
+firebase deploy --only firestore:rules --project=gaslandsgarage-74ce6
+firebase deploy --only functions:setPhotoPaintingUrl,functions:setPhotoSharing,functions:renderSharedCar --project=gaslandsgarage-74ce6
 ```
 
 The car page markup and CSS live in `app/src/lib/photos/carPage.ts`. The function imports that module, so a header, hero, stat card, or share-icon change is not live until `renderSharedCar` is deployed by hand. CI does not deploy functions. Hosting stays on AWS. Deploy the function by hand, from the repository root, before the CloudFront change:

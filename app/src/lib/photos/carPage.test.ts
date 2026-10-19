@@ -72,11 +72,13 @@ describe('public car privacy gate', () => {
 			'caption',
 			'displayName',
 			'imageUrl',
+			'paintingUrl',
 			'shareId',
 			'teamName',
 			'vehicleStats',
 			'vehicleType'
 		]);
+		expect(car?.paintingUrl).toBe('');
 		expect(car?.vehicleStats?.name).toBe('Rust Rocket');
 		expect(car?.vehicleStats?.cans).toBe(45);
 		expect(JSON.stringify(car)).not.toContain('createdAt');
@@ -138,12 +140,59 @@ describe('public car privacy gate', () => {
 		expect(json).not.toContain('evil.example');
 		expect(json).not.toContain('ownerUid');
 		expect(json).not.toContain('googleName');
+		expect(car?.paintingUrl).toBe('');
+	});
+
+	it('shows a painting-guide link only when that photo stored one', async () => {
+		const youtube = 'https://www.youtube.com/@rustpainter';
+		const page = await renderCarHttp({
+			method: 'GET',
+			path: `/car/${SHARE_ID}`,
+			bucket: BUCKET,
+			load: load(sharedDoc({ paintingUrl: youtube }))
+		});
+		expect(page.body).toContain('Painting guide on youtube.com');
+		expect(page.body).toContain(`href="${youtube}"`);
+		expect(page.body).toContain('rel="nofollow ugc noopener noreferrer"');
+		expect(page.body).toContain('target="_blank"');
+		expect(page.body).toContain('fill="#FF0033"');
+		const nasty = 'https://example.com/?q=1&amp;x=2';
+		const escaped = await renderCarHttp({
+			method: 'GET',
+			path: `/car/${SHARE_ID}`,
+			bucket: BUCKET,
+			load: load(sharedDoc({ paintingUrl: 'https://example.com/?q=1&x=2' }))
+		});
+		expect(escaped.body).toContain(`href="${nasty}"`);
+		expect(escaped.body).toContain('Painting guide on example.com');
+		expect(escaped.body).not.toContain('fill="#FF0033"');
+		const blank = await renderCarHttp({
+			method: 'GET',
+			path: `/embed/car/${SHARE_ID}`,
+			bucket: BUCKET,
+			load: load(sharedDoc({ paintingUrl: 'javascript:alert(1)', email: EMAIL }))
+		});
+		expect(blank.body).not.toContain('painting-guide');
+		expect(blank.body).not.toContain('javascript:');
+		expect(blank.body).not.toContain(EMAIL);
+		const embed = await renderCarHttp({
+			method: 'GET',
+			path: `/embed/car/${SHARE_ID}`,
+			bucket: BUCKET,
+			load: load(sharedDoc({ paintingUrl: youtube }))
+		});
+		expect(embed.body).toContain('Painting guide on youtube.com');
+		expect(embed.body).toContain('rel="nofollow ugc noopener noreferrer"');
+		expect(embed.body).not.toContain('class="site"');
 	});
 
 	it('rejects a short id, a tokenised image, and a non-storage image', () => {
 		expect(publicCarFromDocument('short', sharedDoc(), IMAGE)).toBeNull();
 		expect(publicCarFromDocument(SHARE_ID, sharedDoc(), `${IMAGE}&token=secret`)).toBeNull();
 		expect(publicCarFromDocument(SHARE_ID, sharedDoc(), 'https://evil.example/car.png')).toBeNull();
+		expect(publicCarFromDocument(SHARE_ID, sharedDoc(), 'http://evil.example/v0/b/bucket/o/x?alt=media')).toBeNull();
+		const emulatorImage = 'http://127.0.0.1:9199/v0/b/demo.appspot.com/o/shared-photos%2Fphoto.webp?alt=media';
+		expect(publicCarFromDocument(SHARE_ID, sharedDoc(), emulatorImage)?.imageUrl).toBe(emulatorImage);
 	});
 });
 

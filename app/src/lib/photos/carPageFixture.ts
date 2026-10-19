@@ -27,6 +27,7 @@ export function samplePublicCar(): PublicCar {
 		teamName: 'Rust Runners',
 		caption: 'Orange and loud',
 		imageUrl: SAMPLE_IMAGE,
+		paintingUrl: 'https://www.youtube.com/@rustpainter',
 		vehicleStats: {
 			type: 'Performance Car',
 			name: 'Rust Rocket',
@@ -84,6 +85,7 @@ export function sampleGalleryDeck(): GalleryPhoto[] {
 			caption: hero ? 'Orange and loud' : `${name} in the dust`,
 			createdAt,
 			url: seededCarImage(hero ? 'Rust Rocket' : name, PAINTS[index % PAINTS.length]),
+			paintingUrl: hero ? 'https://www.youtube.com/@rustpainter' : '',
 			vehicleStats: null
 		};
 		if (!photoOnly) {

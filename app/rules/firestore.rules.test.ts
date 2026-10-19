@@ -299,6 +299,13 @@ describe('player privacy', () => {
 		await assertFails(
 			setDoc(doc(player, 'playerProfiles', 'player'), playerProfile({ bio: 'mail me player@example.com' }))
 		);
+		await assertSucceeds(
+			setDoc(doc(player, 'playerProfiles', 'player'), playerProfile({ website: 'https://www.youtube.com/@painter' }))
+		);
+		await assertSucceeds(setDoc(doc(player, 'playerProfiles', 'player'), playerProfile({ website: '' })));
+		await assertFails(setDoc(doc(player, 'playerProfiles', 'player'), playerProfile({ website: 'javascript:alert(1)' })));
+		await assertFails(setDoc(doc(player, 'playerProfiles', 'player'), playerProfile({ website: 'https://user:pass@example.com/x' })));
+		await assertFails(setDoc(doc(player, 'playerProfiles', 'player'), playerProfile({ website: `https://example.com/${'a'.repeat(300)}` })));
 		await assertFails(
 			setDoc(
 				doc(player, 'playerProfiles', 'player'),
@@ -861,6 +868,10 @@ describe('vehicle photos', () => {
 		await assertSucceeds(getDoc(photo));
 		await assertSucceeds(getDocs(collection(player, 'users', 'player', 'photos')));
 		await assertSucceeds(updateDoc(photo, { caption: 'Blue car' }));
+		await assertSucceeds(updateDoc(photo, { paintingUrl: 'https://www.youtube.com/@painter' }));
+		await assertSucceeds(updateDoc(photo, { paintingUrl: '' }));
+		await assertFails(updateDoc(photo, { paintingUrl: 'javascript:alert(1)' }));
+		await assertFails(updateDoc(photo, { paintingUrl: 'https://user:pass@example.com/secret' }));
 		await assertFails(updateDoc(photo, { path: 'users/player/vehicle-photos/team1234/veh123/other.webp' }));
 		await assertFails(updateDoc(photo, { caption: 'x'.repeat(141) }));
 		await assertFails(setDoc(doc(player, 'users', 'player', 'photos', 'photo9999'), photoDoc()));

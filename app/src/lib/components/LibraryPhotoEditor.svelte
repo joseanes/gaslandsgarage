@@ -1,9 +1,12 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import ShareCar from '$lib/components/ShareCar.svelte';
 	import SharingControl from '$lib/components/SharingControl.svelte';
 	import { ownCarName, type SavedCar } from '$lib/photos/browser';
+	import { paintingGuideLink } from '$lib/photos/link';
 	import { type ShareFlags } from '$lib/photos/share';
-	import { setPhotoSharing } from '$lib/services/photoShare';
+	import { setPhotoPaintingUrl, setPhotoSharing } from '$lib/services/photoShare';
+	import { myProfileWebsite } from '$lib/services/playerProfile';
 	import {
 		attachLibraryPhoto,
 		deleteVehiclePhoto,
@@ -25,6 +28,20 @@
 
 	let sharePick: Record<string, string> = {};
 	let attachPick: Record<string, string> = {};
+	let profileWebsite = '';
+	let paintingDraft = photo.paintingUrl ?? '';
+	let paintingFor = photo.photoId;
+
+	$: if (photo.photoId !== paintingFor) {
+		paintingFor = photo.photoId;
+		paintingDraft = photo.paintingUrl ?? '';
+	}
+
+	onMount(() => {
+		void myProfileWebsite().then((site) => {
+			profileWebsite = site;
+		});
+	});
 
 	const fieldClass =
 		'mt-1 w-full rounded-lg border border-stone-300 bg-white px-2 py-1 text-sm text-stone-800 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100';
@@ -73,6 +90,13 @@
 		} finally {
 			setBusy(false);
 		}
+	}
+
+	async function savePainting(next: string) {
+		paintingDraft = next;
+		if (next.trim() === (photo.paintingUrl ?? '')) return;
+		if (next.trim() && !paintingGuideLink(next)) return;
+		await run(() => setPhotoPaintingUrl(photo.photoId, next.trim()), 'Saving link...', 'That link could not be saved.');
 	}
 
 	async function saveCaption(caption: string) {
@@ -184,41 +208,46 @@
 
 	{#if photo.attachments.length === 0}
 		<p class="mt-2 text-xs text-stone-600 dark:text-gray-300">Attach this photo to a car before sharing it.</p>
-	{:else}
-		{#if photo.attachments.length > 1}
-			<label class="mt-2 block text-xs text-stone-700 dark:text-gray-200">
-				Share this photo from
-				<select
-					class={fieldClass}
-					data-testid="library-share-from"
-					disabled={busy}
-					value={selectedShare(photo)}
-					on:change={(event) => {
-						const value = event.currentTarget instanceof HTMLSelectElement ? event.currentTarget.value : '';
-						void changeShareCar(value);
-					}}
-				>
-					<option value="">Choose a car</option>
-					{#each photo.attachments as attachment (attachment.teamId + attachment.vehicleId)}
-						<option value={pair(attachment.teamId, attachment.vehicleId)}>{carLabel(attachment.teamId, attachment.vehicleId)}</option>
-					{/each}
-				</select>
-			</label>
-		{/if}
-		<div class="mt-2">
-			<SharingControl
-				flags={{
-					showToBuddies: photo.showToBuddies,
-					showOnShareLink: photo.showOnShareLink,
-					showInGallery: photo.showInGallery,
-					shareVehicleStats: photo.shareVehicleStats
+	{:else if photo.attachments.length > 1}
+		<label class="mt-2 block text-xs text-stone-700 dark:text-gray-200">
+			Share this photo from
+			<select
+				class={fieldClass}
+				data-testid="library-share-from"
+				disabled={busy}
+				value={selectedShare(photo)}
+				on:change={(event) => {
+					const value = event.currentTarget instanceof HTMLSelectElement ? event.currentTarget.value : '';
+					void changeShareCar(value);
 				}}
-				disabled={busy || !sourceFor(photo)}
-				linkTestId="library-share-link"
-				onChange={(next) => void saveFlags(next)}
-			/>
-		</div>
+			>
+				<option value="">Choose a car</option>
+				{#each photo.attachments as attachment (attachment.teamId + attachment.vehicleId)}
+					<option value={pair(attachment.teamId, attachment.vehicleId)}>{carLabel(attachment.teamId, attachment.vehicleId)}</option>
+				{/each}
+			</select>
+		</label>
 	{/if}
+	<div class="mt-2">
+		<SharingControl
+			flags={{
+				showToBuddies: photo.showToBuddies,
+				showOnShareLink: photo.showOnShareLink,
+				showInGallery: photo.showInGallery,
+				shareVehicleStats: photo.shareVehicleStats
+			}}
+			disabled={busy || !sourceFor(photo)}
+			linkTestId="library-share-link"
+			paintingUrl={paintingDraft}
+			{profileWebsite}
+			paintingDisabled={busy}
+			paintingTestId="library-painting-link"
+			useWebsiteTestId="library-use-profile-website"
+			onChange={(next) => void saveFlags(next)}
+			onPaintingUrl={(next) => (paintingDraft = next)}
+			onPaintingCommit={(next) => void savePainting(next)}
+		/>
+	</div>
 
 	{#if availableCars(photo).length > 0}
 		<div class="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">

@@ -1,5 +1,6 @@
 /** Photo sharing choices. Shared by the browser and the Cloud Functions. */
 
+import { normalizePaintingUrl } from './link';
 import { PHOTO_ID_PATTERN, UID_PATTERN, cleanCaption } from './model';
 
 export const SHARE_BUDDIES_LABEL = 'Show to my Gaming Buddies';
@@ -80,6 +81,8 @@ export interface PublicSharedPhoto {
 	published: boolean;
 	showInGallery: boolean;
 	keywords: string[];
+	/** Empty when this photo has no painting-guide link. Never filled from a profile. */
+	paintingUrl: string;
 	/** Present when this car shares its stats, so cans can be ordered without reading the snapshot. */
 	cans?: number;
 	vehicleStats?: VehicleStatsSnapshot;
@@ -310,9 +313,11 @@ export function publicSharedPhoto(input: {
 	published: boolean;
 	showInGallery: boolean;
 	vehicleStats?: unknown;
+	paintingUrl?: unknown;
 }): PublicSharedPhoto {
 	if (!PHOTO_ID_PATTERN.test(input.photoId)) throw new Error('That photo could not be shared.');
 	const caption = cleanCaption(input.caption);
+	const paintingUrl = input.paintingUrl == null || input.paintingUrl === '' ? '' : normalizePaintingUrl(input.paintingUrl);
 	const stats = sanitizeVehicleStats(input.vehicleStats);
 	const search = sharedPhotoSearchPatch({
 		caption,
@@ -330,7 +335,8 @@ export function publicSharedPhoto(input: {
 		hidden: input.hidden === true,
 		published: input.published === true,
 		showInGallery: input.showInGallery === true,
-		keywords: search.keywords
+		keywords: search.keywords,
+		paintingUrl
 	};
 	if (stats && search.cans !== undefined) {
 		photo.vehicleStats = stats;

@@ -69,6 +69,7 @@ export function formForJoin(profile: StoredProfile | null, draft: JoinDraft): Pl
 		bio: profile?.bio ?? '',
 		locationLabel: draft.locationLabel,
 		playSpots: profile?.playSpots ?? '',
+		website: profile?.website ?? '',
 		showOnMap: draft.showOnMap,
 		anonymousOnMap: draft.showOnMap ? draft.anonymousOnMap : false,
 		openToGames: profile?.openToGames ?? false

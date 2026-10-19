@@ -1,4 +1,5 @@
 import { auth, db, initializeFirebase } from '$lib/firebase';
+import { normalizePaintingUrl } from '$lib/photos/link';
 import { PRIVACY_FUNCTIONS_REGION } from '$lib/privacy/accountShared';
 import {
 	applyBoardField,
@@ -102,6 +103,18 @@ async function publishMap(entryId: string, entry: MapWrite | null): Promise<void
 
 async function publishOpen(uid: string, entry: OpenToGamesWrite | null): Promise<void> {
 	await writeBoardEntry(OPEN_BOARD, 'players', uid, entry);
+}
+
+export async function myProfileWebsite(): Promise<string> {
+	const uid = auth?.currentUser?.uid;
+	if (!uid) return '';
+	const profile = await loadOwnProfile(uid);
+	if (!profile?.website) return '';
+	try {
+		return normalizePaintingUrl(profile.website);
+	} catch {
+		return '';
+	}
 }
 
 export async function loadOwnProfile(uid: string): Promise<StoredProfile | null> {

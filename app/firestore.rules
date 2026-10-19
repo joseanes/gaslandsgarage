@@ -75,6 +75,21 @@ service cloud.firestore {
       return noEmail(value) && value.size() <= max;
     }
 
+    // Empty, or an http(s) URL of at most 300 characters. The host must be a
+    // name, and the path may include an at-sign (YouTube channel addresses).
+    // Credentials and any other scheme are rejected. Keep this in step with
+    // PAINTING_URL in app/src/lib/photos/link.ts. The at-sign is written as
+    // \x40 so this file does not contain an email address.
+    function safeHttpUrl(value) {
+      return value is string
+        && value.size() <= 300
+        && (
+          value == ''
+          || value.matches('^https://[A-Za-z0-9][A-Za-z0-9.-]*\\.[A-Za-z]{2,}(:[0-9]{1,5})?(/[A-Za-z0-9._~:/?#\\x40!$&()*+,;=%-]*)?$')
+          || value.matches('^http://[A-Za-z0-9][A-Za-z0-9.-]*\\.[A-Za-z]{2,}(:[0-9]{1,5})?(/[A-Za-z0-9._~:/?#\\x40!$&()*+,;=%-]*)?$')
+        );
+    }
+
     // Same street and unit words the profile form rejects. A 5-digit ZIP is allowed.
     // Rules match the whole string, so each pattern is anchored with .*.
     function streetish(value) {
@@ -138,12 +153,13 @@ service cloud.firestore {
 
     function validPlayerProfile() {
       return request.resource.data.keys().hasOnly([
-          'playerName', 'bio', 'locationLabel', 'playSpots',
+          'playerName', 'bio', 'locationLabel', 'playSpots', 'website',
           'latE2', 'lngE2', 'showOnMap', 'anonymousOnMap', 'openToGames',
           'mapEntryId', 'updatedAt'
         ])
         && shortText(request.resource.data.playerName, 60)
         && shortText(request.resource.data.bio, 280)
+        && (!('website' in request.resource.data) || safeHttpUrl(request.resource.data.website))
         && locationLabelOk(request.resource.data.locationLabel)
         && profilePointOk()
         && shortText(request.resource.data.playSpots, 280)
@@ -600,7 +616,7 @@ service cloud.firestore {
       return data.keys().hasOnly([
           'photoId', 'userId', 'teamId', 'vehicleId', 'path', 'width', 'height', 'createdAt', 'caption', 'contentType',
           'showToBuddies', 'showOnShareLink', 'showInGallery', 'shareVehicleStats',
-          'attachments', 'contentHash', 'shareTeamId', 'shareVehicleId'
+          'attachments', 'contentHash', 'shareTeamId', 'shareVehicleId', 'paintingUrl'
         ])
         && data.keys().hasAll([
           'photoId', 'userId', 'teamId', 'vehicleId', 'path', 'width', 'height', 'createdAt', 'caption', 'contentType'
@@ -609,6 +625,7 @@ service cloud.firestore {
         && (!('showOnShareLink' in data) || data.showOnShareLink is bool)
         && (!('showInGallery' in data) || data.showInGallery is bool)
         && (!('shareVehicleStats' in data) || data.shareVehicleStats is bool)
+        && (!('paintingUrl' in data) || safeHttpUrl(data.paintingUrl))
         && data.photoId == photoId
         && data.photoId.matches('^[A-Za-z0-9_-]{8,40}$')
         && data.userId == userId
@@ -647,7 +664,7 @@ service cloud.firestore {
         && !isDisabled()
         && userId == request.auth.uid
         && photoRecord(userId, photoId)
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['caption'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['caption', 'paintingUrl'])
         && resource.data.photoId == photoId
         && resource.data.userId == userId
         && request.resource.data.teamId == resource.data.teamId
@@ -670,6 +687,9 @@ service cloud.firestore {
 
     // Public gallery card. Readable only while it is a published, visible
     // gallery photo. The account id is not stored here. Clients cannot write.
+    // paintingUrl, when the Admin SDK stores one, is an http(s) URL of at most
+    // 300 characters (safeHttpUrl). setPhotoSharing and setPhotoPaintingUrl
+    // reject anything else before that write. A blank paintingUrl is no link.
     match /sharedPhotos/{photoId} {
       allow read: if resource.data.hidden == false
         && resource.data.published == true

@@ -108,6 +108,7 @@ describe('formForJoin', () => {
 			bio: 'Rookie',
 			locationLabel: '78701',
 			playSpots: 'At home',
+			website: '',
 			showOnMap: true,
 			anonymousOnMap: true,
 			openToGames: true

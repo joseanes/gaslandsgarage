@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PaintingGuideLink from '$lib/components/PaintingGuideLink.svelte';
 	import { galleryCarName } from '$lib/photos/galleryQuery';
 	import type { GalleryPhoto } from '$lib/services/photoShare';
 
@@ -59,6 +60,9 @@
 				<p class="{layout === 'detail' ? 'text-xl' : 'text-sm'} truncate font-black uppercase tracking-wide text-orange-50">{title}</p>
 				<p class="truncate text-xs font-medium text-orange-300">{photo.displayName}</p>
 			</div>
+			{#if layout === 'detail'}
+				<PaintingGuideLink url={photo.paintingUrl} />
+			{/if}
 			{#if stats}
 				<dl class="grid grid-cols-4 gap-1" data-testid="gallery-stats">
 					{#each chips as chip}
