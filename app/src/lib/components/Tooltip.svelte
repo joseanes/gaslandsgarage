@@ -3,6 +3,8 @@
   
   export let text = '';
   export let content = '';
+  /** Use the surrounding text color instead of the default amber trigger. */
+  export let inheritColor = false;
   
   let tooltipElement: HTMLElement | undefined;
   let tooltipContent: HTMLElement | undefined;
@@ -98,6 +100,7 @@
 <span 
   bind:this={tooltipElement}
   class="tooltip-trigger"
+  class:inherit={inheritColor}
   on:mouseenter={handleMouseEnter}
   on:mouseleave={handleMouseLeave}
   on:keydown={handleKeyDown}
@@ -143,6 +146,12 @@
   
   .tooltip-trigger:hover {
     color: #f59e0b; /* amber-500 */
+  }
+
+  .tooltip-trigger.inherit,
+  .tooltip-trigger.inherit:hover {
+    color: inherit;
+    font-weight: inherit;
   }
   
   .tooltip-content {
