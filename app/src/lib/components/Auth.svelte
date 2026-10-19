@@ -75,9 +75,6 @@
           Signed in as <strong>{$user.displayName || $user.email}</strong>
         </div>
         <div class="separator"></div>
-        <a href="/buddies" class="dropdown-button" on:click={() => showDropdown = false}>
-          Gaming Buddies
-        </a>
         <button 
           type="button" 
           class="dropdown-button"
@@ -170,10 +167,6 @@
     margin: 0.25rem 0;
   }
   
-  a.dropdown-button {
-    text-decoration: none;
-  }
-
   .dropdown-button {
     display: block;
     width: 100%;

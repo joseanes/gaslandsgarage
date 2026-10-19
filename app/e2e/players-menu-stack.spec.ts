@@ -101,8 +101,8 @@ async function hitAt(page: Page, point: { x: number; y: number }) {
 
 const headerMenus = [
 	['Teams', '.share-menu-dropdown'],
+	['Players and Events', '.players-menu-dropdown'],
 	['Settings', '.settings-menu-dropdown'],
-	['Players', '.players-menu-dropdown'],
 	['Help', '.help-menu-dropdown']
 ] as const;
 

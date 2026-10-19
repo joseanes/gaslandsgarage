@@ -98,10 +98,11 @@ test('a buddy request, accepted copy, and removal stay on the right accounts', a
 
 	await saveRacers(ada.page, ada.notices);
 	await ada.page.getByRole('button', { name: ada.email.split('@')[0] }).click();
-	await expect(ada.page.getByRole('link', { name: 'Gaming Buddies' })).toBeVisible();
+	await expect(ada.page.locator('.auth-container .dropdown')).toBeVisible();
+	await expect(ada.page.locator('.auth-container .dropdown').getByRole('link', { name: 'Gaming Buddies' })).toHaveCount(0);
 	await ada.page.goto('/profile', { waitUntil: 'domcontentloaded' });
 	await expect(ada.page.getByRole('link', { name: 'Gaming Buddies' })).toBeVisible();
-	await ada.page.getByRole('button', { name: 'Players', exact: true }).click();
+	await ada.page.getByRole('button', { name: 'Players and Events', exact: true }).click();
 	await expect(ada.page.locator('.players-menu-dropdown').getByRole('link', { name: 'Gaming Buddies' })).toBeVisible();
 
 	await openBuddies(ada.page);
