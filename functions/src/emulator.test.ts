@@ -255,6 +255,27 @@ describe('game contact email', () => {
     ).resolves.toEqual({ status: 'skipped', reason: 'no-email' });
     expect((await getFirestore().collection(MAIL_COLLECTION).get()).empty).toBe(true);
   });
+
+  it('stops a sender after 10 game-request emails in a day and still leaves the note alone', async () => {
+    const auth = getAuth();
+    const db = getFirestore();
+    await auth.createUser({ uid: 'ada', email: 'ada@example.com' });
+    await auth.createUser({ uid: 'grace', email: 'grace@example.com' });
+    await db.doc('userSettings/grace').set({ allowContactFromPlayers: true });
+    for (let index = 0; index < 10; index += 1) {
+      const id = `ada_grace${index}`;
+      await expect(queueContactEmail(id, contact)).resolves.toEqual({ status: 'queued' });
+    }
+    await expect(queueContactEmail('ada_overflow', contact)).resolves.toEqual({
+      status: 'skipped',
+      reason: 'rate-limited'
+    });
+    expect((await db.collection(MAIL_COLLECTION).get()).size).toBe(10);
+    expect((await db.doc('gameContacts/ada_overflow').get()).exists).toBe(false);
+    const source = readFileSync(new URL('./index.ts', import.meta.url), 'utf8');
+    expect(source).toContain('deliverQueuedMail');
+    expect(source).toContain("document: 'mail/{mailId}'");
+  });
 });
 
 describe('account privacy', () => {
@@ -391,6 +412,7 @@ describe('account privacy', () => {
     }
     expect(rulesCollections()).toEqual(
       [
+			'accountControl',
 			'adminUsers',
 			'buddies',
 			'buddyBlocks',
@@ -401,6 +423,7 @@ describe('account privacy', () => {
 			'buddyEmailSuppress',
 			'buddyInvites',
 			'buddyRequests',
+			'gameContactEmailRate',
 			'gameContacts',
         'mapPlacements',
         'messages',
@@ -556,8 +579,9 @@ describe('account privacy', () => {
       expect((await db.doc('openToGamesBoard/public').get()).get('players')).toEqual({
         [grace]: { playerName: 'Grace' }
       });
+      expect((await db.doc(`accountControl/${ada}`).get()).get('deleted')).toBe(true);
       expect((await db.doc(`gameContacts/${ada}_${grace}`).get()).data()).toMatchObject({
-        fromUid: ada,
+        fromUid: 'deleted',
         toUid: grace,
         fromName: 'Deleted player',
         toName: 'Grace',
@@ -566,7 +590,7 @@ describe('account privacy', () => {
       });
       expect((await db.doc(`gameContacts/${grace}_${ada}`).get()).data()).toMatchObject({
         fromUid: grace,
-        toUid: ada,
+        toUid: 'deleted',
         fromName: 'Grace',
         toName: 'Deleted player',
         message: 'Rematch?',
@@ -588,9 +612,15 @@ describe('account privacy', () => {
       expect(lines.join('\n')).not.toContain('Grace');
 
       const again = await eraseAccount(ada);
-			expect(again).toEqual(['boards', 'documents', 'anonymize', 'mail', 'buddies', 'rate', 'auth']);
+			expect(again).toEqual(['marker', 'revoke', 'boards', 'documents', 'anonymize', 'mail', 'buddies', 'rate', 'auth', 'rescan']);
+      expect((await db.doc(`accountControl/${ada}`).get()).get('deleted')).toBe(true);
       expect((await auth.getUser(grace)).email).toBe('grace@example.com');
       expect((await db.doc(`gameContacts/${grace}_${ada}`).get()).get('message')).toBe('Rematch?');
+      await eraseAccount(grace);
+      expect((await db.doc(`gameContacts/${ada}_${grace}`).get()).exists).toBe(false);
+      expect((await db.doc(`gameContacts/${grace}_${ada}`).get()).exists).toBe(false);
+      expect((await db.doc(`accountControl/${ada}`).get()).get('deleted')).toBe(true);
+      expect((await db.doc(`accountControl/${grace}`).get()).get('deleted')).toBe(true);
     } finally {
       deleteSpy.mockRestore();
       logSpy.mockRestore();

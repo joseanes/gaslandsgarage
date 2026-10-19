@@ -17,6 +17,8 @@ import {
 import { syncNewsletterToken, unsubscribeNewsletter } from './newsletter.ts';
 import { queueContactEmail } from './contactEmail.ts';
 import { handleAdminUsersWrite } from './disableUser.ts';
+import { MAIL_FROM_NAME, deliverQueuedMail } from './sendMail.ts';
+import { mailFromAddress, twilioAccountSid, twilioAuthToken } from './twilioConfig.ts';
 
 if (getApps().length === 0) {
   initializeApp();
@@ -75,6 +77,31 @@ export const queueGameContactEmail = onDocumentCreated(
     const snap = event.data;
     if (!snap) return;
     await queueContactEmail(event.params.contactId, snap.data() as Record<string, unknown>);
+  }
+);
+
+/**
+ * Sends a queued game-request email through Twilio and keeps the mail document.
+ * The document id is the idempotency key. If a Trigger Email extension is also
+ * installed on `mail`, disable it or each request is sent twice.
+ */
+export const deliverGameContactEmail = onDocumentCreated(
+  {
+    document: 'mail/{mailId}',
+    region: FUNCTIONS_REGION,
+    retry: true,
+    secrets: [twilioAccountSid, twilioAuthToken]
+  },
+  async (event) => {
+    const mailId = event.params.mailId;
+    if (!mailId.startsWith('gameContact_')) return;
+    await deliverQueuedMail(mailId, {
+      accountSid: twilioAccountSid.value(),
+      authToken: twilioAuthToken.value(),
+      fromAddress: mailFromAddress.value(),
+      fromName: MAIL_FROM_NAME,
+      leaseId: event.id
+    });
   }
 );
 

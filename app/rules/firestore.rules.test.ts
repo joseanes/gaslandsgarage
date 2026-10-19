@@ -189,6 +189,18 @@ describe('disabled accounts', () => {
 	it('rejects a disable written by a regular user', async () => {
 		await assertFails(setDoc(doc(authed('player'), 'adminUsers', 'other'), disabledBy('player')));
 	});
+
+	it('blocks writes from an account that is marked deleted and still allows everyone else', async () => {
+		await seed(async (database) => {
+			await setDoc(doc(database, 'teams', 't1'), { userId: 'player', teamName: 'Racers' });
+			await setDoc(doc(database, 'accountControl', 'player'), { deleted: true });
+		});
+		const player = authed('player');
+		await assertFails(getDoc(doc(player, 'teams', 't1')));
+		await assertFails(setDoc(doc(player, 'teams', 't2'), { userId: 'player', teamName: 'New' }));
+		await assertFails(setDoc(doc(player, 'accountControl', 'player'), { deleted: false }));
+		await assertSucceeds(setDoc(doc(authed('other'), 'teams', 'o1'), { userId: 'other', teamName: 'Still here' }));
+	});
 });
 
 const ENTRY = 'aaaaaaaaaaaaaaaaaaaa';

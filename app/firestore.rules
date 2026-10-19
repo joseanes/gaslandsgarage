@@ -7,10 +7,20 @@ service cloud.firestore {
 
     // adminUsers/{uid} is written only by an administrator (or the Admin SDK).
     // A missing document means the account is active.
+    // accountControl/{uid}.deleted is written only by account deletion. It stays
+    // after the Auth user is gone so a still-valid ID token cannot write again.
     function isDisabled() {
       return signedIn()
-        && exists(/databases/$(database)/documents/adminUsers/$(request.auth.uid))
-        && get(/databases/$(database)/documents/adminUsers/$(request.auth.uid)).data.disabled == true;
+        && (
+          (
+            exists(/databases/$(database)/documents/adminUsers/$(request.auth.uid))
+            && get(/databases/$(database)/documents/adminUsers/$(request.auth.uid)).data.disabled == true
+          )
+          || (
+            exists(/databases/$(database)/documents/accountControl/$(request.auth.uid))
+            && get(/databases/$(database)/documents/accountControl/$(request.auth.uid)).data.deleted == true
+          )
+        );
     }
 
     // Only the Administrator role can manage users. More roles can be stored later;
@@ -595,6 +605,17 @@ service cloud.firestore {
 
       allow create, update: if accountControlWrite(userId);
       allow delete: if false;
+    }
+
+    // Deletion marker. Clients cannot read or clear it. The Admin SDK writes it
+    // before Auth is deleted and does not remove it in that same pass.
+    match /accountControl/{userId} {
+      allow read, write: if false;
+    }
+
+    // Per-sender daily cap for game-request email. The Admin SDK writes it.
+    match /gameContactEmailRate/{userId} {
+      allow read, write: if false;
     }
 
     // Private player profile. Map pins and contact cards live in other collections
