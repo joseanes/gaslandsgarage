@@ -113,6 +113,13 @@ export const deliverGameContactEmail = onDocumentCreated(
 export { deleteMyAccount, exportMyData };
 
 /**
+ * Painted-car photos. The signed-in player reserves a metadata document here.
+ * The browser then uploads the image. Clients cannot create the document
+ * themselves, so the 3-per-vehicle and 100-per-account limits hold.
+ */
+export { reserveVehiclePhoto } from './vehiclePhotos.ts';
+
+/**
  * Gaming buddies. Links are created only here, with the Admin SDK.
  * Clients cannot write `buddies`, requests, blocks, invites, or the directory.
  */

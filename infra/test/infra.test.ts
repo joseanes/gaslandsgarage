@@ -91,3 +91,13 @@ describe('CDK v2 infra', () => {
 		expect(viewerCode.toLowerCase()).not.toContain('g3e');
 	});
 });
+
+describe('photo storage CSP', () => {
+	test('allows Firebase Storage once a Content-Security-Policy is present', () => {
+		const source = readFileSync(join(__dirname, '../lib/garage-stack.ts'), 'utf8');
+		if (!source.includes('Content-Security-Policy')) return;
+		expect(source).toContain('https://firebasestorage.googleapis.com');
+		expect(source).toContain('blob:');
+		expect(source).toContain('data:');
+	});
+});

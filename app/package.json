@@ -14,7 +14,7 @@
 		"test:watch": "vitest",
 		"test:coverage": "vitest run --coverage",
 		"test:e2e": "playwright test",
-		"test:rules": "pnpm --config.engine-strict=false dlx firebase-tools@13.29.1 emulators:exec --only firestore --project demo-gaslands-rules --config ../firebase.json \"pnpm exec vitest run --config vitest.rules.config.ts\""
+		"test:rules": "pnpm --config.engine-strict=false dlx firebase-tools@13.29.1 emulators:exec --only firestore,storage --project demo-gaslands-rules --config ../firebase.json \"pnpm exec vitest run --config vitest.rules.config.ts && pnpm exec vitest run --config vitest.storage.config.ts\""
 	},
 	"devDependencies": {
 		"@firebase/rules-unit-testing": "4.0.1",

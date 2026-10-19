@@ -520,6 +520,11 @@
       if (result.success) {
         // Keep the name field populated with the team name for convenience
         // since the user may want to create multiple saves with different names
+        if (result.teamId && typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('gaslands-team-saved', {
+            detail: { teamId: result.teamId, teamName: newTeamName.trim() }
+          }));
+        }
         await loadUserTeams(); // Reload teams
         alert(existingTeam ? "Team updated successfully!" : "Team saved successfully!");
       } else {
@@ -566,7 +571,8 @@
     const normalizedTeamData = JSON.parse(JSON.stringify({
       ...team.teamData,
       sponsor: sponsor,  // Ensure we always use 'sponsor' as the property name
-      teamName: team.teamName || "My Gaslands Team" // Include team name in normalized data
+      teamName: team.teamName || "My Gaslands Team",
+      savedTeamId: team.id
     }));
     
     console.log("Prepared normalized team data for import:", normalizedTeamData);
@@ -709,13 +715,16 @@
   
   // Delete team
   async function removeTeam(teamId: string) {
-    if (!confirm('Are you sure you want to delete this team?')) return;
+    if (!confirm('Delete this team? Its photos are deleted too.')) return;
     
     deletingTeamId = teamId;
     const result = await deleteTeam(teamId);
     deletingTeamId = null;
     
     if (result.success) {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('gaslands-team-deleted', { detail: { teamId } }));
+      }
       await loadUserTeams(); // Reload teams
     } else {
       console.error("Failed to delete team");

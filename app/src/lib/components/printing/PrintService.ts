@@ -2,6 +2,7 @@
 import type { Draft } from '$lib/validate/model';
 import { draftToDataURL } from '$lib/draft/qr';
 import { teamHasVehicles } from '$lib/print/canPrintTeam';
+import { revokePrintPhotosWhenClosed, vehiclePhotoSectionHtml, waitForPrintImages } from '$lib/photos/printPhotos';
 
 /** Team draft plus the extra fields the print window already receives. */
 interface PrintDraft extends Omit<Draft, 'sponsor' | 'vehicles'> {
@@ -1614,6 +1615,7 @@ function generateVehicleDashboardHtml(vehicle: any, sponsorName: string, rulesVe
           ${perksTableHtml}
         </tbody>
       </table>
+      ${vehiclePhotoSectionHtml(vehicle)}
     </div>
     `;
   } catch (error) {
@@ -1820,6 +1822,7 @@ function generateVehicleCardHtml(vehicle: any, rulesVersion?: number): string {
       ${weaponsHtml}
       ${upgradesHtml}
       ${perksHtml}
+      ${vehiclePhotoSectionHtml(vehicle)}
     </div>
     `;
   } catch (error) {
@@ -2559,6 +2562,7 @@ function generateRosterHtml(data: PrintHtmlData): string {
         </div>`;
       }
       
+      vehiclesHtml += vehiclePhotoSectionHtml(vehicle);
       // Close vehicle section. Vehicles share a page until one no longer fits.
       vehiclesHtml += `</div>`;
     });
@@ -3118,6 +3122,145 @@ export async function printTeam(printStyle: string, draft: PrintDraft): Promise<
       alert('There was an error preparing for printing. Please try again or try a different print style.');
     }
   }
+}
+
+/**
+ * Add standard print buttons to any print window - unified across all print styles
+ * Order: Print (blue), Change Print Settings (green), Close Window (orange)
+ */
+function addPrintButtons(printWindow: Window): void {
+  // Create Print button (blue, leftmost)
+  const printButton = printWindow.document.createElement('button');
+  printButton.innerHTML = 'Print';
+  printButton.style.position = 'fixed';
+  printButton.style.top = '10px';
+  printButton.style.right = '340px'; // Leftmost
+  printButton.style.padding = '8px 16px';
+  printButton.style.backgroundColor = '#2563eb'; // Blue
+  printButton.style.color = 'white';
+  printButton.style.border = 'none';
+  printButton.style.borderRadius = '4px';
+  printButton.style.cursor = 'pointer';
+  printButton.style.zIndex = '1000';
+  printButton.style.fontWeight = 'bold';
+  printButton.addEventListener('click', function() {
+    printWindow.print();
+  });
+  
+  // Create Change Print Settings button (green, middle)
+  const settingsButton = printWindow.document.createElement('button');
+  settingsButton.innerHTML = 'Change Print Settings';
+  settingsButton.style.position = 'fixed';
+  settingsButton.style.top = '10px';
+  settingsButton.style.right = '150px'; // Middle
+  settingsButton.style.padding = '8px 16px';
+  settingsButton.style.backgroundColor = '#047857'; // Green
+  settingsButton.style.color = 'white';
+  settingsButton.style.border = 'none';
+  settingsButton.style.borderRadius = '4px';
+  settingsButton.style.cursor = 'pointer';
+  settingsButton.style.zIndex = '1000';
+  settingsButton.style.fontWeight = 'bold';
+  settingsButton.addEventListener('click', function() {
+    try {
+      const timestamp = new Date().getTime();
+      localStorage.setItem('openPrintSettings', timestamp.toString());
+      if (window.opener && typeof window.opener.openSettings === 'function') {
+        window.opener.openSettings('print');
+      }
+    } catch (err) {
+      console.error("Error setting localStorage:", err);
+    }
+    printWindow.close();
+  });
+  
+  // Create Close Window button (orange, rightmost)
+  const closeButton = printWindow.document.createElement('button');
+  closeButton.innerHTML = 'Close Window';
+  closeButton.style.position = 'fixed';
+  closeButton.style.top = '10px';
+  closeButton.style.right = '10px'; // Rightmost
+  closeButton.style.padding = '8px 16px';
+  closeButton.style.backgroundColor = '#d97706'; // Orange
+  closeButton.style.color = 'white';
+  closeButton.style.border = 'none';
+  closeButton.style.borderRadius = '4px';
+  closeButton.style.cursor = 'pointer';
+  closeButton.style.zIndex = '1000';
+  closeButton.style.fontWeight = 'bold';
+  closeButton.addEventListener('click', function() {
+    printWindow.close();
+  });
+  
+  // Add buttons to document in order
+  printWindow.document.body.insertBefore(printButton, printWindow.document.body.firstChild);
+  printWindow.document.body.insertBefore(settingsButton, printWindow.document.body.firstChild);
+  printWindow.document.body.insertBefore(closeButton, printWindow.document.body.firstChild);
+}
+
+/**
+ * Print the same sheet as the other styles, with each vehicle's photos.
+ * The window is opened by the click handler before the photos are fetched.
+ * Photos are object URLs from bytes loaded with the signed-in account.
+ * releasePhotos revokes those URLs when the print window closes.
+ * Photo captions and addresses are escaped. The document is a blob URL, and
+ * window.opener is cleared before any other script runs.
+ */
+export async function printTeamWithPhotos(
+  printStyle: string,
+  draft: PrintDraft,
+  printWindow: Window,
+  releasePhotos?: () => void
+): Promise<void> {
+  const release = () => releasePhotos?.();
+  if (!draft || !teamHasVehicles(draft)) {
+    printWindow.close();
+    release();
+    return;
+  }
+  const style = String(printStyle || draft.printStyle || 'classic');
+  const html = generatePrintableHtml({
+    teamName: draft.teamName || 'Gaslands Team',
+    totalCans: draft.totalCans || 0,
+    maxCans: draft.maxCans || 50,
+    sponsorName: draft.sponsorName || 'No Sponsor',
+    sponsor: draft.sponsor ?? null,
+    sponsorPerks: draft.sponsorPerks ?? null,
+    vehicles: draft.vehicles,
+    qrCode: draft.qrCode,
+    showEquipmentDescriptions: draft.showEquipmentDescriptions !== false,
+    showPerkDescriptions: draft.showPerkDescriptions !== false,
+    showSpecialRules: draft.showSpecialRules ?? true,
+    weaponAndUpgradeSpecialRules: draft.weaponAndUpgradeSpecialRules || [],
+    printStyle: style,
+    rulesVersion: draft.rulesVersion
+  });
+  const payload = html.includes('<head>')
+    ? html.replace('<head>', '<head><script>window.opener=null;</script>')
+    : html;
+  const url = URL.createObjectURL(new Blob([payload], { type: 'text/html' }));
+  await new Promise<void>((resolve) => {
+    const timer = window.setTimeout(resolve, 8000);
+    printWindow.addEventListener(
+      'load',
+      () => {
+        window.clearTimeout(timer);
+        revokePrintPhotosWhenClosed(printWindow, release);
+        resolve();
+      },
+      { once: true }
+    );
+    printWindow.location.replace(url);
+  });
+  if (printWindow.closed) {
+    release();
+    return;
+  }
+  await waitForPrintImages(printWindow.document);
+  const printMediaStyle = printWindow.document.createElement('style');
+  printMediaStyle.textContent = '@media print { button { display: none !important; } }';
+  printWindow.document.head?.appendChild(printMediaStyle);
+  addPrintButtons(printWindow);
 }
 
 /**

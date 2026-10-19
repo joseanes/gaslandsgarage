@@ -18,7 +18,7 @@ const firebaseConfig = {
   apiKey: "AIzaSyAW7eGDsJwWtaj3I1lrcuzvFx8vkX5EaKI",
   authDomain: "gaslandsgarage-74ce6.firebaseapp.com",
   projectId: "gaslandsgarage-74ce6",
-  storageBucket: "gaslandsgarage-74ce6.appspot.com",
+  storageBucket: "gaslandsgarage-74ce6.firebasestorage.app",
   messagingSenderId: "636098164916",
   appId: "1:636098164916:web:b3586c38da2ebaf9c13fe1",
   measurementId: "G-EKPMXMY097"
@@ -61,6 +61,8 @@ const initializeFirebase = async () => {
       if (import.meta.env.DEV && localStorage.getItem('gaslands-firebase-emulators') === '1') {
         firebaseAuth.connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
         firebaseFirestore.connectFirestoreEmulator(db, '127.0.0.1', 8080);
+        const firebaseStorage = await import('firebase/storage');
+        firebaseStorage.connectStorageEmulator(firebaseStorage.getStorage(app), '127.0.0.1', 9199);
         const firebaseFunctions = await import('firebase/functions');
         const functions = firebaseFunctions.getFunctions(app, 'us-central1');
         firebaseFunctions.connectFunctionsEmulator(functions, '127.0.0.1', 5001);

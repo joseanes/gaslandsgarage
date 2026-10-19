@@ -2,6 +2,7 @@
     import { nanoid } from 'nanoid';
     import { createEventDispatcher } from 'svelte';
     import BuildHeader from './BuildHeader.svelte';
+    import VehiclePhotos from './VehiclePhotos.svelte';
     import { loadWeaponSpecialRules } from '$lib/rules/loadRules';
     import { perkCost } from '$lib/validate/calc';
     import Tooltip from './Tooltip.svelte';
@@ -40,6 +41,7 @@
     
     // Props
     export let vehicle: TeamVehicle;
+    export let teamId: string | null = null;
 
     // A loaded vehicle often has no facings map. Re-check when the prop is replaced,
     // or the facing <select> reads a missing object and the card fails to render.
@@ -693,6 +695,8 @@
     
     <!-- Vehicle details - Hidden when collapsed -->
     <div class="px-1 py-2" class:hidden={collapsed}>
+        <VehiclePhotos {teamId} vehicleId={vehicle.id} {playMode} />
+
         {#if vehicleType && vehicleType.armour !== undefined && vehicleType.armour !== null}
             <div class="flex flex-wrap gap-2 mb-3 text-xs">
                 <span class="bg-stone-200 dark:bg-gray-600 px-2 py-1 rounded">Gear {vehicleType.maxGear}</span>

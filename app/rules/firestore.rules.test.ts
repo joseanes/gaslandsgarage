@@ -830,6 +830,47 @@ describe('gaming buddies', () => {
 	});
 });
 
+function photoDoc(uid = 'player') {
+	return {
+		photoId: 'photo1234',
+		userId: uid,
+		teamId: 'team1234',
+		vehicleId: 'veh123',
+		path: `users/${uid}/vehicle-photos/team1234/veh123/photo1234.webp`,
+		width: 800,
+		height: 600,
+		createdAt: NOW,
+		caption: 'Red car',
+		contentType: 'image/webp'
+	};
+}
+
+describe('vehicle photos', () => {
+	it('lets the owner read, retitle, and delete a photo, and blocks everyone else from creating or reading one', async () => {
+		await seed(async (database) => {
+			await setDoc(doc(database, 'users', 'player', 'photos', 'photo1234'), photoDoc());
+			await setDoc(doc(database, 'roles', 'admin'), roleDoc());
+			await setDoc(doc(database, 'buddies', 'buddy~player'), {
+				status: 'accepted',
+				members: ['buddy', 'player']
+			});
+		});
+		const player = authed('player');
+		const photo = doc(player, 'users', 'player', 'photos', 'photo1234');
+		await assertSucceeds(getDoc(photo));
+		await assertSucceeds(getDocs(collection(player, 'users', 'player', 'photos')));
+		await assertSucceeds(updateDoc(photo, { caption: 'Blue car' }));
+		await assertFails(updateDoc(photo, { path: 'users/player/vehicle-photos/team1234/veh123/other.webp' }));
+		await assertFails(updateDoc(photo, { caption: 'x'.repeat(141) }));
+		await assertFails(setDoc(doc(player, 'users', 'player', 'photos', 'photo9999'), photoDoc()));
+
+		await assertFails(getDoc(doc(authed('buddy'), 'users', 'player', 'photos', 'photo1234')));
+		await assertFails(getDoc(doc(authed('admin'), 'users', 'player', 'photos', 'photo1234')));
+		await assertFails(getDoc(doc(guest(), 'users', 'player', 'photos', 'photo1234')));
+		await assertSucceeds(deleteDoc(photo));
+	});
+});
+
 describe('rules file', () => {
 	it('does not name a person as the administrator', () => {
 		const rules = readFileSync(new URL('../firestore.rules', import.meta.url), 'utf8');

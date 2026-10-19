@@ -612,7 +612,7 @@ describe('account privacy', () => {
       expect(lines.join('\n')).not.toContain('Grace');
 
       const again = await eraseAccount(ada);
-			expect(again).toEqual(['marker', 'revoke', 'boards', 'documents', 'anonymize', 'mail', 'buddies', 'rate', 'auth', 'rescan']);
+      expect(again).toEqual(['marker', 'revoke', 'boards', 'documents', 'anonymize', 'mail', 'buddies', 'rate', 'photos', 'auth', 'rescan']);
       expect((await db.doc(`accountControl/${ada}`).get()).get('deleted')).toBe(true);
       expect((await auth.getUser(grace)).email).toBe('grace@example.com');
       expect((await db.doc(`gameContacts/${grace}_${ada}`).get()).get('message')).toBe('Rematch?');

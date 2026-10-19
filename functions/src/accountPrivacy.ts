@@ -12,6 +12,7 @@ import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { emailAddressHash, normalizeInviteEmail, twilioEmailConfigured } from '../../app/src/lib/buddies/emailInvite.ts';
 import { MAIL_COLLECTION, mailDocId } from './contactEmail.ts';
 import { twilioAccountSid, twilioAuthToken } from './twilioConfig.ts';
+import { deleteUserPhotos, exportVehiclePhotos } from './vehiclePhotos.ts';
 
 /** Same region as the other functions. Kept local to avoid an import cycle with index.ts. */
 export const PRIVACY_REGION = 'us-central1';
@@ -472,6 +473,8 @@ export async function eraseAccount(uid: string): Promise<string[]> {
   const db = getFirestore();
   await db.doc(`${PRIVACY_RATE}/${uid}`).delete();
   await db.doc(`${GAME_CONTACT_EMAIL_RATE}/${uid}`).delete();
+  steps.push('photos');
+  await deleteUserPhotos(uid);
   steps.push('auth');
   try {
     await getAuth().deleteUser(uid);
@@ -548,6 +551,7 @@ export async function exportAccount(uid: string): Promise<Record<string, unknown
   ]);
 
 	const buddyData = await buddyExport(uid, email);
+	const vehiclePhotos = await exportVehiclePhotos(uid);
 	const privateDoc = entryId ? await db.doc(`${PLAYER_MAP_PRIVATE}/${entryId}`).get() : null;
   const mapDoc = entryId ? await db.doc(`${PLAYER_MAP}/${entryId}`).get() : null;
   const ownsPin = entryId !== null;
@@ -589,7 +593,8 @@ export async function exportAccount(uid: string): Promise<Record<string, unknown
       [ADMIN_USERS]: docJson(adminDoc),
 			[MAIL_COLLECTION]: [...mailSnaps.values()].map((item) => mailForSubject(item.id, item.data() ?? {}, email)),
 			[PRIVACY_RATE]: docJson(rateDoc),
-			...buddyData
+			...buddyData,
+			vehiclePhotos
 		}
 	};
 }

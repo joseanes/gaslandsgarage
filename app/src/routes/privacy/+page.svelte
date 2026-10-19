@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { PHOTO_PRIVACY_SHORT } from '$lib/photos/model';
 	const linkClass = 'text-amber-600 dark:text-amber-400 hover:underline';
 </script>
 
@@ -6,14 +7,14 @@
 	<title>Privacy Policy - Gaslands Garage</title>
 	<meta
 		name="description"
-		content="Privacy Policy for Gaslands Garage: Google sign-in, saved teams, the players map, game requests, and what is public."
+		content="Privacy Policy for Gaslands Garage: Google sign-in, saved teams, car photos, the players map, game requests, and what is public."
 	/>
 	<link rel="canonical" href="https://gaslandsgarage.com/privacy" />
 </svelte:head>
 
 <article class="max-w-3xl mx-auto py-8 px-2 text-stone-800 dark:text-gray-100">
 	<h1 class="text-3xl font-bold mb-2">Privacy Policy</h1>
-	<p class="text-stone-600 dark:text-gray-300 mb-6">Last updated: October 18, 2026</p>
+	<p class="text-stone-600 dark:text-gray-300 mb-6">Last updated: October 19, 2026</p>
 
 	<div class="space-y-4">
 		<p>
@@ -24,8 +25,8 @@
 
 		<h2 class="text-xl font-bold mt-8 mb-3">Signing in</h2>
 		<p>
-			You can build a team without an account. Saving a team, saving a player profile, sending a game
-			request, adding a gaming buddy, and using Contact Us require a sign-in.
+			You can build a team without an account. Saving a team, saving a player profile, adding a photo of
+			a car, sending a game request, adding a gaming buddy, and using Contact Us require a sign-in.
 		</p>
 		<p>
 			The sign-in button uses Google, through Firebase Authentication. We receive that Google account’s
@@ -72,7 +73,24 @@
 		</p>
 		<p>
 			A share link or QR code puts the build in the link itself. Anyone you give that link to can open
-			that build. The link is not an account, and it does not include your email.
+			that build. The link is not an account, and it does not include your email or your photos.
+		</p>
+
+		<h2 class="text-xl font-bold mt-8 mb-3">Photos of your cars</h2>
+		<p>{PHOTO_PRIVACY_SHORT}</p>
+		<p>We never use them for advertising, and we never use them to train models.</p>
+		<p>
+			A photo is optional. It is a picture of a vehicle on a team you saved. The file is stored in
+			Firebase Storage, in this site's project, under your user id. A small note (the time, the size,
+			and a caption if you add one) is stored in the database, also under your user id. The picture is
+			resized in your browser before it is uploaded, which removes camera location data from the file
+			we store.
+		</p>
+		<p>
+			Only you can see the photos, while you are signed in. Buddies cannot see them. A share link does
+			not include them. An administrator cannot open them from the users page. Print with photos puts
+			them on a sheet in your own browser. Deleting a photo removes that file. Deleting the vehicle or
+			the team removes that vehicle's photos. Deleting your account removes every photo.
 		</p>
 
 		<h2 class="text-xl font-bold mt-8 mb-3">Gaming buddies</h2>
@@ -282,7 +300,8 @@
 		<h2 class="text-xl font-bold mt-8 mb-3">How long we keep information</h2>
 		<p>
 			Saved teams stay until you delete them or you ask us to delete them. You can delete a saved team
-			from My Teams. Settings and the private player profile stay until you change them or you ask us to
+			from My Teams. Photos stay until you delete the photo, the vehicle, the team, or your account.
+			Settings and the private player profile stay until you change them or you ask us to
 			delete them. Turning the map off removes the public pin. Turning open to games off removes that
 			card.
 		</p>
@@ -308,7 +327,7 @@
 		<p>If the GDPR or UK GDPR applies, we rely on these bases:</p>
 		<ul class="list-disc pl-6 space-y-2">
 			<li>
-				Contract: your account, saved teams, settings, in-app game requests, gaming buddy links, and the
+				Contract: your account, saved teams, photos of your cars, settings, in-app game requests, gaming buddy links, and the
 				address you type for a buddy invite, so we can provide the features you use.
 			</li>
 			<li>
@@ -327,7 +346,7 @@
 			<li>Legal obligation: when the law requires us to keep or disclose information.</li>
 		</ul>
 		<p>
-			The operator is in Florida, USA. Google (sign-in, the database, Analytics, and Places city
+			The operator is in Florida, USA. Google (sign-in, the database, photo storage, Analytics, and Places city
 			suggestions on the profile page), Twilio (email), CARTO (map tiles), and OpenStreetMap Nominatim
 			(city lookup) process information for the site, including in the United States.
 		</p>
@@ -375,7 +394,7 @@
 		</p>
 		<p>
 			The information we hold can include identifiers (such as email, display name, and account id),
-			the teams and profile text you save, an approximate location if you add one, messages you send,
+			the teams and profile text you save, photos of your cars if you add them, an approximate location if you add one, messages you send,
 			and internet activity collected by Google Analytics.
 		</p>
 
@@ -394,7 +413,7 @@
 			<a class={linkClass} href="mailto:jose.anes@gmail.com">jose.anes@gmail.com</a>, or use
 			Contact Us while signed in, and say what you want removed. We answer email requests within 1
 			month. We can delete the Gaslands Garage records we hold for that account, including the account
-			record, teams, profile, settings, and the buddy invites you sent. A game request is anonymized:
+			record, teams, photos of your cars, profile, settings, game requests, gaming buddy links, and the buddy invites you sent. A game request is anonymized:
 			your name and note are cleared, and the request is removed only when the other player's account
 			is gone too. A request not to receive buddy-invite email stays in place. Disabling an account is not
 			the same as deleting it. We cannot delete the Google account itself.
@@ -404,8 +423,8 @@
 		<p>
 			The site is served over HTTPS. Database access starts from a deny-all rule. Teams, settings, and
 			the private profile are limited to the signed-in owner, with the administrator access described
-			above. A buddy can read a team only when the link is accepted both ways and the team is not
-			hidden. Buddies cannot change your teams. The public map and the public usage totals are readable
+			above. Photos are limited to the signed-in owner. A buddy can read a team only when the link is accepted both ways and the team is not
+			hidden. Buddies cannot change your teams, and they cannot see your photos. The public map and the public usage totals are readable
 			without an account. The mail queue is not readable from the website. No storage method is perfect.
 		</p>
 
