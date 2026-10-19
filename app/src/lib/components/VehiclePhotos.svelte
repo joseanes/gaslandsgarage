@@ -1,6 +1,7 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { getContext, onMount, tick } from 'svelte';
 	import { user } from '$lib/firebase';
+	import { PHOTO_SAVE_GATE, type PhotoAttachRequest, type PhotoSaveGate } from '$lib/photos/photoSaveGate';
 	import { PHOTO_PRIVACY_SHORT, TEAM_ID_PATTERN, VEHICLE_ID_PATTERN } from '$lib/photos/model';
 	import {
 		GALLERY_SHARE_COPY,
@@ -30,6 +31,9 @@
 	let busy = false;
 	let error = '';
 	let status = '';
+	let photoInput: HTMLInputElement | null = null;
+
+	const photoSaveGate = getContext<PhotoSaveGate | undefined>(PHOTO_SAVE_GATE);
 
 	function photosCanBeStored(id: string | null, vehicle: string) {
 		return typeof id === 'string' && TEAM_ID_PATTERN.test(id) && typeof vehicle === 'string' && VEHICLE_ID_PATTERN.test(vehicle);
@@ -59,8 +63,49 @@
 		const stop = user.subscribe(() => {
 			void refresh();
 		});
-		return stop;
+		const stopResume = photoSaveGate?.listen(vehicleId, resumePhoto) ?? (() => {});
+		return () => {
+			stop();
+			stopResume();
+		};
 	});
+
+	function deferPhoto(intent: PhotoAttachRequest['intent'], extra: Partial<PhotoAttachRequest> = {}): boolean {
+		if (!photoSaveGate?.reason(vehicleId)) return false;
+		photoSaveGate.request({ vehicleId, intent, ...extra });
+		return true;
+	}
+
+	function askToSaveFirst(intent: PhotoAttachRequest['intent']) {
+		photoSaveGate?.request({ vehicleId, intent });
+	}
+
+	async function resumePhoto(request: PhotoAttachRequest) {
+		if (request.vehicleId !== vehicleId) return;
+		await tick();
+		if (request.intent === 'library') {
+			if (request.photoId) {
+				const match = library.find((item) => item.photoId === request.photoId);
+				if (match) {
+					await attachSaved(match);
+					return;
+				}
+			}
+			showLibrary = true;
+			await refresh();
+			return;
+		}
+		if (request.file) {
+			await uploadChosen(request.file, {
+				caption: request.caption,
+				gallery: request.uploadGallery,
+				stats: request.uploadStats
+			});
+			return;
+		}
+		await tick();
+		photoInput?.click();
+	}
 
 	$: if (photosCanBeStored(teamId, vehicleId)) void refresh();
 
@@ -73,15 +118,22 @@
 		if (!(input instanceof HTMLInputElement)) return;
 		const file = input.files?.[0];
 		input.value = '';
-		if (!file || !teamId || !photosCanBeStored(teamId, vehicleId) || busy) return;
+		if (!file || busy) return;
+		if (deferPhoto('file', { file, caption, uploadGallery, uploadStats })) return;
+		await uploadChosen(file);
+	}
+
+	async function uploadChosen(file: File, sharing?: { caption?: string; gallery?: boolean; stats?: boolean }) {
+		if (!teamId || !photosCanBeStored(teamId, vehicleId) || busy) return;
+		const nextCaption = sharing?.caption ?? caption;
+		const showInGallery = sharing?.gallery ?? uploadGallery;
+		const shareVehicleStats = sharing?.stats ?? uploadStats;
 		busy = true;
 		error = '';
 		status = 'Preparing photo...';
 		try {
 			status = 'Uploading photo...';
-			const uploaded = await uploadVehiclePhoto({ teamId, vehicleId, file, caption });
-			const showInGallery = uploadGallery;
-			const shareVehicleStats = uploadStats;
+			const uploaded = await uploadVehiclePhoto({ teamId, vehicleId, file, caption: nextCaption });
 			caption = '';
 			uploadGallery = false;
 			uploadStats = false;
@@ -134,6 +186,12 @@
 	}
 
 	async function attach(photo: VehiclePhoto) {
+		if (busy) return;
+		if (deferPhoto('library', { photoId: photo.photoId })) return;
+		await attachSaved(photo);
+	}
+
+	async function attachSaved(photo: VehiclePhoto) {
 		if (busy || !teamId) return;
 		busy = true;
 		error = '';
@@ -366,6 +424,26 @@
 		</button>
 	{:else if !photosCanBeStored(teamId, vehicleId)}
 		<p class="mt-3 text-sm text-stone-700 dark:text-gray-200" data-testid="photos-need-save">Save the team to add photos</p>
+		{#if !playMode}
+			<div class="mt-3 flex flex-col gap-2 sm:flex-row">
+				<button
+					type="button"
+					class="inline-flex min-h-11 items-center justify-center rounded-md px-3 text-sm amber-button"
+					data-testid="add-photo-needs-save"
+					on:click={() => askToSaveFirst('file')}
+				>
+					Add a photo
+				</button>
+				<button
+					type="button"
+					class="min-h-11 text-left text-sm text-amber-800 underline dark:text-amber-200"
+					data-testid="choose-library-needs-save"
+					on:click={() => askToSaveFirst('library')}
+				>
+					Choose from My Photos
+				</button>
+			</div>
+		{/if}
 	{:else if !playMode && photos.length < 3}
 		<fieldset class="mt-3 space-y-1" data-testid="upload-sharing" disabled={busy}>
 			<legend class="text-xs font-medium text-stone-700 dark:text-gray-200">When this photo is added</legend>
@@ -381,9 +459,10 @@
 			<p class="text-xs leading-snug text-stone-600 dark:text-gray-300">{STATS_SHARE_COPY}</p>
 		</fieldset>
 		<div class="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
-			<label class="inline-flex cursor-pointer items-center justify-center rounded-md px-3 py-2 text-sm amber-button {busy ? 'pointer-events-none opacity-60' : ''}">
+			<label class="inline-flex min-h-11 cursor-pointer items-center justify-center rounded-md px-3 py-2 text-sm amber-button {busy ? 'pointer-events-none opacity-60' : ''}">
 				Add a photo
 				<input
+					bind:this={photoInput}
 					type="file"
 					accept="image/*"
 					capture="environment"
@@ -405,10 +484,13 @@
 		<p class="mt-1 text-xs text-stone-500 dark:text-gray-400">Up to 3 photos on this vehicle. They are resized before upload. Removing one leaves it in My Photos.</p>
 		<button
 			type="button"
-			class="mt-2 text-sm text-amber-800 underline dark:text-amber-200"
+			class="mt-2 min-h-11 text-left text-sm text-amber-800 underline dark:text-amber-200"
 			data-testid="choose-library-photo"
 			disabled={busy}
-			on:click={() => (showLibrary = !showLibrary)}
+			on:click={() => {
+				if (deferPhoto('library')) return;
+				showLibrary = !showLibrary;
+			}}
 		>
 			Choose from My Photos
 		</button>
