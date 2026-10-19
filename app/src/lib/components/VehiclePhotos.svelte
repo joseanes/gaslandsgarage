@@ -1,7 +1,8 @@
 <script lang="ts">
-	import { onDestroy, onMount } from 'svelte';
+	import { getContext, onDestroy, onMount, tick } from 'svelte';
 	import SharingControl from '$lib/components/SharingControl.svelte';
 	import { user } from '$lib/firebase';
+	import { PHOTO_SAVE_GATE, type PhotoAttachRequest, type PhotoSaveGate } from '$lib/photos/photoSaveGate';
 	import { PHOTO_PRIVACY_SHORT, TEAM_ID_PATTERN, VEHICLE_ID_PATTERN } from '$lib/photos/model';
 	import { shareEverywhere, type ShareFlags } from '$lib/photos/share';
 	import { paintingGuideLink } from '$lib/photos/link';
@@ -24,12 +25,13 @@
 	export let viewOnly = false;
 	export let viewPhotos: { photoId: string; url: string; caption: string; vehicleType: string }[] = [];
 	/**
-	 * Seam for a Quick Save guard on the photo attach path. When the team is not
-	 * saved and this is set, Upload and Choose from My Photos call it and continue
-	 * with the team id it returns. When it is null, an unsaved team keeps the
-	 * "Save the team to add photos" gate and does not render a file input.
+	 * Optional saver used outside the builder. The builder photo-save gate is the
+	 * guard for every add and attach path. When both are absent, an unsaved team
+	 * keeps the "Save the team to add photos" prompt and does not render a file input.
 	 */
 	export let ensureSavedTeam: (() => Promise<string | null>) | null = null;
+
+	const photoSaveGate = getContext<PhotoSaveGate | undefined>(PHOTO_SAVE_GATE);
 
 	let photos: VehiclePhoto[] = [];
 	let caption = '';
@@ -87,7 +89,11 @@
 		const stop = user.subscribe(() => {
 			void refresh();
 		});
-		return stop;
+		const stopResume = photoSaveGate?.listen(vehicleId, resumePhoto) ?? (() => {});
+		return () => {
+			stop();
+			stopResume();
+		};
 	});
 
 	onDestroy(() => {
@@ -111,8 +117,47 @@
 		return saved;
 	}
 
+	function deferPhoto(intent: PhotoAttachRequest['intent'], extra: Partial<PhotoAttachRequest> = {}): boolean {
+		if (!photoSaveGate?.reason(vehicleId)) return false;
+		photoSaveGate.request({ vehicleId, intent, ...extra });
+		return true;
+	}
+
+	function askToSaveFirst(intent: PhotoAttachRequest['intent']) {
+		photoSaveGate?.request({ vehicleId, intent });
+	}
+
+	async function resumePhoto(request: PhotoAttachRequest) {
+		if (request.vehicleId !== vehicleId) return;
+		await tick();
+		if (request.intent === 'library') {
+			if (request.photoId) {
+				await refresh();
+				const match = library.find((item) => item.photoId === request.photoId);
+				if (match) {
+					await attachSaved(match);
+					return;
+				}
+			}
+			showLibrary = true;
+			await refresh();
+			return;
+		}
+		if (request.file) {
+			await uploadChosen(request.file, {
+				caption: request.caption ?? '',
+				flags: request.uploadFlags ?? shareEverywhere(false),
+				paintingUrl: request.paintingUrl ?? ''
+			});
+			return;
+		}
+		await tick();
+		fileInput?.click();
+	}
+
 	async function startUpload() {
 		if (busy) return;
+		if (deferPhoto('file')) return;
 		const id = await readyTeam();
 		if (!id) return;
 		fileInput?.click();
@@ -123,7 +168,9 @@
 		if (!(input instanceof HTMLInputElement)) return;
 		const file = input.files?.[0];
 		input.value = '';
-		if (!file || busy || !storedTeamId()) return;
+		if (!file || busy) return;
+		if (deferPhoto('file', { file, caption: '', uploadGallery: false, uploadStats: false })) return;
+		if (!storedTeamId()) return;
 		if (pendingPreview) URL.revokeObjectURL(pendingPreview);
 		pendingFile = file;
 		pendingPreview = URL.createObjectURL(file);
@@ -147,10 +194,37 @@
 	}
 
 	async function confirmUpload() {
-		const id = storedTeamId();
 		const file = pendingFile;
-		if (!file || !id || busy) return;
+		if (!file || busy) return;
 		const chosenLink = paintingUrl.trim();
+		if (chosenLink && !paintingGuideLink(chosenLink)) {
+			error = 'Use a full http or https link, up to 300 characters.';
+			return;
+		}
+		if (
+			deferPhoto('file', {
+				file,
+				caption,
+				uploadGallery: uploadFlags.showInGallery,
+				uploadStats: uploadFlags.shareVehicleStats,
+				uploadFlags,
+				paintingUrl
+			})
+		) {
+			return;
+		}
+		await uploadChosen(file);
+	}
+
+	async function uploadChosen(
+		file: File,
+		sharing?: { caption?: string; flags?: ShareFlags; paintingUrl?: string }
+	) {
+		const id = storedTeamId() ?? (await tick().then(() => storedTeamId()));
+		if (!file || !id || busy) return;
+		const nextCaption = sharing?.caption ?? caption;
+		const chosen = sharing?.flags ?? uploadFlags;
+		const chosenLink = (sharing?.paintingUrl ?? paintingUrl).trim();
 		if (chosenLink && !paintingGuideLink(chosenLink)) {
 			error = 'Use a full http or https link, up to 300 characters.';
 			return;
@@ -159,9 +233,8 @@
 		error = '';
 		status = 'Uploading photo...';
 		try {
-			const uploaded = await uploadVehiclePhoto({ teamId: id, vehicleId, file, caption });
+			const uploaded = await uploadVehiclePhoto({ teamId: id, vehicleId, file, caption: nextCaption });
 			if (chosenLink) await setPhotoPaintingUrl(uploaded.photoId, chosenLink);
-			const chosen = uploadFlags;
 			if (chosen.showToBuddies || chosen.showOnShareLink || chosen.showInGallery || chosen.shareVehicleStats) {
 				status = 'Saving sharing...';
 				await setPhotoSharing(uploaded.photoId, chosen, { teamId: id, vehicleId });
@@ -224,13 +297,20 @@
 
 	async function openLibrary() {
 		if (busy) return;
+		if (deferPhoto('library')) return;
 		const id = await readyTeam();
 		if (!id) return;
 		showLibrary = !showLibrary;
 	}
 
 	async function attach(photo: VehiclePhoto) {
-		const id = storedTeamId();
+		if (busy) return;
+		if (deferPhoto('library', { photoId: photo.photoId })) return;
+		await attachSaved(photo);
+	}
+
+	async function attachSaved(photo: VehiclePhoto) {
+		const id = storedTeamId() ?? (await tick().then(() => storedTeamId()));
 		if (busy || !id) return;
 		busy = true;
 		error = '';
@@ -466,6 +546,26 @@
 		</button>
 	{:else if !storedTeamId() && !ensureSavedTeam}
 		<p class="mt-2 text-xs text-stone-700 dark:text-gray-200" data-testid="photos-need-save">Save the team to add photos</p>
+		{#if !playMode}
+			<div class="mt-2 flex flex-col items-start gap-2">
+				<button
+					type="button"
+					class="inline-flex min-h-11 items-center rounded-md px-3 text-xs amber-button"
+					data-testid="add-photo-needs-save"
+					on:click={() => askToSaveFirst('file')}
+				>
+					Add a photo
+				</button>
+				<button
+					type="button"
+					class="min-h-11 text-left text-xs text-amber-800 underline dark:text-amber-200"
+					data-testid="choose-library-needs-save"
+					on:click={() => askToSaveFirst('library')}
+				>
+					Choose from My Photos
+				</button>
+			</div>
+		{/if}
 	{:else if canAdd}
 		<section class="mt-3 border-t border-stone-200 pt-2 dark:border-gray-700" data-testid="add-car-photo">
 			<h3 class="text-[11px] font-semibold uppercase tracking-wide text-stone-700 dark:text-gray-200">Add a photo</h3>

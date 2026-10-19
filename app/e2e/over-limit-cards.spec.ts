@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
+import { addGear } from './addGear';
 import { v3Perks } from '../src/data/rules/v3/perks';
 import { v3Upgrades } from '../src/data/rules/v3/upgrades';
 import { v3Vehicles } from '../src/data/rules/v3/vehicles';
@@ -113,19 +114,18 @@ test('a second weapon on a new car still draws', async ({ page }) => {
 	await page.goto('/builder');
 	await page.getByRole('button', { name: '+ Add Vehicle' }).click();
 	await page.getByRole('button', { name: 'Expand vehicle' }).click();
-	const addWeapon = page.getByLabel('Add a weapon');
 	const facings = page.getByLabel('Weapon facing direction');
 
-	await addWeapon.selectOption('mg');
+	await addGear(page, 'Add a weapon', 'mg', /^Machine Gun\b/);
 	await expect(facings).toHaveCount(1);
 	await expect(page.getByText('could not be drawn')).toHaveCount(0);
 
-	await addWeapon.selectOption('hmg');
+	await addGear(page, 'Add a weapon', 'hmg', /^Heavy Machine Gun\b/);
 	await expect(facings).toHaveCount(2);
 	await expect(page.getByText('could not be drawn')).toHaveCount(0);
 	await expect(page.getByRole('textbox', { name: 'Vehicle Name' })).toBeVisible();
 
-	await addWeapon.selectOption('handgun');
+	await addGear(page, 'Add a weapon', 'hand', /^Handgun\b/);
 	await expect(facings).toHaveCount(3);
 	await expect(page.getByText('could not be drawn')).toHaveCount(0);
 	await expect(page.getByTestId('slot-warning')).toHaveCount(0);
@@ -156,7 +156,7 @@ test('a turret facing from the weapon list still draws', async ({ page }) => {
 	});
 
 	await page.getByRole('button', { name: 'Expand vehicle' }).click();
-	await page.locator('#add-weapon-heavy').selectOption('tank_cannon');
+	await addGear(page, 'Add a weapon', 'tank', /^Tank Cannon\b/);
 	const facing = page.getByLabel('Weapon facing direction');
 	await expect(facing).toHaveValue('turret');
 	await expect(page.getByText('could not be drawn')).toHaveCount(0);

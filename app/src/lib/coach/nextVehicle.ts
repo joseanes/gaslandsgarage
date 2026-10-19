@@ -1,4 +1,16 @@
 import { countedVehicleTotal, maxCountedVehicles, type RulesVersion } from '$lib/rules/version';
+import {
+	gainsForAddition,
+	metricValue,
+	scoresFromSnapshot,
+	snapshotFromChassis,
+	statusesFor,
+	withChassis,
+	type ChassisStats,
+	type ScoreCard,
+	type ScoreSnapshot
+} from './score';
+import { METRICS, STATUS_LABEL, formatAbout, type MetricId } from './thresholds';
 
 /** A vehicle the builder can actually add. Stats only — no rules prose. */
 export interface NextVehicleCatalogEntry {
@@ -14,6 +26,8 @@ export interface NextVehicleCatalogEntry {
 	sponsors?: string[];
 	rarity?: 'common' | 'rare';
 	mob?: boolean;
+	armour?: number;
+	buildSlots?: number;
 }
 
 export interface NextVehicleTeamMember {
@@ -28,15 +42,34 @@ export interface NextVehicleRequest {
 	totalCans: number;
 	maxCans: number;
 	includeAdvanced?: boolean;
+	/**
+	 * Scores of the team as it stands, including weapons and upgrades.
+	 * When omitted, the coach treats the team as bare chassis and uses totalCans as given.
+	 */
+	snapshot?: ScoreSnapshot;
 }
 
 export interface NextVehicleSuggestion {
 	id: string;
 	name: string;
 	cost: number;
+	/** Why this chassis, tied to the score it moves and the cans left after. */
 	reason: string;
+	/** Score the row is ranked on. */
+	metric: MetricId;
+	/** Scaled score change per can. Higher is a better buy. May be negative. */
+	perCan: number;
+	cansLeftAfter: number;
+	/** Score card if this chassis were added with no extra weapons. */
+	after: ScoreCard;
+	gains: Record<'combat' | 'survivability' | 'mobility' | 'slots', number>;
 }
 
+/**
+ * Short labels for the kind of gap a chassis used to fill.
+ * The coach now writes a full sentence (score, before, after, cans left)
+ * instead of showing only these phrases.
+ */
 export const NEXT_VEHICLE_REASONS = {
 	cans: 'fits the remaining cans',
 	fast: 'adds a fast flanker',
@@ -49,34 +82,6 @@ export const EMPTY_NEXT_VEHICLE_MESSAGE =
 	'No other vehicle fits this sponsor, the team limit, and the cans you have left.';
 
 const MAX_SUGGESTIONS = 3;
-
-const WEIGHT_CLASS_RANK: Record<string, number> = {
-	Lightweight: 1,
-	Middleweight: 2,
-	Heavyweight: 3,
-	Massive: 4
-};
-
-function weightRank(vehicle: NextVehicleCatalogEntry): number {
-	if (typeof vehicle.weight === 'number') return vehicle.weight;
-	if (typeof vehicle.weight === 'string') return WEIGHT_CLASS_RANK[vehicle.weight] ?? 2;
-	return 2;
-}
-
-function isLight(vehicle: NextVehicleCatalogEntry, version: RulesVersion): boolean {
-	if (version === 3) return typeof vehicle.weight === 'number' && vehicle.weight <= 2;
-	return vehicle.weight === 'Lightweight';
-}
-
-function isHeavy(vehicle: NextVehicleCatalogEntry, version: RulesVersion): boolean {
-	if (version === 3) return typeof vehicle.weight === 'number' && vehicle.weight >= 4;
-	return vehicle.weight === 'Heavyweight' || vehicle.weight === 'Massive';
-}
-
-function isFast(vehicle: NextVehicleCatalogEntry, version: RulesVersion): boolean {
-	if ((vehicle.handling ?? 0) >= 4) return true;
-	return vehicle.maxGear >= 6 && isLight(vehicle, version);
-}
 
 function sponsorAllowsChassis(
 	version: RulesVersion,
@@ -139,23 +144,100 @@ function rareTypeBlocked(candidate: NextVehicleCatalogEntry, teamTypes: readonly
 	return owned >= 1;
 }
 
-function compareName(a: NextVehicleCatalogEntry, b: NextVehicleCatalogEntry): number {
-	return a.name.localeCompare(b.name);
+function withArticle(name: string): string {
+	const lower = name.toLowerCase();
+	const article = /^[aeiou]/i.test(lower) ? 'an' : 'a';
+	return `${article} ${lower}`;
 }
 
-function preferNewType(teamTypes: readonly string[]) {
-	return (a: NextVehicleCatalogEntry, b: NextVehicleCatalogEntry) => {
-		const aOwned = teamTypes.includes(a.id) ? 1 : 0;
-		const bOwned = teamTypes.includes(b.id) ? 1 : 0;
-		return aOwned - bOwned;
+const ARROW_LABEL: Record<'combat' | 'survivability' | 'mobility' | 'slots', string> = {
+	combat: 'Combat',
+	survivability: 'Survivability',
+	mobility: 'Mobility',
+	slots: 'Slots'
+};
+
+function vehicleClause(version: RulesVersion, vehicle: ChassisStats, metric: MetricId, delta: number): string {
+	const named = withArticle(vehicle.name);
+	if (metric === 'mobility' && delta > 0 && vehicle.maxGear >= 6) {
+		return `${named} adds a gear-${vehicle.maxGear} flanker`;
+	}
+	if (metric === 'survivability') {
+		const armour = version === 3 ? vehicle.armour ?? 0 : 0;
+		const hull = `${named} adds ${vehicle.maxHull} hull`;
+		return armour > 0 ? `${hull} and ${armour} armour` : hull;
+	}
+	if (metric === 'combat') return `${named} adds no attack dice`;
+	if (metric === 'slots') return `${named} adds ${vehicle.buildSlots ?? 0} empty build slots`;
+	return `${named} adds gear ${vehicle.maxGear}`;
+}
+
+function gapClause(metric: MetricId, statusLabel: string, delta: number, avgGear: number): string {
+	if (metric === 'mobility') {
+		const gear = formatAbout(avgGear, METRICS.gear.decimals);
+		if (delta > 0 && statusLabel === 'Low') return `your team is slow (avg gear ${gear})`;
+		if (delta > 0 && statusLabel === 'Average') return `your team is only average (avg gear ${gear})`;
+		if (delta > 0) return `your team is already quick (avg gear ${gear})`;
+		return `your team stays at avg gear ${gear}`;
+	}
+	const current = statusLabel.toLowerCase();
+	if (delta > 0) return `this score is ${current}`;
+	if (delta < 0) return 'this lowers it';
+	return 'this leaves it unchanged';
+}
+
+function describeAddition(
+	version: RulesVersion,
+	vehicle: ChassisStats,
+	before: ScoreCard,
+	after: ScoreCard,
+	metric: MetricId,
+	cansLeftAfter: number,
+	synergy: boolean,
+	emptyTeam: boolean
+): string {
+	const scoredMetric = metric as 'combat' | 'survivability' | 'mobility' | 'slots';
+	const band = METRICS[scoredMetric];
+	const beforeValue = metricValue(before, scoredMetric);
+	const afterValue = metricValue(after, scoredMetric);
+	const delta = roundDelta(afterValue - beforeValue);
+	const shownBefore = formatAbout(beforeValue, band.decimals);
+	const shownAfter = formatAbout(afterValue, band.decimals);
+	const left = `${cansLeftAfter} cans left after`;
+	const sponsor = synergy ? ' Sponsor synergy.' : '';
+	const status = STATUS_LABEL[statusesFor(before)[scoredMetric]];
+	const arrow = ARROW_LABEL[scoredMetric];
+
+	if (emptyTeam) {
+		const start =
+			metric === 'mobility' && vehicle.maxGear >= 6
+				? `${withArticle(vehicle.name)} starts the list as a gear-${vehicle.maxGear} flanker`
+				: `${withArticle(vehicle.name)} starts the list`;
+		return `${arrow} ${shownAfter}: ${start}.${sponsor} ${left}.`;
+	}
+
+	const gap = gapClause(metric, status, delta, before.avgGear);
+	const what = vehicleClause(version, vehicle, metric, delta);
+	return `${arrow} ${shownBefore} → ${shownAfter}: ${gap}, ${what}.${sponsor} ${left}.`;
+}
+
+function roundDelta(value: number): number {
+	return Math.round(value * 1000) / 1000;
+}
+
+function currentSnapshot(request: NextVehicleRequest, owned: readonly NextVehicleCatalogEntry[]): ScoreSnapshot {
+	const base =
+		request.snapshot ??
+		snapshotFromChassis(owned, request.rulesVersion, request.totalCans, request.maxCans);
+	return {
+		...base,
+		totalCans: request.totalCans,
+		maxCans: request.maxCans,
+		rulesVersion: request.rulesVersion
 	};
 }
 
-/**
- * Up to three vehicles the team can legally add next.
- * Reasons are short phrases from NEXT_VEHICLE_REASONS. Catalog prose is never copied.
- */
-export function recommendNextVehicles(request: NextVehicleRequest): NextVehicleSuggestion[] {
+export function rankAdditions(request: NextVehicleRequest): NextVehicleSuggestion[] {
 	const version = request.rulesVersion;
 	const sponsorId = request.sponsorId || 'no_sponsor';
 	const includeAdvanced = request.includeAdvanced !== false;
@@ -165,6 +247,8 @@ export function recommendNextVehicles(request: NextVehicleRequest): NextVehicleS
 		.map((type) => request.catalog.find((vehicle) => vehicle.id === type))
 		.filter((vehicle): vehicle is NextVehicleCatalogEntry => Boolean(vehicle));
 	const anchorTaken = owned.some((vehicle) => vehicle.maxHull >= 12);
+	const beforeSnapshot = currentSnapshot(request, owned);
+	const before = scoresFromSnapshot(beforeSnapshot);
 
 	const legal = request.catalog.filter((vehicle) => {
 		if (!includeAdvanced && vehicle.advanced) return false;
@@ -178,77 +262,46 @@ export function recommendNextVehicles(request: NextVehicleRequest): NextVehicleS
 		return true;
 	});
 
-	if (legal.length === 0) return [];
-
-	const chosen: NextVehicleSuggestion[] = [];
-	const used = new Set<string>();
-	const freshFirst = preferNewType(teamTypes);
-
-	function take(
-		pool: NextVehicleCatalogEntry[],
-		reason: string,
-		compare: (a: NextVehicleCatalogEntry, b: NextVehicleCatalogEntry) => number
-	) {
-		if (chosen.length >= MAX_SUGGESTIONS) return;
-		const pick = pool.filter((vehicle) => !used.has(vehicle.id)).sort(compare)[0];
-		if (!pick) return;
-		used.add(pick.id);
-		chosen.push({ id: pick.id, name: pick.name, cost: pick.baseCost, reason });
-	}
-
-	take(
-		legal.filter((vehicle) => isSponsorSynergy(version, sponsorId, vehicle, anchorTaken)),
-		NEXT_VEHICLE_REASONS.synergy,
-		(a, b) => freshFirst(a, b) || b.baseCost - a.baseCost || compareName(a, b)
-	);
-
-	if (!owned.some((vehicle) => isFast(vehicle, version))) {
-		take(
-			legal.filter((vehicle) => isFast(vehicle, version)),
-			NEXT_VEHICLE_REASONS.fast,
-			(a, b) =>
-				freshFirst(a, b) ||
-				(b.handling ?? 0) - (a.handling ?? 0) ||
-				b.maxGear - a.maxGear ||
-				a.baseCost - b.baseCost ||
-				compareName(a, b)
+	const ranked = legal.map((vehicle) => {
+		const afterSnapshot = withChassis(beforeSnapshot, vehicle);
+		const after = scoresFromSnapshot(afterSnapshot);
+		const gains = gainsForAddition(before, after, vehicle.baseCost);
+		const best = (Object.keys(gains) as (keyof typeof gains)[]).reduce((top, key) =>
+			gains[key] > gains[top] ? key : top
 		);
-	}
-
-	if (!owned.some((vehicle) => isHeavy(vehicle, version))) {
-		take(
-			legal.filter((vehicle) => isHeavy(vehicle, version)),
-			NEXT_VEHICLE_REASONS.heavy,
-			(a, b) =>
-				freshFirst(a, b) ||
-				weightRank(b) - weightRank(a) ||
-				b.maxHull - a.maxHull ||
-				a.baseCost - b.baseCost ||
-				compareName(a, b)
-		);
-	}
-
-	if (!owned.some((vehicle) => isLight(vehicle, version))) {
-		take(
-			legal.filter((vehicle) => isLight(vehicle, version)),
-			NEXT_VEHICLE_REASONS.light,
-			(a, b) =>
-				freshFirst(a, b) || weightRank(a) - weightRank(b) || a.baseCost - b.baseCost || compareName(a, b)
-		);
-	}
-
-	const fillers = legal
-		.filter((vehicle) => !used.has(vehicle.id))
-		.sort((a, b) => freshFirst(a, b) || a.baseCost - b.baseCost || compareName(a, b));
-	for (const vehicle of fillers) {
-		if (chosen.length >= MAX_SUGGESTIONS) break;
-		chosen.push({
+		const cansLeftAfter = Math.max(0, request.maxCans - request.totalCans - vehicle.baseCost);
+		const synergy = isSponsorSynergy(version, sponsorId, vehicle, anchorTaken);
+		const ownedAlready = teamTypes.includes(vehicle.id);
+		return {
 			id: vehicle.id,
 			name: vehicle.name,
 			cost: vehicle.baseCost,
-			reason: NEXT_VEHICLE_REASONS.cans
-		});
-	}
+			reason: describeAddition(version, vehicle, before, after, best, cansLeftAfter, synergy, beforeSnapshot.count === 0),
+			metric: best,
+			perCan: gains[best],
+			cansLeftAfter,
+			after,
+			gains,
+			ownedAlready
+		};
+	});
 
-	return chosen;
+	ranked.sort(
+		(a, b) =>
+			b.perCan - a.perCan ||
+			a.cost - b.cost ||
+			Number(a.ownedAlready) - Number(b.ownedAlready) ||
+			a.name.localeCompare(b.name)
+	);
+	return ranked.map(({ ownedAlready: _owned, ...suggestion }) => suggestion);
+}
+
+/**
+ * Up to three vehicles the team can legally add next.
+ * Ranked by how much they move the weakest useful score, per can.
+ * The reason names that score, the before and after, and the cans left.
+ * Catalog prose is never copied.
+ */
+export function recommendNextVehicles(request: NextVehicleRequest): NextVehicleSuggestion[] {
+	return rankAdditions(request).slice(0, MAX_SUGGESTIONS);
 }

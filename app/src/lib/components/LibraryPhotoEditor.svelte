@@ -1,8 +1,10 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { getContext, onDestroy, onMount } from 'svelte';
 	import ShareCar from '$lib/components/ShareCar.svelte';
 	import SharingControl from '$lib/components/SharingControl.svelte';
 	import { ownCarName, type SavedCar } from '$lib/photos/browser';
+	import { PHOTO_SAVE_GATE, type PhotoAttachRequest, type PhotoSaveGate } from '$lib/photos/photoSaveGate';
+	import { reasonVehicleNotOnSavedTeam } from '$lib/photos/saveBeforePhoto';
 	import { paintingGuideLink } from '$lib/photos/link';
 	import { type ShareFlags } from '$lib/photos/share';
 	import { setPhotoPaintingUrl, setPhotoSharing } from '$lib/services/photoShare';
@@ -28,6 +30,10 @@
 
 	let sharePick: Record<string, string> = {};
 	let attachPick: Record<string, string> = {};
+	let listenedVehicle = '';
+	let stopGate = () => {};
+
+	const photoSaveGate = getContext<PhotoSaveGate | undefined>(PHOTO_SAVE_GATE);
 	let profileWebsite = '';
 	let paintingDraft = photo.paintingUrl ?? '';
 	let paintingFor = photo.photoId;
@@ -42,6 +48,23 @@
 			profileWebsite = site;
 		});
 	});
+
+	onDestroy(() => {
+		stopGate();
+	});
+
+	function watchGate(id: string) {
+		if (!id || id === listenedVehicle) return;
+		stopGate();
+		listenedVehicle = id;
+		stopGate =
+			photoSaveGate?.listen(id, (request) => {
+				if (request.vehicleId !== id || request.intent !== 'library' || request.photoId !== photo.photoId) return;
+				void attach();
+			}) ?? (() => {});
+	}
+
+	$: watchGate((attachPick[photo.photoId] ?? '').split('/')[1] ?? '');
 
 	const fieldClass =
 		'mt-1 w-full rounded-lg border border-stone-300 bg-white px-2 py-1 text-sm text-stone-800 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100';
@@ -142,11 +165,24 @@
 		);
 	}
 
+	function savedIdsFor(team: string): string[] {
+		return cars.filter((car) => car.teamId === team).map((car) => car.vehicleId);
+	}
+
 	async function attach() {
 		const value = attachPick[photo.photoId] ?? '';
 		const [teamId, vehicleId] = value.split('/');
 		if (!teamId || !vehicleId) {
 			notify('Choose a car to attach this photo to.', true);
+			return;
+		}
+		if (photoSaveGate?.reason(vehicleId)) {
+			const request: PhotoAttachRequest = { vehicleId, intent: 'library', photoId: photo.photoId };
+			photoSaveGate.request(request);
+			return;
+		}
+		if (reasonVehicleNotOnSavedTeam({ savedTeamId: teamId, vehicleId, savedVehicleIds: savedIdsFor(teamId) })) {
+			notify('Save your team to add photos', true);
 			return;
 		}
 		await run(() => attachLibraryPhoto(photo.photoId, teamId, vehicleId), 'Attaching photo...', 'That photo could not be attached.');

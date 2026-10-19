@@ -1,15 +1,12 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { addGear } from './addGear';
 
 function cansValue(page: Page) {
 	return page.locator('b', { hasText: 'Cans:' }).locator('xpath=following-sibling::span[1]');
 }
 
-async function choose(select: Locator, pattern: RegExp) {
-	const option = select.locator('option', { hasText: pattern }).first();
-	await expect(option).toBeAttached();
-	const value = await option.getAttribute('value');
-	expect(value).toBeTruthy();
-	await select.selectOption(value!);
+async function choose(page: Page, label: string, query: string, pattern: RegExp) {
+	await addGear(page, label, query, pattern);
 }
 
 async function openTeams(page: Page) {
@@ -64,9 +61,9 @@ test('a signed-in player can save, load, update, quick-save, and delete v2 and v
 	await page.getByRole('button', { name: '+ Add Vehicle' }).click();
 	await page.getByRole('button', { name: 'Expand vehicle' }).click();
 	await page.getByLabel('Vehicle Name').fill('Hauler');
-	await choose(page.getByLabel('Add a weapon'), /^Machine Gun\b/);
-	await choose(page.getByLabel('Add an upgrade'), /^Ram\b/);
-	await choose(page.getByLabel('Add a perk'), /^Powder Keg\b/);
+	await choose(page, 'Add a weapon', 'machine gun', /^Machine Gun\b/);
+	await choose(page, 'Add an upgrade', 'ram', /^Ram\b/);
+	await choose(page, 'Add a perk', 'powder', /^Powder Keg\b/);
 	await expect(page.getByRole('listitem').filter({ hasText: 'Machine Gun' })).toBeVisible();
 	await expect(page.getByRole('listitem').filter({ hasText: 'Ram' })).toBeVisible();
 	await expect(page.getByRole('listitem').filter({ hasText: 'Powder Keg' })).toBeVisible();
@@ -89,9 +86,9 @@ test('a signed-in player can save, load, update, quick-save, and delete v2 and v
 	await page.getByLabel('Vehicle Name').fill('Zap');
 	await page.getByRole('combobox', { name: 'Driver', exact: true }).selectOption('brawler', { force: true });
 	await page.getByLabel('Driver name').fill('Brick');
-	await choose(page.getByLabel('Add a weapon'), /^Machine Gun\b/);
-	await choose(page.getByLabel('Add an upgrade'), /^Extra Armour\b/);
-	await choose(page.getByLabel('Add a perk'), /^Battlehammer\b/);
+	await choose(page, 'Add a weapon', 'machine gun', /^Machine Gun\b/);
+	await choose(page, 'Add an upgrade', 'armour', /^Extra Armour\b/);
+	await choose(page, 'Add a perk', 'battle', /^Battlehammer\b/);
 	await expect(page.getByRole('listitem').filter({ hasText: 'Machine Gun' })).toBeVisible();
 	await expect(page.getByRole('listitem').filter({ hasText: 'Extra Armour' })).toBeVisible();
 	await expect(page.getByRole('listitem').filter({ hasText: 'Battlehammer' })).toBeVisible();
