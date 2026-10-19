@@ -307,8 +307,11 @@ export async function setPhotoSharingForUser(
 		photoPatch.teamId = teamId;
 		photoPatch.vehicleId = vehicleId;
 	}
+	const invite = await db.doc(`${BUDDY_COLLECTIONS.invites}/${uid}`).get();
+	const card =
+		invite.get('galleryBuddyRequests') === false ? { ...publicDoc, allowGalleryBuddies: false } : publicDoc;
 	const batch = db.batch();
-	batch.set(db.doc(`sharedPhotos/${photoId}`), publicDoc);
+	batch.set(db.doc(`sharedPhotos/${photoId}`), card);
 	batch.set(privateRef, privateDoc);
 	batch.set(photoRef, photoPatch, { merge: true });
 	await batch.commit();

@@ -3,6 +3,12 @@
 export const BUDDY_REQUESTS_PER_HOUR = 10;
 export const BUDDY_SEARCHES_PER_HOUR = 30;
 export const BUDDY_RATE_WINDOW_MS = 60 * 60 * 1000;
+/** Gallery-sourced requests, on top of the hourly cap. One rolling day. */
+export const BUDDY_GALLERY_REQUESTS_PER_DAY = 20;
+export const BUDDY_GALLERY_RATE_WINDOW_MS = 24 * 60 * 60 * 1000;
+/** After a decline, neither door (search, invite, or gallery) can ask again until this passes. */
+export const BUDDY_DECLINE_COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000;
+export const BUDDY_REQUEST_MESSAGE_MAX = 200;
 export const BUDDY_EMAIL_INVITES_PER_DAY = 10;
 export const BUDDY_EMAIL_INVITE_WINDOW_MS = 24 * 60 * 60 * 1000;
 export const BUDDY_EMAIL_RECIPIENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -87,6 +93,55 @@ export function normalizeInviteCode(value: unknown): string | null {
 		if (!INVITE_ALPHABET.includes(char)) return null;
 	}
 	return code;
+}
+
+/**
+ * Absent or any value other than false means the Gallery may offer a buddy request.
+ * Players who have never saved the setting stay opted in.
+ */
+export function galleryBuddyRequestsAllowed(value: unknown): boolean {
+	return value !== false;
+}
+
+/** Optional note on a gallery request. Blank is allowed. An address is not. */
+export function buddyRequestMessage(value: unknown): string | null {
+	if (value == null || value === '') return '';
+	if (typeof value !== 'string') return null;
+	if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(value)) return null;
+	const text = value.trim().replace(/\s+/g, ' ');
+	if (!text) return '';
+	if (text.length > BUDDY_REQUEST_MESSAGE_MAX) return null;
+	if (text.includes('@')) return null;
+	return text;
+}
+
+const CAR_LABEL_MAX = 80;
+
+function carLabelText(value: unknown): string | null {
+	if (typeof value !== 'string') return null;
+	const text = value.replace(/[\u0000-\u001f]/g, '').trim().replace(/\s+/g, ' ');
+	if (!text || text.length > CAR_LABEL_MAX || text.includes('@')) return null;
+	return text;
+}
+
+/** A car name safe to store on a buddy request. Never an address. */
+export function publicCarLabel(input: { vehicleType?: unknown; caption?: unknown; vehicleStats?: unknown }): string {
+	const stats =
+		input.vehicleStats && typeof input.vehicleStats === 'object' && !Array.isArray(input.vehicleStats)
+			? (input.vehicleStats as { name?: unknown })
+			: null;
+	for (const value of [stats?.name, input.caption, input.vehicleType]) {
+		const label = carLabelText(value);
+		if (label) return label;
+	}
+	return 'painted car';
+}
+
+export function declineCooldownActive(updatedAt: unknown, nowMs: number): boolean {
+	if (typeof updatedAt !== 'string') return true;
+	const updated = Date.parse(updatedAt);
+	if (!Number.isFinite(updated)) return true;
+	return nowMs - updated < BUDDY_DECLINE_COOLDOWN_MS;
 }
 
 export function normalizeSearchQuery(value: unknown): string | null {
