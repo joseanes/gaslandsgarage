@@ -36,6 +36,7 @@
 		teamActionNeedsTeam,
 		type TeamMenuAction
 	} from '$lib/teamMenu';
+	import { savedTeamIdFromLoadedTeam } from '$lib/savedTeam';
 	import Auth from '$lib/components/Auth.svelte';
 import SettingsMenu from '$lib/components/SettingsMenu.svelte';
 	import Tooltip from '$lib/components/Tooltip.svelte';
@@ -121,7 +122,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 	// Load settings on mount
 	// Load settings directly
 	onMount(() => {
-		const persist = () => rememberCurrentTeam(currentDraft);
+		const persist = () => rememberCurrentTeam(currentTeamSnapshot());
 		window.addEventListener('pagehide', persist);
 		return () => {
 			window.removeEventListener('pagehide', persist);
@@ -222,6 +223,12 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		} catch {
 			savedTeamId = null;
 		}
+	}
+
+	/** The in-progress team, including its saved id so a later restore is not treated as a new team. */
+	function currentTeamSnapshot() {
+		if (!savedTeamId) return currentDraft;
+		return { ...currentDraft, savedTeamId };
 	}
 
 	function rememberSavedTeam(id: string | null) {
@@ -350,6 +357,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 			? previousSponsor
 			: (sponsors.find((entry) => entry.id === 'no_sponsor')?.id ?? sponsors[0]?.id ?? '');
 		forgetSharedDraft();
+		rememberSavedTeam(null);
 		syncWindowTeam();
 		updateCurrentDraft();
 	}
@@ -1851,6 +1859,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 					} else {
 						console.log('[Event] importDraftFn not available, setting team data manually');
 						try {
+							rememberSavedTeam(savedTeamIdFromLoadedTeam(event.detail));
 							adoptRulesVersion(event.detail);
 							// Set team properties directly
 							if (detail.sponsor) {
@@ -2208,10 +2217,8 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 		}
 		if (draft.maxCans) maxCans = draft.maxCans;
 		if (draft.darkMode !== undefined) darkMode = draft.darkMode;
-		if (raw && typeof raw === 'object' && 'savedTeamId' in raw) {
-			const incoming = (raw as { savedTeamId?: unknown }).savedTeamId;
-			rememberSavedTeam(typeof incoming === 'string' ? incoming : null);
-		}
+		// No id means this is not the previously saved document. Quick Save must not overwrite it.
+		rememberSavedTeam(savedTeamIdFromLoadedTeam(raw));
 
 		totalCans = calculateTotalCansDirectly();
 		collapsedVehicles = new Set(vehicles.map((entry) => entry.id));
