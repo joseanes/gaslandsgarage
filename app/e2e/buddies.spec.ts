@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import { expect, test, type Browser, type Locator, type Page } from '@playwright/test';
+import { SHOW_BUDDY_HIDE_TOGGLE } from '../src/lib/features/buddyHide';
 
 const shots = '/opt/cursor/artifacts/screenshots';
 
@@ -123,7 +124,12 @@ test('a buddy request, accepted copy, and removal stay on the right accounts', a
 	await ada.page.getByTestId('buddy-accept').click();
 	await expect(ada.page.getByTestId('buddies-notice')).toContainText('gaming buddies');
 	await expect(ada.page.getByTestId('buddy-list')).toContainText('Grace');
-	await expect(ada.page.getByTestId('team-hide-from-buddies')).toBeVisible();
+	if (SHOW_BUDDY_HIDE_TOGGLE) {
+		await expect(ada.page.getByTestId('team-hide-from-buddies')).toBeVisible();
+	} else {
+		await expect(ada.page.getByTestId('team-hide-from-buddies')).toHaveCount(0);
+		await expect(ada.page.getByRole('button', { name: /from buddies/i })).toHaveCount(0);
+	}
 	await expect(ada.page.getByTestId('buddy-email-form')).toBeVisible();
 	await ada.page.getByTestId('buddy-email').fill('friend@example.com');
 	await ada.page.getByTestId('buddy-email-message').fill('See you at the table');
@@ -153,6 +159,12 @@ test('a buddy request, accepted copy, and removal stay on the right accounts', a
 	const graceTeams = await openTeams(grace.page);
 	await expect(graceTeams.getByText('Racers', { exact: true })).toBeVisible();
 	await expect(graceTeams.getByText('Racers (from Ada)', { exact: true })).toBeVisible();
+	if (SHOW_BUDDY_HIDE_TOGGLE) {
+		await expect(graceTeams.getByTestId('team-hide-from-buddies').first()).toBeVisible();
+	} else {
+		await expect(graceTeams.getByTestId('team-hide-from-buddies')).toHaveCount(0);
+		await expect(graceTeams.getByRole('button', { name: /from buddies/i })).toHaveCount(0);
+	}
 	await graceTeams.getByRole('button', { name: 'Close teams modal' }).click();
 
 	await ada.page.reload({ waitUntil: 'domcontentloaded' });

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { user } from '$lib/firebase';
+  import { SHOW_BUDDY_HIDE_TOGGLE } from '$lib/features/buddyHide';
   import { getUserTeams, saveTeam, deleteTeam, setTeamHiddenFromBuddies } from '$lib/services/team';
   import { onMount } from 'svelte';
   import { fade } from 'svelte/transition';
@@ -828,24 +829,26 @@
           {:else}
             <div class="space-y-3 max-h-72 overflow-y-auto pr-2">
               {#each userTeams as team}
-                <div class="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-stone-100 dark:bg-gray-700 rounded-lg border border-stone-200 dark:border-gray-600">
-                  <div class="mb-3 sm:mb-0">
-                    <div class="font-medium text-stone-800 dark:text-white text-lg">{team.teamName}</div>
+                <div class="flex flex-col items-stretch justify-between gap-3 p-4 sm:flex-row sm:items-center bg-stone-100 dark:bg-gray-700 rounded-lg border border-stone-200 dark:border-gray-600">
+                  <div class="min-w-0 sm:flex-1">
+                    <div class="font-medium text-stone-800 dark:text-white text-lg break-words">{team.teamName}</div>
                     <div class="text-sm text-stone-500 dark:text-gray-400">
                       {new Date(team.updatedAt ?? '').toLocaleDateString()}
                     </div>
                   </div>
-                  <div class="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      class="px-4 py-1.5 rounded-md border border-stone-300 bg-white text-sm text-stone-800 dark:border-gray-500 dark:bg-gray-800 dark:text-gray-100"
-                      aria-pressed={team.hiddenFromBuddies === true}
-                      aria-label="{team.hiddenFromBuddies ? 'Show' : 'Hide'} {team.teamName || 'team'} from buddies"
-                      data-testid="team-hide-from-buddies"
-                      on:click={() => toggleBuddyVisibility(team)}
-                    >
-                      {team.hiddenFromBuddies ? 'Hidden from buddies' : 'Hide from buddies'}
-                    </button>
+                  <div class="flex w-full shrink-0 gap-3 sm:w-auto">
+                    {#if SHOW_BUDDY_HIDE_TOGGLE}
+                      <button
+                        type="button"
+                        class="px-4 py-1.5 rounded-md border border-stone-300 bg-white text-sm text-stone-800 dark:border-gray-500 dark:bg-gray-800 dark:text-gray-100"
+                        aria-pressed={team.hiddenFromBuddies === true}
+                        aria-label="{team.hiddenFromBuddies ? 'Show' : 'Hide'} {team.teamName || 'team'} from buddies"
+                        data-testid="team-hide-from-buddies"
+                        on:click={() => toggleBuddyVisibility(team)}
+                      >
+                        {team.hiddenFromBuddies ? 'Hidden from buddies' : 'Hide from buddies'}
+                      </button>
+                    {/if}
                     <button
                       class="px-4 py-1.5 amber-button rounded-md shadow-md transition-colors flex-1 sm:flex-none text-sm"
                       on:click={() => loadTeam(team)}
