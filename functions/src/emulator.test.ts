@@ -402,6 +402,7 @@ describe('account privacy', () => {
 			'buddyInvites',
 			'buddyRequests',
 			'gameContacts',
+        'mapPlacements',
         'messages',
         'newsletterTokens',
         'openToGames',

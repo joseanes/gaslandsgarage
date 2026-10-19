@@ -29,6 +29,7 @@ const MESSAGES = 'messages';
 const ROLES = 'roles';
 const ADMIN_USERS = 'adminUsers';
 const PLAYER_PROFILES = 'playerProfiles';
+const MAP_PLACEMENTS = 'mapPlacements';
 const PLAYER_MAP_OWNERS = 'playerMapOwners';
 const PLAYER_MAP_PRIVATE = 'playerMapPrivate';
 const PLAYER_MAP = 'playerMap';
@@ -333,6 +334,7 @@ async function deleteOwnedDocuments(uid: string, entryId: string | null): Promis
     db.doc(`${USER_SETTINGS}/${uid}`),
     db.doc(`${NEWSLETTER_TOKENS}/${uid}`),
     db.doc(`${PLAYER_PROFILES}/${uid}`),
+    db.doc(`${MAP_PLACEMENTS}/${uid}`),
     db.doc(`${PLAYER_MAP_OWNERS}/${uid}`),
     db.doc(`${OPEN_TO_GAMES}/${uid}`),
     db.doc(`${USERS}/${uid}`),
@@ -465,6 +467,7 @@ export async function exportAccount(uid: string): Promise<Record<string, unknown
     settingsDoc,
     tokenDoc,
     profileDoc,
+    placementDoc,
     ownerDoc,
     openDoc,
     roleDoc,
@@ -482,6 +485,7 @@ export async function exportAccount(uid: string): Promise<Record<string, unknown
     db.doc(`${USER_SETTINGS}/${uid}`).get(),
     db.doc(`${NEWSLETTER_TOKENS}/${uid}`).get(),
     db.doc(`${PLAYER_PROFILES}/${uid}`).get(),
+    db.doc(`${MAP_PLACEMENTS}/${uid}`).get(),
     db.doc(`${PLAYER_MAP_OWNERS}/${uid}`).get(),
     db.doc(`${OPEN_TO_GAMES}/${uid}`).get(),
     db.doc(`${ROLES}/${uid}`).get(),
@@ -525,6 +529,7 @@ export async function exportAccount(uid: string): Promise<Record<string, unknown
       [USER_SETTINGS]: docJson(settingsDoc),
       [NEWSLETTER_TOKENS]: docJson(tokenDoc),
       [PLAYER_PROFILES]: docJson(profileDoc),
+      [MAP_PLACEMENTS]: docJson(placementDoc),
       [PLAYER_MAP_OWNERS]: docJson(ownerDoc),
       [PLAYER_MAP_PRIVATE]: ownsPin && privateDoc ? docJson(privateDoc) : null,
       [PLAYER_MAP]: ownsPin && mapDoc ? docJson(mapDoc) : null,

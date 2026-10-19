@@ -46,6 +46,19 @@ describe('resolveApproximateLocation', () => {
 		expect(resolved.value).not.toMatchObject({ latE2: 3026, lngE2: -9775 });
 	});
 
+	it('stores the server-issued point when a save supplies one', async () => {
+		const offset = vi.fn(async () => ({ latE2: 3011, lngE2: -9802 }));
+		const resolved = await resolveApproximateLocation('Austin, TX', {
+			fetchPlace: async () => austin,
+			offset
+		});
+		expect(offset).toHaveBeenCalledWith(austin.lat, austin.lng);
+		expect(resolved).toEqual({
+			ok: true,
+			value: { locationLabel: 'Austin, TX', latE2: 3011, lngE2: -9802 }
+		});
+	});
+
 	it('does not geocode a street address', async () => {
 		const fetchPlace = vi.fn();
 		const resolved = await resolveApproximateLocation('123 Main Street', { fetchPlace });
@@ -64,6 +77,13 @@ describe('coordinatesForSave', () => {
 		}, { fetchPlace });
 		expect(fetchPlace).not.toHaveBeenCalled();
 		expect(saved).toEqual({ ok: true, locationLabel: 'Austin, TX', latE2: 3019, lngE2: -9766 });
+		const offset = vi.fn();
+		await coordinatesForSave(
+			'Austin, TX',
+			{ locationLabel: 'Austin, TX', latE2: 3019, lngE2: -9766 },
+			{ offset }
+		);
+		expect(offset).not.toHaveBeenCalled();
 	});
 
 	it('clears the pin when the location is removed', async () => {

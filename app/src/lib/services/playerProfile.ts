@@ -1,4 +1,5 @@
-import { db, initializeFirebase } from '$lib/firebase';
+import { auth, db, initializeFirebase } from '$lib/firebase';
+import { PRIVACY_FUNCTIONS_REGION } from '$lib/privacy/accountShared';
 import {
 	applyBoardField,
 	clearDirectoryCache,
@@ -48,6 +49,20 @@ const OPEN = 'openToGames';
 const OPEN_BOARD = 'openToGamesBoard';
 const BOARD_DOC = 'public';
 const CONTACTS = 'gameContacts';
+
+async function serverMapOffset(lat: number, lng: number): Promise<{ latE2: number; lngE2: number }> {
+	const init = await initializeFirebase();
+	if (!init.success || !auth?.app) throw new Error('Database not initialized');
+	const { getFunctions, httpsCallable } = await import('firebase/functions');
+	const functions = getFunctions(auth.app, PRIVACY_FUNCTIONS_REGION);
+	const callable = httpsCallable(functions, 'placeMapPoint');
+	const result = await callable({ lat, lng });
+	const data = result.data as { latE2?: unknown; lngE2?: unknown };
+	if (typeof data?.latE2 !== 'number' || typeof data?.lngE2 !== 'number') {
+		throw new Error('Could not place that location.');
+	}
+	return { latE2: data.latE2, lngE2: data.lngE2 };
+}
 
 async function ready() {
 	const init = await initializeFirebase();
@@ -102,7 +117,7 @@ export async function saveOwnProfile(
 	previous: StoredProfile | null
 ): Promise<{ success: true; profile: StoredProfile } | { success: false; error: string }> {
 	try {
-		const coords = await coordinatesForSave(form.locationLabel, previous);
+		const coords = await coordinatesForSave(form.locationLabel, previous, { offset: serverMapOffset });
 		if (!coords.ok) return { success: false, error: coords.error };
 		const planned = planPresence({
 			uid,
