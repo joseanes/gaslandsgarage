@@ -152,8 +152,37 @@ describe('print sheets', () => {
 			showSpecialRules: false
 		});
 		expect(html).toContain('Discard an Ammo Token');
+		expect(html).toContain('<p>');
 		expect(html).toContain('Middleweight');
 		expect(html).toContain('.vehicle-cards');
 		expect(html).not.toContain('minmax(300px');
+	});
+
+	it('does not let a team name, perk, or weapon close a tag', () => {
+		const payload = '</title><img src=x onerror=alert(1)>';
+		for (const printStyle of ['classic', 'dashboard', 'roster']) {
+			const html = generatePrintableHtml({
+				teamName: payload,
+				totalCans: 1,
+				maxCans: 50,
+				sponsorName: payload,
+				sponsor: { requirement: payload, perkName: payload, perkText: payload },
+				vehicles: [{
+					name: payload,
+					perks: [payload],
+					weapons: [payload],
+					perkObjects: [{ name: payload, text: payload }],
+					weaponObjects: [{ name: payload, specialRules: payload, effect: payload }]
+				}],
+				qrCode: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>',
+				printStyle,
+				rulesVersion: 2
+			});
+			expect(html).not.toContain('<img');
+			expect(html).not.toContain('</title><');
+			expect(html.toLowerCase()).not.toContain('<script');
+			expect(html).toContain('&lt;/title&gt;');
+			expect(html).toContain('&lt;img');
+		}
 	});
 });

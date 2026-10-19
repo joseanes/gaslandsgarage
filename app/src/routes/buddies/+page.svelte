@@ -55,7 +55,16 @@
 		'inline-flex min-h-11 items-center justify-center rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-800 hover:bg-stone-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-800 disabled:opacity-60 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700';
 
 	$: inviteFromLink = ($page.url.searchParams.get('invite') ?? '').trim();
-	$: emailInviteToken = ($page.url.searchParams.get('emailInvite') ?? '').trim();
+	function storedEmailInvite(): string {
+		if (typeof window === 'undefined') return '';
+		try {
+			return sessionStorage.getItem('gaslands.emailInvite') ?? '';
+		} catch {
+			return '';
+		}
+	}
+
+	$: emailInviteToken = ($page.url.searchParams.get('emailInvite') ?? storedEmailInvite()).trim();
 	$: inviteLink = code && typeof window !== 'undefined' ? `${window.location.origin}/buddies?invite=${code}` : '';
 
 	function say(message: string, isError = false) {
@@ -183,6 +192,11 @@
 		if (!emailInviteToken) return;
 		void run(async () => {
 			await acceptBuddyEmailInvite(emailInviteToken);
+			try {
+				sessionStorage.removeItem('gaslands.emailInvite');
+			} catch {
+				/* storage can be blocked */
+			}
 			await goto('/buddies', { replaceState: true, keepFocus: true });
 		}, 'You are gaming buddies.');
 	}

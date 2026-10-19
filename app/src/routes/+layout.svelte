@@ -1224,7 +1224,7 @@
           <h4 class="font-bold text-stone-800 dark:text-white text-lg mb-3">What You Need to Start Playing:</h4>
           <ul class="list-disc pl-5 space-y-2">
             <li><a href="https://amzn.to/4m7OQYa" target="_blank" rel="noopener noreferrer" class="text-amber-600 dark:text-amber-400 hover:underline">Rulebook</a> - The Gaslands Refuelled rulebook contains all the rules and scenarios</li>
-            <li><a href="https://creatoriq.cc/434pUIp" target="_blank" rel="noopener noreferrer" class="text-amber-600 dark:text-amber-400 hover:underline">Gaslands Dice</a> - Special dice designed for the game</li>
+            <li><a href="https://creatoriq.cc/434pUIp" target="_blank" rel="noopener noreferrer" class="text-amber-600 dark:text-amber-400 hover:underline">Gaslands Dice</a> - Version 2 requires special dice designed for the game. Version 3 doesn't.</li>
             <li><a href="https://amzn.to/4kaUcA2" target="_blank" rel="noopener noreferrer" class="text-amber-600 dark:text-amber-400 hover:underline">Regular 6-Sided Dice</a> - For resolving various game mechanics</li>
             <li><a href="https://creatoriq.cc/3GR0qqD" target="_blank" rel="noopener noreferrer" class="text-amber-600 dark:text-amber-400 hover:underline">Gaslands Templates</a> - Movement templates for driving your vehicles</li>
             <li><a href="https://creatoriq.cc/3GR0qqD" target="_blank" rel="noopener noreferrer" class="text-amber-600 dark:text-amber-400 hover:underline">Vehicles</a> - Hotwheels or Matchbox cars that you can modify</li>
@@ -1240,6 +1240,10 @@
                 <center><iframe width="560" height="315" src="https://www.youtube.com/embed/CL66NMhWwHo?si=KltcYCh9RbCqU2HQ" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
                 <p class="text-sm">
                   Gaslands TV features game tutorials, battle reports, and showcases of custom Gaslands vehicles. A must-watch resource for beginners and experienced players alike.
+                </p></center>
+                <center class="mt-4"><iframe width="560" height="315" src="https://www.youtube.com/embed/j1iz_dMMhpg" title="Tiki bug build.  #hotwheels  #customdiecast #diecastcustom #gaslands #vwbeetle #tiki" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+                <p class="text-sm">
+                  <a href="https://www.youtube.com/@bjscustoms/videos" target="_blank" rel="noopener noreferrer" class="text-amber-600 dark:text-amber-400 hover:underline">Bj's Customs</a> is Brandon's channel of diecast customs and Gaslands builds.
                 </p></center>
                 <ul><li><a href="https://www.etsy.com/shop/CreepyHeroStudios">Creepy Hero Studios</a> - Vehicule Accessories</li>
                   <li><a href="https://www.patreon.com/c/sablebadger/">Sable Badger</a> - 3D Printing Models</li></ul>

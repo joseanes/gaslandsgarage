@@ -109,6 +109,48 @@
 		</script>
 		<!-- Consent Mode v2 defaults run before gtag.js. Advertising storage stays denied. -->
 		<script>
+			(function () {
+				var pair = /([?&#])(draft|emailInvite)=[^&#]*/gi;
+				var encoded = /(draft|emailInvite)%3D[^&#%]*/gi;
+				function redact(value) {
+					if (typeof value !== 'string') return value;
+					return value.replace(pair, '$1$2=(redacted)').replace(encoded, '$1%3D(redacted)');
+				}
+				try {
+					var url = new URL(window.location.href);
+					var changed = false;
+					if (url.searchParams.has('draft')) {
+						sessionStorage.setItem('gaslands.pendingDraft', url.searchParams.get('draft') || '');
+						url.searchParams.delete('draft');
+						changed = true;
+					}
+					if (url.searchParams.has('emailInvite')) {
+						sessionStorage.setItem('gaslands.emailInvite', url.searchParams.get('emailInvite') || '');
+						url.searchParams.delete('emailInvite');
+						changed = true;
+					}
+					if (changed) history.replaceState(history.state, '', url.pathname + url.search + url.hash);
+				} catch (e) {}
+				if (navigator.sendBeacon) {
+					var beacon = navigator.sendBeacon.bind(navigator);
+					navigator.sendBeacon = function (target, data) {
+						var nextTarget = typeof target === 'string' ? redact(target) : target;
+						var nextData = typeof data === 'string' ? redact(data) : data;
+						return beacon(nextTarget, nextData);
+					};
+				}
+				if (window.fetch) {
+					var origFetch = window.fetch.bind(window);
+					window.fetch = function (input, init) {
+						var target = typeof input === 'string' ? input : (input && input.url) || '';
+						if (/google-analytics\.com|analytics\.google\.com|googletagmanager\.com/i.test(String(target))) {
+							if (typeof input === 'string') input = redact(input);
+							if (init && typeof init.body === 'string') init = Object.assign({}, init, { body: redact(init.body) });
+						}
+						return origFetch(input, init);
+					};
+				}
+			})();
 			window.dataLayer = window.dataLayer || [];
 			function gtag(){dataLayer.push(arguments);}
 			window.gtag = gtag;
@@ -161,6 +203,8 @@
 		<script>
 			gtag('js', new Date());
 			gtag('config', 'G-EKPMXMY097', {
+				page_location: location.origin + location.pathname,
+				page_referrer: (document.referrer || '').split('?')[0],
 				allow_google_signals: false,
 				allow_ad_personalization_signals: false
 			});

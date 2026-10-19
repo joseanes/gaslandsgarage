@@ -94,15 +94,18 @@ Point the extension at the `mail` collection. Leave its sender address in the ex
 
 `deleteMyAccount` checks that `confirmation` is exactly `DELETE` and that the ID token `auth_time` is less than five minutes old. It then, in order:
 
-1. Removes this account's key from `playerMapBoard/public` and `openToGamesBoard/public` in one transaction.
-2. Deletes the account's documents, including teams, the legacy `users/{uid}/teams` subcollection, and `newsletterTokens/{uid}`.
-3. Anonymizes this account's side of `gameContacts` and `messages`. The other person's text stays. Names become `Deleted player`. Contact-form messages lose their email and body, and `userId` becomes `deleted`.
-4. Deletes queued `mail` documents for those requests and any mail addressed to this account.
-5. Deletes buddy links, requests, blocks, the invite, the findable-name card, `buddyRate/{uid}`, email invites that account sent, and opt-out link tokens it created. When Twilio is configured, it also deletes `buddyEmailRate` for the salted hash of that account's own address. It does not delete `buddyEmailSuppress`. That opt-out stays after deletion whether or not Twilio is configured. A placeholder secret of `disabled` skips only the rate-hash lookup. The invitee's address is not stored.
-6. Deletes `privacyRate/{uid}`.
-7. Deletes the Auth user last. A missing Auth user is success, so a retry can finish leftover documents.
+1. Writes a deletion marker and revokes refresh tokens, so a still-valid ID token cannot recreate data.
+2. Removes this account's key from `playerMapBoard/public` and `openToGamesBoard/public` in one transaction.
+3. Deletes the account's documents, including teams, the legacy `users/{uid}/teams` subcollection, and `newsletterTokens/{uid}`.
+4. Anonymizes this account's side of `gameContacts` and `messages`. The other person's text stays. Names become `Deleted player`. Contact-form messages lose their email and body, and `userId` becomes `deleted`. The request document is removed only when both players are gone.
+5. Deletes queued `mail` documents for those requests and any mail addressed to this account.
+6. Deletes buddy links, requests, blocks, the invite, the findable-name card, `buddyRate/{uid}`, email invites that account sent, and opt-out link tokens it created. When Twilio is configured, it also deletes `buddyEmailRate` for the salted hash of that account's own address. It does not delete `buddyEmailSuppress`. That opt-out stays after deletion whether or not Twilio is configured. A placeholder secret of `disabled` skips only the rate-hash lookup. The invitee's address is not stored.
+7. Deletes `privacyRate/{uid}` and `gameContactEmailRate/{uid}`.
+8. Deletes painted-car photos: every Storage object under `users/{uid}/` and the photo metadata.
+9. Deletes the Auth user. A missing Auth user is success, so a retry can finish leftover documents.
+10. Scans again for map keys and documents created while the account was being deleted.
 
-Logs are `privacy <event> ref=<sha256 prefix>`. They do not include the uid, email, or display name. Deleting `adminUsers/{uid}` makes `syncAuthDisabled` see a deleted document and leave Auth alone. The Auth delete is only step 7.
+Logs are `privacy <event> ref=<sha256 prefix>`. They do not include the uid, email, or display name. Deleting `adminUsers/{uid}` makes `syncAuthDisabled` see a deleted document and leave Auth alone. The Auth delete is only step 9.
 
 The browser calls these from Settings → General Settings after Google sign-in. Download does not ask for a second sign-in. Delete opens the Google prompt again, then calls the function. See `docs/PRIVACY-OPS.md` for requests, retention, and the breach checklist.
 

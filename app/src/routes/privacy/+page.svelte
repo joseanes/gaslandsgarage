@@ -314,7 +314,7 @@
 			including the hash of your own address, so that request still blocks a later invite.
 		</p>
 		<p>
-			Game requests stay until we delete them on request. The profile page does not include a delete
+			Game requests stay until an account deletion anonymizes them, or until we remove them on request. The profile page does not include a delete
 			button for a request. Contact Us messages have no automatic expiry.
 		</p>
 		<p>
@@ -413,7 +413,9 @@
 			<a class={linkClass} href="mailto:jose.anes@gmail.com">jose.anes@gmail.com</a>, or use
 			Contact Us while signed in, and say what you want removed. We answer email requests within 1
 			month. We can delete the Gaslands Garage records we hold for that account, including the account
-			record, teams, photos of your cars, profile, settings, game requests, gaming buddy links, and the buddy invites you sent. A request not to receive buddy-invite email stays in place. Disabling an account is not
+			record, teams, photos of your cars, profile, settings, game requests, gaming buddy links, and the buddy invites you sent. A game request is anonymized:
+			your name and note are cleared, and the request is removed only when the other player's account
+			is gone too. A request not to receive buddy-invite email stays in place. Disabling an account is not
 			the same as deleting it. We cannot delete the Google account itself.
 		</p>
 
