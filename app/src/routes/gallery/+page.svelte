@@ -147,6 +147,13 @@
 		open = photo;
 	}
 
+	/** Cards are links to the car page so they keep their size (global button rules clamp buttons to 32px). A plain click opens the lightbox; modified clicks open the car page. */
+	function openCard(photo: GalleryPhoto, event: MouseEvent) {
+		if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+		event.preventDefault();
+		openPhoto(photo, event);
+	}
+
 	function requestSignIn() {
 		window.dispatchEvent(new CustomEvent('gaslands-request-sign-in'));
 	}
@@ -658,33 +665,27 @@
 					<li class="gallery-tile" class:is-revealed={density === 'photos' && revealedId === photo.photoId}>
 						{#if density === 'photos'}
 							<div class="photo-only-hit">
-								<button
-									type="button"
+								<a
+									href={carHref(photo.photoId)}
 									class="photo-hit absolute inset-0 z-0 block h-full w-full text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-500"
 									class:is-revealed={revealedId === photo.photoId}
 									data-testid="gallery-card"
 									aria-label="Open {galleryCarName(photo)} by {photo.displayName}"
-									on:click={(event) => openPhoto(photo, event)}
+									on:click={(event) => openCard(photo, event)}
 								>
 									<GalleryCardFace {photo} photosOnly />
-								</button>
-								<div class="tile-share">
-									<ShareCar shareId={photo.photoId} carName={galleryCarName(photo)} imageUrl={photo.url} compact />
-								</div>
+								</a>
 							</div>
 						{:else}
-							<button
-								type="button"
+							<a
+								href={carHref(photo.photoId)}
 								class="photo-hit group block h-full w-full rounded-xl text-left transition duration-200 hover:-translate-y-1 hover:shadow-xl hover:shadow-orange-950/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-500"
 								data-testid="gallery-card"
 								aria-label="Open {galleryCarName(photo)} by {photo.displayName}"
-								on:click={(event) => openPhoto(photo, event)}
+								on:click={(event) => openCard(photo, event)}
 							>
 								<GalleryCardFace {photo} />
-							</button>
-							<div class="mt-2">
-								<ShareCar shareId={photo.photoId} carName={galleryCarName(photo)} imageUrl={photo.url} compact />
-							</div>
+							</a>
 						{/if}
 					</li>
 				{/each}
@@ -703,26 +704,6 @@
 <style>
 	.gallery-tile {
 		position: relative;
-	}
-	.tile-share {
-		position: absolute;
-		z-index: 2;
-		left: 0.35rem;
-		right: 0.35rem;
-		bottom: 0.35rem;
-		opacity: 0;
-		pointer-events: none;
-	}
-	.gallery-tile:hover .tile-share,
-	.gallery-tile:focus-within .tile-share,
-	.gallery-tile.is-revealed .tile-share {
-		opacity: 1;
-		pointer-events: auto;
-	}
-	.tile-share :global(.marks) {
-		flex-wrap: nowrap;
-		overflow-x: auto;
-		max-width: 100%;
 	}
 	.photo-only-hit {
 		position: relative;

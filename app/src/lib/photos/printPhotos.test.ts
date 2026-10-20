@@ -36,7 +36,12 @@ const vehicle = {
 };
 
 describe('print photo html', () => {
-	it('escapes captions and keeps only local object URLs', () => {
+	it('says when a car on a photo sheet has no photo', () => {
+		expect(vehiclePhotoSectionHtml({ name: 'Heavy Gun', printPhotos: [] })).toContain('No photo for this car yet.');
+		expect(vehiclePhotoSectionHtml({ name: 'Heavy Gun' })).toBe('');
+	});
+
+	it('escapes captions and keeps object URLs and Storage download addresses only', () => {
 		const html = vehiclePhotoSectionHtml(vehicle);
 		expect(html).toContain('blob:http://127.0.0.1:4173/');
 		expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
@@ -44,11 +49,13 @@ describe('print photo html', () => {
 		expect(html).not.toContain('onerror=alert(1)>');
 		expect(html).not.toContain('javascript:');
 		expect(html).not.toContain('evil.example');
-		expect(html).not.toContain('token=secret');
-		expect(html).not.toContain('firebasestorage.googleapis.com');
+		expect(html).toContain('https://firebasestorage.googleapis.com/v0/b/gaslandsgarage-74ce6.firebasestorage.app/o/users%2Fada%2Fphoto.webp?alt=media&amp;token=secret');
 		expect(printablePhotoSrc('data:image/svg+xml;base64,PHN2Zy8+')).toBeNull();
-		expect(printablePhotoSrc('https://firebasestorage.googleapis.com/v0/b/bucket/o/photo.webp?alt=media&token=abc')).toBeNull();
-		expect(printablePhotoSrc('http://127.0.0.1:9199/v0/b/bucket/o/photo.webp?alt=media&token=abc')).toBeNull();
+		expect(printablePhotoSrc('https://firebasestorage.googleapis.com/v0/b/bucket/o/photo.webp?alt=media&token=abc')).not.toBeNull();
+		expect(printablePhotoSrc('http://127.0.0.1:9199/v0/b/bucket/o/photo.webp?alt=media&token=abc')).not.toBeNull();
+		expect(printablePhotoSrc('http://firebasestorage.googleapis.com/v0/b/bucket/o/photo.webp?alt=media')).toBeNull();
+		expect(printablePhotoSrc('https://firebasestorage.googleapis.com.evil.example/v0/b/bucket/o/p?alt=media')).toBeNull();
+		expect(printablePhotoSrc('https://firebasestorage.googleapis.com/v0/b/bucket/o/photo.webp')).toBeNull();
 		expect(escapeHtml(`"quoted"`)).toBe('&quot;quoted&quot;');
 	});
 
@@ -96,7 +103,7 @@ describe('print photo html', () => {
 			});
 			expect(html).toContain('class="vehicle-photos"');
 			expect(html).toContain('blob:http://127.0.0.1:4173/');
-			expect(html).not.toContain('token=secret');
+			expect(html).not.toContain('evil.example');
 			expect(html).toContain('Haulers &amp; Co');
 		}
 	});

@@ -305,7 +305,8 @@ test('print with photos follows the live Storage redirect', async ({ page }) => 
 	const downloadsBeforePrint = storageDownloads;
 	const sheet = await openPhotoSheet(page, 20_000);
 	expect(await violations()).toEqual([]);
-	expect(storageDownloads).toBeGreaterThan(downloadsBeforePrint);
+	// The sheet no longer reads the bytes over fetch; it loads the download address as an image.
+	expect(storageDownloads).toBe(downloadsBeforePrint);
 
 	if (sheet.kind === 'popup') {
 		const printed = sheet.popup.locator('.vehicle-photos img');
@@ -326,37 +327,28 @@ test('print with photos follows the live Storage redirect', async ({ page }) => 
 	await expect(page.getByTestId('print-sheet-frame')).toHaveCount(0);
 });
 
-test('a blocked photo download still prints the team and never leaves about:blank', async ({ page }) => {
+test('a blocked Storage fetch still prints the photo from its download address', async ({ page }) => {
+	// Production has no CORS on the bucket and connect-src does not cover the
+	// Storage redirect, so reading the bytes fails there. The sheet loads the
+	// photo as a plain image instead, which neither of those blocks.
 	test.setTimeout(120_000);
 	const policy = policyWithoutStorageConnect();
 	expect(directiveHosts(policy, 'connect-src')).not.toContain('https://storage.googleapis.com');
 	expect(directiveHosts(policy, 'img-src')).toContain('https://storage.googleapis.com');
 	activePolicy = policy;
-	const response = await saveTeamWithPhoto(page);
-	const header = response?.headers()['content-security-policy'] || '';
-	expect(directiveHosts(header, 'connect-src')).not.toContain('https://storage.googleapis.com');
-
-	const consoleViolations: string[] = [];
-	page.on('console', (msg) => {
-		const text = msg.text();
-		if (text.includes('storage.googleapis.com') && /content security policy|connect-src/i.test(text)) consoleViolations.push(text);
-	});
-	const sheet = await openPhotoSheet(page, 45_000);
-	const violations = await page.evaluate(
-		() => (window as Window & { __csp?: string[] }).__csp?.filter((entry) => entry.includes('storage.googleapis.com')) ?? []
-	);
-	const reported = [...violations, ...consoleViolations];
-	expect(reported, `expected a connect-src violation for the Storage redirect, saw: ${reported.join(' | ')}`).toEqual(
-		expect.arrayContaining([expect.stringMatching(/connect-src/i)])
-	);
-
+	await saveTeamWithPhoto(page);
+	const started = Date.now();
+	const sheet = await openPhotoSheet(page, 20_000);
+	expect(Date.now() - started, 'the photo sheet took too long to prepare').toBeLessThan(15_000);
+	const root = sheet.kind === 'popup' ? sheet.popup.locator('body') : page.frameLocator('[data-testid="print-sheet-frame"]').locator('body');
+	const printed = root.locator('.vehicle-photos img');
+	await expect(printed).toHaveCount(1);
+	await expect.poll(async () => printed.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBeTruthy();
+	await expect(root).toContainText('Photo Racers');
 	if (sheet.kind === 'popup') {
-		await expect(sheet.popup.locator('.vehicle-photos img')).toHaveCount(0);
-		await expect(sheet.popup.locator('body')).toContainText('Photo Racers');
 		await sheet.popup.close();
 		return;
 	}
-	await expect(page.frameLocator('[data-testid="print-sheet-frame"]').locator('.vehicle-photos img')).toHaveCount(0);
 	await page.getByTestId('close-print-preview').click();
 });
 

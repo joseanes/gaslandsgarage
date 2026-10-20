@@ -11,7 +11,7 @@ import {
 	quotaMessage,
 	type VehiclePhotoRecord
 } from '../photos/model';
-import type { PrintPhotoBlob } from '../photos/printPhotos';
+import type { PrintPhoto } from '../photos/printPhotos';
 import { clearPhotoSharing } from './photoShare';
 
 export { PHOTO_PRIVACY_SHORT };
@@ -126,44 +126,47 @@ export async function listMyPhotos(): Promise<VehiclePhoto[]> {
 	return photos;
 }
 
-/** A blocked download is retried by the Storage SDK for about two minutes. Give up sooner so the sheet can still open. */
-const PRINT_PHOTO_FETCH_MS = 20_000;
+/** Per-photo limit for looking up a print address. Lookups run in parallel, so the sheet waits at most this long. */
+const PRINT_PHOTO_LOOKUP_MS = 6_000;
 
-async function blobWithin(work: Promise<Blob>, ms: number): Promise<Blob> {
+function within<T>(work: Promise<T>, ms: number): Promise<T> {
 	let timer: ReturnType<typeof setTimeout> | undefined;
-	try {
-		return await Promise.race([
-			work,
-			new Promise<Blob>((_, reject) => {
-				timer = setTimeout(() => reject(new Error('Photo download timed out.')), ms);
-			})
-		]);
-	} finally {
+	return Promise.race([
+		work,
+		new Promise<T>((_, reject) => {
+			timer = setTimeout(() => reject(new Error('Photo lookup timed out.')), ms);
+		})
+	]).finally(() => {
 		if (timer !== undefined) clearTimeout(timer);
-	}
+	});
 }
 
-/** Loads each photo with the signed-in user's Storage access. The caller turns the bytes into an object URL. */
-export async function photosForPrint(teamId: string): Promise<Record<string, PrintPhotoBlob[]>> {
+/**
+ * Print addresses for each vehicle's photos, looked up in parallel.
+ *
+ * The sheet uses the Storage download address in a plain <img>. Reading the
+ * bytes with getBlob needs CORS on the bucket, and production has none, so
+ * every getBlob failed after the SDK's retries and the sheet printed with no
+ * photos. A plain image load does not need CORS.
+ */
+export async function photosForPrint(teamId: string): Promise<Record<string, PrintPhoto[]>> {
 	const { app } = await readyUser();
 	const docs = (await listPhotoDocs()).filter((photo) => photo.attachments.some((item) => item.teamId === teamId) || photo.teamId === teamId);
-	const { getStorage, ref, getBlob } = await import('firebase/storage');
+	const { getStorage, ref, getDownloadURL } = await import('firebase/storage');
 	const storage = getStorage(app);
-	const grouped: Record<string, PrintPhotoBlob[]> = {};
-	for (const photo of docs) {
-		try {
-			const blob = await blobWithin(getBlob(ref(storage, photo.path)), PRINT_PHOTO_FETCH_MS);
-			const targets = photo.attachments.filter((item) => item.teamId === teamId);
-			const vehicles = targets.length > 0 ? targets : photo.teamId === teamId ? [{ teamId, vehicleId: photo.vehicleId }] : [];
-			for (const target of vehicles) {
-				const list = grouped[target.vehicleId] ?? [];
-				list.push({ blob, caption: photo.caption });
-				grouped[target.vehicleId] = list;
-			}
-		} catch {
-			// A missing file is skipped. The rest of the sheet still prints.
+	const grouped: Record<string, PrintPhoto[]> = {};
+	const looked = await Promise.allSettled(docs.map((photo) => within(getDownloadURL(ref(storage, photo.path)), PRINT_PHOTO_LOOKUP_MS)));
+	docs.forEach((photo, index) => {
+		const result = looked[index];
+		if (result.status !== 'fulfilled') return;
+		const targets = photo.attachments.filter((item) => item.teamId === teamId);
+		const vehicles = targets.length > 0 ? targets : photo.teamId === teamId ? [{ teamId, vehicleId: photo.vehicleId }] : [];
+		for (const target of vehicles) {
+			const list = grouped[target.vehicleId] ?? [];
+			list.push({ src: result.value, caption: photo.caption });
+			grouped[target.vehicleId] = list;
 		}
-	}
+	});
 	return grouped;
 }
 

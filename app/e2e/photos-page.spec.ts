@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 test('the gallery is the photos page and /photos opens My photos', async ({ page }) => {
 	await page.goto('/gallery?fixture=1', { waitUntil: 'domcontentloaded' });
@@ -71,6 +71,34 @@ test('the gallery is the photos page and /photos opens My photos', async ({ page
 	await expect(page.getByTestId('gallery-card').first()).toBeVisible();
 });
 
+/** Gallery cards must not collapse: the card has real height and the photo fills its image area. */
+async function expectCardImageFills(page: Page, density: 'photos' | 'details') {
+	const card = page.getByTestId('gallery-card').first();
+	await expect(card).toBeVisible();
+	const img = card.locator('img').first();
+	const cardBox = await card.boundingBox();
+	const imgBox = await img.boundingBox();
+	const areaBox = await img.evaluate((el) => {
+		const r = el.parentElement!.getBoundingClientRect();
+		return { width: r.width, height: r.height };
+	});
+	expect(cardBox && imgBox).toBeTruthy();
+	expect(cardBox!.height).toBeGreaterThan(100);
+	expect(imgBox!.height).toBeGreaterThan(100);
+	// The image fills its frame (object-fit: cover at full frame size).
+	expect(Math.abs(imgBox!.height - areaBox.height)).toBeLessThanOrEqual(2);
+	expect(Math.abs(imgBox!.width - areaBox.width)).toBeLessThanOrEqual(2);
+	if (density === 'photos') {
+		// Square tile: the photo covers the whole card.
+		expect(Math.abs(imgBox!.height - cardBox!.height)).toBeLessThanOrEqual(2);
+		expect(Math.abs(cardBox!.height - cardBox!.width)).toBeLessThanOrEqual(2);
+	} else {
+		// 4:3 image area at the top of a taller card.
+		expect(Math.abs(imgBox!.height - (imgBox!.width * 3) / 4)).toBeLessThanOrEqual(3);
+		expect(cardBox!.height).toBeGreaterThan(imgBox!.height);
+	}
+}
+
 test('photos only hides the stat card and remembers the choice', async ({ page }) => {
 	await page.goto('/gallery?fixture=1', { waitUntil: 'domcontentloaded' });
 	await expect(page.getByTestId('gallery-with-details')).toHaveAttribute('aria-pressed', 'true');
@@ -88,7 +116,8 @@ test('photos only hides the stat card and remembers the choice', async ({ page }
 	await expect(meta).toHaveCSS('opacity', '1');
 	await expect(meta).toContainText('Rust Rocket');
 	await expect(meta).toContainText('Casey');
-	await expect(page.getByTestId('gallery-card').first().locator('..').getByTestId('share-facebook')).toHaveAttribute('aria-label', 'Share on Facebook');
+	await expect(page.getByTestId('gallery-grid').getByTestId('share-facebook')).toHaveCount(0);
+	await expectCardImageFills(page, 'photos');
 
 	await page.reload({ waitUntil: 'domcontentloaded' });
 	await expect(page.getByTestId('gallery-photos-only')).toHaveAttribute('aria-pressed', 'true');
@@ -96,6 +125,8 @@ test('photos only hides the stat card and remembers the choice', async ({ page }
 
 	await page.getByTestId('gallery-with-details').click();
 	await expect(page.getByTestId('gallery-stats').first()).toBeVisible();
+	await expect(page.getByTestId('gallery-grid').getByTestId('share-facebook')).toHaveCount(0);
+	await expectCardImageFills(page, 'details');
 	const lightboxShare = page.getByTestId('gallery-card').first();
 	await lightboxShare.click();
 	const lightbox = page.getByTestId('gallery-lightbox');

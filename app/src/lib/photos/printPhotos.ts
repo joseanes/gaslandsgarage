@@ -51,8 +51,10 @@ export function escapeHtml(value: unknown): string {
 }
 
 /**
- * Object URLs created for this print, plus safe local image data.
- * Storage download URLs are left out: they are bearer tokens.
+ * Object URLs, safe local image data, and Firebase Storage download addresses.
+ * A download address carries a read token for that one photo. The sheet is a
+ * local document in the owner's own browser and the token is never printed, so
+ * the owner's photo addresses are allowed. Other hosts are refused.
  */
 export function printablePhotoSrc(value: unknown): string | null {
 	if (typeof value !== 'string') return null;
@@ -61,7 +63,23 @@ export function printablePhotoSrc(value: unknown): string | null {
 	if (/[\u0000-\u001f\s]/.test(src)) return null;
 	if (src.startsWith('blob:')) return src;
 	if (/^data:image\/(?:webp|jpeg|jpg|png);base64,[a-z0-9+/=]+$/i.test(src)) return src;
+	if (isStorageDownloadUrl(src)) return src;
 	return null;
+}
+
+const STORAGE_HOSTS = new Set(['firebasestorage.googleapis.com']);
+const EMULATOR_HOSTS = new Set(['127.0.0.1:9199', 'localhost:9199']);
+
+function isStorageDownloadUrl(src: string): boolean {
+	let url: URL;
+	try {
+		url = new URL(src);
+	} catch {
+		return false;
+	}
+	if (!url.pathname.startsWith('/v0/b/') || url.searchParams.get('alt') !== 'media') return false;
+	if (url.protocol === 'https:' && STORAGE_HOSTS.has(url.host)) return true;
+	return url.protocol === 'http:' && EMULATOR_HOSTS.has(url.host);
 }
 
 export function vehiclePhotoSectionHtml(vehicle: { name?: unknown; printPhotos?: unknown }): string {
@@ -77,12 +95,16 @@ export function vehiclePhotoSectionHtml(vehicle: { name?: unknown; printPhotos?:
 			const alt = caption || `Painted photo of ${name}`;
 			const figcaption = caption ? `<figcaption style="font-size:11px;margin-top:4px;">${escapeHtml(caption)}</figcaption>` : '';
 			return `<figure style="margin:0;break-inside:avoid;page-break-inside:avoid;">
-        <img src="${escapeHtml(src)}" alt="${escapeHtml(alt)}" style="display:block;max-width:2.4in;max-height:1.8in;object-fit:contain;border:1px solid #d6d3d1;" />
+        <img src="${escapeHtml(src)}" alt="${escapeHtml(alt)}" loading="eager" decoding="async" style="display:block;max-width:2.4in;max-height:1.8in;object-fit:contain;border:1px solid #d6d3d1;" />
         ${figcaption}
       </figure>`;
 		})
 		.filter(Boolean);
-	if (figures.length === 0) return '';
+	if (figures.length === 0) {
+		// Print with photos sets printPhotos on every car. Say so when a car has none.
+		if (!Array.isArray(vehicle?.printPhotos)) return '';
+		return `<p class="vehicle-photos-missing" data-testid="print-no-photo" style="margin:6px 0 10px;font-size:11px;font-style:italic;color:#57534e;">No photo for this car yet.</p>`;
+	}
 	return `<div class="vehicle-photos" style="display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 12px;">${figures.join('')}</div>`;
 }
 
