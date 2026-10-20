@@ -47,7 +47,6 @@ import { getUserSettings, saveUserSettings, DEFAULT_SETTINGS, type UserSettings 
 import { saveTeam, getUserTeams, getSavedTeamVehicles } from '$lib/services/team';
 	import { detachVehiclePhotos, photosForPrint, vehicleIdsWithPhotos } from '$lib/services/vehiclePhotos';
 	import { listVisibleTeamPhotos, type SharedVehiclePhoto } from '$lib/services/photoShare';
-	import { localPrintPhotos } from '$lib/photos/printPhotos';
 	import { TEAM_ID_PATTERN } from '$lib/photos/model';
 	import { withoutDisallowedGear } from '$lib/builder/stripGear';
 	import { clearStaleChunkReload } from '$lib/staleChunk';
@@ -2008,9 +2007,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 						console.error('[printTeam] Could not load photos. Printing the team without them.', error);
 					}
 					for (const vehicle of enhancedDraft.vehicles) {
-						const local = localPrintPhotos(grouped[vehicle.id] ?? []);
-						releases.push(local.revoke);
-						(vehicle as { printPhotos?: { src: string; caption?: string }[] }).printPhotos = local.photos;
+						(vehicle as { printPhotos?: { src: string; caption?: string }[] }).printPhotos = grouped[vehicle.id] ?? [];
 					}
 					await printTeamWithPhotos(finalPrintStyle, enhancedDraft, releasePhotos);
 					console.log("[printTeam] Photo print completed successfully");
