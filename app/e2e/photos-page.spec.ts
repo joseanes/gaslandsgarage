@@ -99,6 +99,17 @@ async function expectCardImageFills(page: Page, density: 'photos' | 'details') {
 	}
 }
 
+/** With details: every card in the grid is the same height, whatever its chip count. */
+async function expectUniformCardHeights(page: Page) {
+	const heights = await page.getByTestId('gallery-card').evaluateAll((cards) => cards.map((card) => card.getBoundingClientRect().height));
+	expect(heights.length).toBeGreaterThan(1);
+	const min = Math.min(...heights);
+	const max = Math.max(...heights);
+	expect(max - min, `card heights ${heights.map((h) => Math.round(h)).join(', ')}`).toBeLessThanOrEqual(1);
+	const pills = await page.getByTestId('gallery-pills').evaluateAll((lists) => lists.map((list) => list.scrollHeight > list.clientHeight + 1 ? 'overflow' : 'ok'));
+	expect(pills).not.toContain('overflow');
+}
+
 test('photos only hides the stat card and remembers the choice', async ({ page }) => {
 	await page.goto('/gallery?fixture=1', { waitUntil: 'domcontentloaded' });
 	await expect(page.getByTestId('gallery-with-details')).toHaveAttribute('aria-pressed', 'true');
@@ -127,6 +138,7 @@ test('photos only hides the stat card and remembers the choice', async ({ page }
 	await expect(page.getByTestId('gallery-stats').first()).toBeVisible();
 	await expect(page.getByTestId('gallery-grid').getByTestId('share-facebook')).toHaveCount(0);
 	await expectCardImageFills(page, 'details');
+	await expectUniformCardHeights(page);
 	const lightboxShare = page.getByTestId('gallery-card').first();
 	await lightboxShare.click();
 	const lightbox = page.getByTestId('gallery-lightbox');

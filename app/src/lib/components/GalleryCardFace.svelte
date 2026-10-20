@@ -10,8 +10,44 @@
 	$: stats = photo.vehicleStats;
 	$: title = galleryCarName(photo);
 	$: pills = stats ? [...stats.weapons, ...stats.upgrades].filter((name) => name.trim().length > 0) : [];
-	$: shownPills = layout === 'detail' ? pills : pills.slice(0, 4);
-	$: hiddenPills = pills.length - shownPills.length;
+	$: shownPills = pills;
+
+	/**
+	 * Card layout: keep the weapon chips to two rows. Chips that would start a
+	 * third row are hidden and counted in a "+N" chip, which always stays visible.
+	 */
+	function fitPills(list: HTMLUListElement, options: { enabled: boolean; count: number }) {
+		let current = options;
+		const fit = () => {
+			const items = Array.from(list.querySelectorAll<HTMLElement>('[data-pill]'));
+			const more = list.querySelector<HTMLElement>('[data-pill-more]');
+			if (!more) return;
+			for (const item of items) item.hidden = false;
+			more.hidden = true;
+			if (!current.enabled) return;
+			const overflows = () => list.scrollHeight > list.clientHeight + 1;
+			let hidden = 0;
+			if (!overflows()) return;
+			more.hidden = false;
+			for (let index = items.length - 1; index >= 0 && overflows(); index -= 1) {
+				items[index].hidden = true;
+				hidden += 1;
+				more.textContent = `+${hidden}`;
+			}
+		};
+		const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => fit());
+		observer?.observe(list);
+		queueMicrotask(fit);
+		return {
+			update(next: { enabled: boolean; count: number }) {
+				current = next;
+				queueMicrotask(fit);
+			},
+			destroy() {
+				observer?.disconnect();
+			}
+		};
+	}
 	$: chips = stats
 		? [
 				{ label: 'Hull', value: String(stats.hull) },
@@ -31,7 +67,7 @@
 		</div>
 	</div>
 {:else}
-	<div class="overflow-hidden rounded-xl border border-orange-900/50 bg-stone-950 text-orange-50 shadow-lg shadow-black/40 {layout === 'detail' ? '' : 'h-full'}">
+	<div class="overflow-hidden rounded-xl border border-orange-900/50 bg-stone-950 text-orange-50 shadow-lg shadow-black/40 {layout === 'detail' ? '' : 'flex h-full flex-col'}" data-testid={layout === 'card' ? 'gallery-card-face' : undefined}>
 		<div class="relative {layout === 'detail' ? 'aspect-video max-h-[46vh]' : 'aspect-[4/3]'} bg-stone-900">
 			<img
 				src={photo.url}
@@ -55,7 +91,7 @@
 				</span>
 			{/if}
 		</div>
-		<div class="space-y-2 bg-[radial-gradient(circle_at_top,_#44403c,_#1c1917_58%)] px-3 py-3">
+		<div class="card-body space-y-2 bg-[radial-gradient(circle_at_top,_#44403c,_#1c1917_58%)] px-3 py-3" class:card-body-fixed={layout === 'card'}>
 			<div>
 				<p class="{layout === 'detail' ? 'text-xl' : 'text-sm'} truncate font-black uppercase tracking-wide text-orange-50">{title}</p>
 				<p class="truncate text-xs font-medium text-orange-300">{photo.displayName}</p>
@@ -73,19 +109,17 @@
 					{/each}
 				</dl>
 				{#if shownPills.length > 0}
-					<ul class="flex flex-wrap gap-1" data-testid="gallery-pills">
+					<ul class="flex flex-wrap gap-1" class:pills-clamp={layout === 'card'} data-testid="gallery-pills" use:fitPills={{ enabled: layout === 'card', count: pills.length }}>
 						{#each shownPills as pill}
-							<li class="max-w-full truncate rounded-full border border-orange-800/80 bg-orange-950/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-100">
+							<li data-pill class="max-w-full truncate rounded-full border border-orange-800/80 bg-orange-950/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-100">
 								{pill}
 							</li>
 						{/each}
-						{#if hiddenPills > 0}
-							<li class="rounded-full bg-stone-800 px-2 py-0.5 text-[10px] font-semibold text-orange-200">+{hiddenPills}</li>
-						{/if}
+						<li data-pill-more class="rounded-full bg-stone-800 px-2 py-0.5 text-[10px] font-semibold text-orange-200" hidden>+0</li>
 					</ul>
 				{/if}
 				{#if stats.weight || stats.slots}
-					<footer class="flex items-center justify-between border-t border-orange-900/70 pt-2 text-[10px] font-bold uppercase tracking-wider text-orange-200/90">
+					<footer class="card-footer flex items-center justify-between border-t border-orange-900/70 pt-2 text-[10px] font-bold uppercase tracking-wider text-orange-200/90">
 						<span>{stats.weight ? `Wt ${stats.weight}` : ''}</span>
 						<span>{stats.slots ? `Slots ${stats.slots}` : ''}</span>
 					</footer>
@@ -98,6 +132,25 @@
 {/if}
 
 <style>
+	/* Every With details card has the same body height: room for the title, the
+	   stat chips, two rows of weapon chips, and the footer pinned to the bottom. */
+	.card-body-fixed {
+		display: flex;
+		flex-direction: column;
+		flex: 1 1 auto;
+		height: 12.5rem;
+		overflow: hidden;
+	}
+	.card-body-fixed > :global(*) {
+		flex-shrink: 0;
+	}
+	.pills-clamp {
+		max-height: calc(2 * 1.25rem + 0.25rem);
+		overflow: hidden;
+	}
+	.card-body-fixed .card-footer {
+		margin-top: auto;
+	}
 	.photo-frame {
 		position: relative;
 		width: 100%;
