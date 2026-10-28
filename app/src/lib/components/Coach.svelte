@@ -156,12 +156,12 @@
     $: weights = evaluation.weights;
     $: weightTotal = Object.values(weights).reduce((sum, count) => sum + count, 0);
 
-    function tip(id: MetricId): string {
-        return thresholdTooltip(METRICS[id], metricValue(evaluation.scores, id), maxCans);
+    function tip(id: MetricId, report: TeamEvaluation, budget: number): string {
+        return thresholdTooltip(METRICS[id], metricValue(report.scores, id), budget);
     }
 
-    function tileValue(id: MetricId): string {
-        return formatFixed(metricValue(evaluation.scores, id), METRICS[id]);
+    function tileValue(id: MetricId, report: TeamEvaluation): string {
+        return formatFixed(metricValue(report.scores, id), METRICS[id]);
     }
 </script>
 
@@ -209,8 +209,8 @@
             <div class="rounded-lg border-l-4 bg-stone-200 p-2 text-left dark:bg-gray-600 {barClass(evaluation.statuses[band.id])}" data-testid="coach-tile-{band.id}">
                 <div class="text-[10px] font-semibold uppercase leading-tight text-stone-600 dark:text-gray-200">{band.title}</div>
                 <div class="mt-1 flex items-center justify-between gap-1">
-                    <span class="text-lg font-bold leading-none {valueClass(evaluation.statuses[band.id])}" data-testid="coach-value-{band.id}">{tileValue(band.id)}</span>
-                    <StatusChip status={evaluation.statuses[band.id]} tooltip={tip(band.id)} testId="coach-status-{band.id}" />
+                    <span class="text-lg font-bold leading-none {valueClass(evaluation.statuses[band.id])}" data-testid="coach-value-{band.id}">{tileValue(band.id, evaluation)}</span>
+                    <StatusChip status={evaluation.statuses[band.id]} tooltip={tip(band.id, evaluation, maxCans)} testId="coach-status-{band.id}" />
                 </div>
                 <p class="mt-1 text-[10px] leading-snug text-stone-600 dark:text-gray-200">
                     {band.unit} · typical {formatAbout(band.typical, band.decimals)}{band.suffix}
@@ -290,7 +290,7 @@
                         <span class="text-xs text-stone-600 dark:text-gray-300">total</span>
                         <span class="font-bold {valueClass(evaluation.statuses.combat)}" data-testid="coach-analysis-combat">{formatFixed(evaluation.scores.combat, METRICS.combat)}</span>
                         <span class="text-xs text-stone-600 dark:text-gray-300">/ can</span>
-                        <StatusChip status={evaluation.statuses.combat} tooltip={tip('combat')} />
+                        <StatusChip status={evaluation.statuses.combat} tooltip={tip('combat', evaluation, maxCans)} />
                     </div>
                     <p class="mt-1 text-[10px] leading-snug text-stone-600 dark:text-gray-200">{comparisonSentence(evaluation.scores.combat, METRICS.combat, maxCans)}</p>
                 </div>
@@ -336,7 +336,7 @@
                         <span class="text-xs text-stone-600 dark:text-gray-300">total</span>
                         <span class="font-bold {valueClass(evaluation.statuses.survivability)}" data-testid="coach-analysis-hull">{formatFixed(evaluation.scores.survivability, METRICS.survivability)}</span>
                         <span class="text-xs text-stone-600 dark:text-gray-300">/ can</span>
-                        <StatusChip status={evaluation.statuses.survivability} tooltip={tip('survivability')} />
+                        <StatusChip status={evaluation.statuses.survivability} tooltip={tip('survivability', evaluation, maxCans)} />
                     </div>
                     <p class="mt-1 text-[10px] leading-snug text-stone-600 dark:text-gray-200">{comparisonSentence(evaluation.scores.survivability, METRICS.survivability, maxCans)}</p>
                 </div>
@@ -348,14 +348,14 @@
                     <div class="text-xs text-stone-600 dark:text-gray-200 font-semibold">Avg. gear</div>
                     <div class="mt-1 flex flex-wrap items-center gap-1">
                         <span class="font-bold {valueClass(evaluation.statuses.gear)}" data-testid="coach-analysis-gear">{formatFixed(evaluation.scores.avgGear, METRICS.gear)}</span>
-                        <StatusChip status={evaluation.statuses.gear} tooltip={tip('gear')} testId="coach-status-gear" />
+                        <StatusChip status={evaluation.statuses.gear} tooltip={tip('gear', evaluation, maxCans)} testId="coach-status-gear" />
                     </div>
                 </div>
                 <div>
                     <div class="text-xs text-stone-600 dark:text-gray-200 font-semibold">Avg. handling</div>
                     <div class="mt-1 flex flex-wrap items-center gap-1">
                         <span class="font-bold {valueClass(evaluation.statuses.handling)}" data-testid="coach-analysis-handling">{formatFixed(evaluation.scores.avgHandling, METRICS.handling)}</span>
-                        <StatusChip status={evaluation.statuses.handling} tooltip={tip('handling')} testId="coach-status-handling" />
+                        <StatusChip status={evaluation.statuses.handling} tooltip={tip('handling', evaluation, maxCans)} testId="coach-status-handling" />
                     </div>
                 </div>
             </div>

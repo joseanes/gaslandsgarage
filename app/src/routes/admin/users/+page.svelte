@@ -113,11 +113,6 @@
 		sortDirection = next.direction;
 	}
 
-	function ariaSort(key: UserSortKey): 'ascending' | 'descending' | 'none' {
-		if (sortKey !== key) return 'none';
-		return sortDirection === 'asc' ? 'ascending' : 'descending';
-	}
-
 	function detailMessage(error: unknown, fallback: string): string {
 		return error instanceof Error && error.message ? error.message : fallback;
 	}
@@ -314,7 +309,10 @@
 				<thead class="bg-stone-100 text-left dark:bg-gray-800">
 					<tr>
 						{#each sortColumns as column (column.key)}
-							<th class="px-3 py-2 font-medium" aria-sort={ariaSort(column.key)}>
+							<th
+								class="px-3 py-2 font-medium"
+								aria-sort={sortKey === column.key ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none'}
+							>
 								<button
 									type="button"
 									class="inline-flex items-center gap-1 text-left font-medium hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-600"

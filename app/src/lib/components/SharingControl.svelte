@@ -68,10 +68,6 @@
 	$: allOn = choice === 'on';
 	$: mixed = choice === 'mixed';
 
-	function allowed(key: ShareFlagKey): boolean {
-		return keys.includes(key);
-	}
-
 	function mixedState(node: HTMLInputElement, value: boolean) {
 		node.indeterminate = value;
 		return {
@@ -124,19 +120,19 @@
 		</summary>
 		<div class="mt-1 space-y-1">
 			<label class="flex items-start gap-2 text-xs text-stone-700 dark:text-gray-200">
-				<input type="checkbox" class="mt-0.5" data-testid={buddiesTestId} checked={flags.showToBuddies} disabled={disabled || !allowed('showToBuddies')} on:change={(event) => onOne('showToBuddies', event)} />
+				<input type="checkbox" class="mt-0.5" data-testid={buddiesTestId} checked={flags.showToBuddies} disabled={disabled || !keys.includes('showToBuddies')} on:change={(event) => onOne('showToBuddies', event)} />
 				{SHARE_BUDDIES_LABEL}
 			</label>
 			<label class="flex items-start gap-2 text-xs text-stone-700 dark:text-gray-200">
-				<input type="checkbox" class="mt-0.5" data-testid={linkTestId} checked={flags.showOnShareLink} disabled={disabled || !allowed('showOnShareLink')} on:change={(event) => onOne('showOnShareLink', event)} />
+				<input type="checkbox" class="mt-0.5" data-testid={linkTestId} checked={flags.showOnShareLink} disabled={disabled || !keys.includes('showOnShareLink')} on:change={(event) => onOne('showOnShareLink', event)} />
 				{SHARE_LINK_LABEL}
 			</label>
 			<label class="flex items-start gap-2 text-xs text-stone-700 dark:text-gray-200">
-				<input type="checkbox" class="mt-0.5" data-testid={galleryTestId} checked={flags.showInGallery} disabled={disabled || !allowed('showInGallery')} on:change={(event) => onOne('showInGallery', event)} />
+				<input type="checkbox" class="mt-0.5" data-testid={galleryTestId} checked={flags.showInGallery} disabled={disabled || !keys.includes('showInGallery')} on:change={(event) => onOne('showInGallery', event)} />
 				{SHARE_GALLERY_LABEL}
 			</label>
 			<label class="flex items-start gap-2 text-xs text-stone-700 dark:text-gray-200">
-				<input type="checkbox" class="mt-0.5" data-testid={statsTestId} checked={flags.shareVehicleStats} disabled={disabled || !allowed('shareVehicleStats')} on:change={(event) => onOne('shareVehicleStats', event)} />
+				<input type="checkbox" class="mt-0.5" data-testid={statsTestId} checked={flags.shareVehicleStats} disabled={disabled || !keys.includes('shareVehicleStats')} on:change={(event) => onOne('shareVehicleStats', event)} />
 				{SHARE_STATS_LABEL}
 			</label>
 		</div>
