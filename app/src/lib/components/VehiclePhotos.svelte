@@ -101,8 +101,14 @@
 	});
 
 	$: if (photosCanBeStored(teamId, vehicleId)) void refresh();
+	// Name teamId in this statement. A helper call in the markup does not subscribe to it.
+	$: photoTeamId = photosCanBeStored(teamId, vehicleId)
+		? teamId
+		: photosCanBeStored(savedTeamOverride, vehicleId)
+			? savedTeamOverride
+			: null;
 	$: editing = photos.find((photo) => photo.photoId === editingId) ?? null;
-	$: canAdd = Boolean($user) && !playMode && photos.length < 3 && (Boolean(storedTeamId()) || ensureSavedTeam !== null);
+	$: canAdd = Boolean($user) && !playMode && photos.length < 3 && (Boolean(photoTeamId) || ensureSavedTeam !== null);
 
 	function requestSignIn() {
 		window.dispatchEvent(new CustomEvent('gaslands-request-sign-in'));
@@ -450,7 +456,7 @@
 		Painted car{#if viewOnly ? viewPhotos.length > 0 : photos.length > 0}
 			<span class="font-normal normal-case">({viewOnly ? viewPhotos.length : photos.length}/3)</span>
 		{/if}
-		{#if !viewOnly && $user && !storedTeamId() && !ensureSavedTeam}
+		{#if !viewOnly && $user && !photoTeamId && !ensureSavedTeam}
 			<span class="ml-2 font-normal normal-case" data-testid="photos-need-save">Save the team to add photos</span>
 		{/if}
 	</summary>
@@ -544,7 +550,7 @@
 		<button type="button" class="mt-2 rounded-md px-2 py-1 text-xs amber-button" on:click={requestSignIn}>
 			Sign in to add photos
 		</button>
-	{:else if !storedTeamId() && !ensureSavedTeam}
+	{:else if !photoTeamId && !ensureSavedTeam}
 		<p class="mt-2 text-xs text-stone-700 dark:text-gray-200" data-testid="photos-need-save">Save the team to add photos</p>
 		{#if !playMode}
 			<div class="mt-2 flex flex-col items-start gap-2">
@@ -725,7 +731,7 @@
 					>
 						{#each editing.attachments as attachment (attachment.teamId + attachment.vehicleId)}
 							<option value="{attachment.teamId}/{attachment.vehicleId}">
-								{attachment.teamId === storedTeamId() && attachment.vehicleId === vehicleId ? 'This car' : attachment.vehicleId}
+								{attachment.teamId === photoTeamId && attachment.vehicleId === vehicleId ? 'This car' : attachment.vehicleId}
 							</option>
 						{/each}
 					</select>
