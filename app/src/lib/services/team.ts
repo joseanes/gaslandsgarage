@@ -9,7 +9,7 @@ export type TeamSavePayload = {
   darkMode?: boolean;
   [key: string]: unknown;
 };
-import { browser } from '$app/environment';
+import { browser } from '$app/env';
 
 // Import Firestore types without importing the actual implementation
 type FirestoreDocument = {

@@ -1,5 +1,6 @@
 
 import type { ServerResponse } from 'node:http';
+import adapter from '@sveltejs/adapter-static';
 import { defineConfig, type Connect, type Plugin } from 'vite';
 import { sveltekit } from '@sveltejs/kit/vite';
 
@@ -41,7 +42,23 @@ function forceContentType(res: ServerResponse, type: string) {
 }
 
 export default defineConfig({
-  plugins: [iconContentTypes(), sveltekit()],
+  plugins: [
+    iconContentTypes(),
+    sveltekit({
+      adapter: adapter({
+        // Any path that isn't found will serve this file.
+        fallback: 'index.html'
+      }),
+      // Keeps the existing $lib imports working. SvelteKit 3 no longer creates this alias.
+      alias: {
+        $lib: 'src/lib',
+        '$lib/*': 'src/lib/*'
+      },
+      paths: {
+        base: ''
+      }
+    })
+  ],
   ssr: {
     // List of dependencies to exclude from SSR processing
     noExternal: ['firebase', 'firebase/app', 'firebase/auth', 'firebase/firestore']

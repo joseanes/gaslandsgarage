@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { browser } from '$app/environment';
+	import { browser } from '$app/env';
 	import { createEventDispatcher, tick } from 'svelte';
 	import LocationField from '$lib/components/LocationField.svelte';
 	import {

@@ -12,7 +12,7 @@
   import { clampToViewport } from '$lib/clampToViewport';
   import { fade } from 'svelte/transition';
   import { goto } from '$app/navigation';
-  import { page } from '$app/stores';
+  import { page } from '$lib/kit/pageStore';
   import AdUnit from '$lib/components/AdUnit.svelte';
   import Auth from '$lib/components/Auth.svelte';
   import ConsentBanner from '$lib/components/ConsentBanner.svelte';

@@ -62,6 +62,7 @@ const upgrades = [
 /**
  * Calculate used build slots for a vehicle
  * This should be kept in sync with the implementation in the app
+ * @param {{ weapons: string[], upgrades: string[] }} vehicle
  */
 function calculateUsedBuildSlots(vehicle) {
     let totalSlots = 0;
