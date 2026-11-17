@@ -118,6 +118,7 @@ test('a painting guide starts from the profile and stays blank when the photo li
 	await page.goto('/gallery', { waitUntil: 'domcontentloaded' });
 	await page.getByTestId('gallery-search').fill(caption);
 	await page.getByTestId('gallery-search').press('Enter');
+	await expect(page.getByTestId('gallery-card')).toHaveCount(1);
 	await page.getByTestId('gallery-card').click();
 	await expectGuide(page.getByTestId('gallery-lightbox'), true);
 	await page.getByTestId('gallery-lightbox').getByTestId('car-page-link').click();
@@ -147,6 +148,7 @@ test('a painting guide starts from the profile and stays blank when the photo li
 	await page.goto('/gallery', { waitUntil: 'domcontentloaded' });
 	await page.getByTestId('gallery-search').fill(caption);
 	await page.getByTestId('gallery-search').press('Enter');
+	await expect(page.getByTestId('gallery-card')).toHaveCount(1);
 	await page.getByTestId('gallery-card').click();
 	await expectGuide(page.getByTestId('gallery-lightbox'), false);
 });

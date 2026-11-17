@@ -1,6 +1,6 @@
 import { writable } from 'svelte/store';
 import { auth, db } from '../firebase';
-import { browser } from '$app/environment';
+import { browser } from '$app/env';
 import {
 	preserveStoredReceiveUpdates,
 	stampNewsletterConsent,

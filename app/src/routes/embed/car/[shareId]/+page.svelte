@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { dev } from '$app/environment';
-	import { page } from '$app/stores';
+	import { dev } from '$app/env';
+	import { page } from '$lib/kit/pageStore';
 	import PublicCarBody from '$lib/components/PublicCarBody.svelte';
 	import { NOT_SHARED_NOTICE, type PublicCar } from '$lib/photos/carPage';
 	import { loadPublicCar } from '$lib/services/photoShare';

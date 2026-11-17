@@ -1,4 +1,4 @@
-import { browser } from '$app/environment';
+import { browser } from '$app/env';
 import { BUDDY_FALLBACK_NAME, publicDisplayName } from '../buddies/model';
 import { auth, db, initializeFirebase } from '../firebase';
 import { PRIVACY_FUNCTIONS_REGION } from '../privacy/accountShared';

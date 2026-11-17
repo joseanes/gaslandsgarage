@@ -1,5 +1,5 @@
 import { auth, db, initializeFirebase } from '$lib/firebase';
-import { browser } from '$app/environment';
+import { browser } from '$app/env';
 import { PRIVACY_FUNCTIONS_REGION } from '$lib/privacy/accountShared';
 import { galleryBuddyContext } from '$lib/buddies/gallery';
 import { BUDDY_COLLECTIONS, buddyCopyTeamName, buddyPairId, buddyRequestMessage, publicCarLabel, publicDisplayName } from '$lib/buddies/model';

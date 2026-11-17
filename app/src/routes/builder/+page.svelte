@@ -50,7 +50,7 @@ import { saveTeam, getUserTeams, getSavedTeamVehicles } from '$lib/services/team
 	import { TEAM_ID_PATTERN } from '$lib/photos/model';
 	import { withoutDisallowedGear } from '$lib/builder/stripGear';
 	import { clearStaleChunkReload } from '$lib/staleChunk';
-	import { browser } from '$app/environment';
+	import { browser } from '$app/env';
 	import SaveForPhotosModal from '$lib/components/SaveForPhotosModal.svelte';
 	import { PHOTO_SAVE_GATE, type PhotoAttachRequest, type PhotoSaveGate } from '$lib/photos/photoSaveGate';
 	import {
@@ -1758,7 +1758,7 @@ let showSpecialRules = true; // Whether to show vehicle special rules in printou
 
 	function shareLink() {
 		const encoded = encodeDraft(currentDraft);
-		goto(`?draft=${encodeURIComponent(encoded)}`, { replaceState: true });
+		goto(`?draft=${encodeURIComponent(encoded)}`, { replace: true });
 		alert('Link updated in address bar. Copy the current URL to share your build.');
 	}
 

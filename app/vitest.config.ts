@@ -1,8 +1,11 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 
+const appEnv = fileURLToPath(new URL('./src/test-app-env.ts', import.meta.url));
+
 export default defineConfig({
-  plugins: [svelte({ hot: !process.env.VITEST })],
+  plugins: [svelte()],
   test: {
     include: ['src/**/*.{test,spec}.{js,ts}'],
     environment: 'jsdom',
@@ -21,9 +24,10 @@ export default defineConfig({
   resolve: {
     // Svelte 5's server entry has no mount(). Component tests need the browser build.
     conditions: ['browser'],
-    alias: {
-      $lib: '/src/lib',
-      $app: '/node_modules/@sveltejs/kit/src/runtime/app',
-    },
+    alias: [
+      { find: '$app/env', replacement: appEnv },
+      { find: '$lib', replacement: '/src/lib' },
+      { find: '$app', replacement: '/node_modules/@sveltejs/kit/src/runtime/app' }
+    ],
   },
 });

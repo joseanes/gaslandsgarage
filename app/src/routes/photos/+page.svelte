@@ -3,7 +3,7 @@
 	import { onMount } from 'svelte';
 
 	onMount(() => {
-		void goto('/gallery?view=mine', { replaceState: true });
+		void goto('/gallery?view=mine', { replace: true });
 	});
 </script>
 
