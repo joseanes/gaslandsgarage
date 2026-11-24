@@ -1,4 +1,4 @@
-import { browser } from '$app/environment';
+import { browser } from '$app/env';
 import { auth, initializeFirebase } from '../firebase';
 import { PRIVACY_FUNCTIONS_REGION } from '../privacy/accountShared';
 import { blobBytes, compressVehiclePhoto } from '../photos/compress';
@@ -282,6 +282,21 @@ export async function deleteVehiclePhoto(photo: Pick<VehiclePhotoRecord, 'photoI
 	await deleteDoc(doc(db, 'users', uid, 'photos', photo.photoId));
 }
 
+let photoWrites: Promise<void> = Promise.resolve();
+
+/** My Photos waits for this so a car removed a moment ago is not still listed on the photo. */
+export function whenVehiclePhotoWritesSettle(): Promise<void> {
+	return photoWrites;
+}
+
+function notePhotoWrite(work: Promise<unknown>): void {
+	const done = work.then(
+		() => undefined,
+		() => undefined
+	);
+	photoWrites = Promise.all([photoWrites, done]).then(() => undefined);
+}
+
 async function libraryCall<T>(name: string, data: unknown, fallback: string): Promise<T> {
 	const { app } = await readyUser();
 	const { getFunctions, httpsCallable } = await import('firebase/functions');
@@ -303,7 +318,9 @@ export async function detachLibraryPhoto(photoId: string, teamId: string, vehicl
 
 /** Removes every attachment on this car. The files stay in My Photos. */
 export async function detachVehiclePhotos(teamId: string, vehicleId: string): Promise<void> {
-	await libraryCall('detachVehiclePhotos', { teamId, vehicleId }, 'Photos could not be removed from this car.');
+	const work = libraryCall('detachVehiclePhotos', { teamId, vehicleId }, 'Photos could not be removed from this car.');
+	notePhotoWrite(work);
+	await work;
 }
 
 /** Removes every attachment on this team. The files stay in My Photos. */

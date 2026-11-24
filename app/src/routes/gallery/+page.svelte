@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { dev } from '$app/environment';
+	import { dev } from '$app/env';
 	import { goto } from '$app/navigation';
-	import { page } from '$app/stores';
+	import { page } from '$lib/kit/pageStore';
 	import GalleryBuddyButton from '$lib/components/GalleryBuddyButton.svelte';
 	import GalleryCardFace from '$lib/components/GalleryCardFace.svelte';
 	import GalleryUploadDialog from '$lib/components/GalleryUploadDialog.svelte';
@@ -32,6 +32,7 @@
 		cleanupMyPhotoOrphans,
 		listMyPhotos,
 		migrateMyPhotoLibrary,
+		whenVehiclePhotoWritesSettle,
 		type VehiclePhoto
 	} from '$lib/services/vehiclePhotos';
 
@@ -185,7 +186,7 @@
 	function setState(patch: Partial<PhotoBrowserState>) {
 		const next = { ...parsePhotoBrowser($page.url.searchParams), ...patch };
 		const search = photoBrowserSearch(next, $page.url.searchParams);
-		void goto(`/gallery${search}`, { replaceState: true, keepFocus: true, noScroll: true });
+		void goto(`/gallery${search}`, { replace: true, reset: false });
 	}
 
 	function commitName(value: string) {
@@ -304,6 +305,7 @@
 		if (!quiet) status = 'loading';
 		try {
 			if (browserState.view === 'mine') {
+				await whenVehiclePhotoWritesSettle();
 				await migrateMyPhotoLibrary().catch(() => undefined);
 				await cleanupMyPhotoOrphans().catch(() => undefined);
 				if (current !== ticket) return;

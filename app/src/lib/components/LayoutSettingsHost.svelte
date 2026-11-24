@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
-	import { browser } from '$app/environment';
+	import { browser } from '$app/env';
 	import SettingsMenu from '$lib/components/SettingsMenu.svelte';
 	import { saveUserSettings, accountSettings, type UserSettings } from '$lib/services/settings';
 	import { readLayoutSettings, settingsFromAccount, type LayoutSettingsState } from '$lib/settings/browserSettings';

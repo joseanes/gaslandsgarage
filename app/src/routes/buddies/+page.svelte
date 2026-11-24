@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { page } from '$app/stores';
+	import { page } from '$lib/kit/pageStore';
 	import { goto } from '$app/navigation';
 	import { accountSessionReady } from '$lib/admin/session';
 	import { signInWithGoogle, user } from '$lib/firebase';
@@ -201,7 +201,7 @@
 			} catch {
 				/* storage can be blocked */
 			}
-			await goto('/buddies', { replaceState: true, keepFocus: true });
+			await goto('/buddies', { replace: true, reset: false });
 		}, 'You are gaming buddies.');
 	}
 
@@ -209,7 +209,7 @@
 		if (!inviteFromLink) return;
 		void run(async () => {
 			await sendBuddyRequest({ code: inviteFromLink });
-			await goto('/buddies', { replaceState: true, keepFocus: true });
+			await goto('/buddies', { replace: true, reset: false });
 		}, 'Request sent. They can accept it from Gaming Buddies.');
 	}
 
